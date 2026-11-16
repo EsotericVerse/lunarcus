@@ -47,6 +47,8 @@ jobs:
           cache: npm
       - name: Verify LAS-local Skills and agent rules
         run: node scripts/check-las-agent-skills.mjs
+      - name: Verify LAS skills are discoverable by Claude without copying
+        run: npm run skills:sync && node scripts/check-las-agent-skills.mjs
       - name: Install minimal PostgreSQL Auth dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validate repo ownership, extension ID and immutable domains

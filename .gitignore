@@ -9,3 +9,6 @@ ios/
 .env
 .env.*
 !.env.example
+
+# LAS local per-skill Claude links (generated from .agents/skills by npm prepare)
+/.claude/skills/

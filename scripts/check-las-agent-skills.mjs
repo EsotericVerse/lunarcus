@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {realpathSync} from 'node:fs';
 
 const root=resolve(import.meta.dirname,'..');
 const skillsRoot=join(root,'.agents','skills');
@@ -35,5 +36,12 @@ assert.ok(existsSync(join(root,'.agents','SKILL-LINKS.md')),
   'LAS must include an on-demand reference index');
 assert.ok(existsSync(join(root,'.github','skills','kysely-postgres-las','SKILL.md')),
   'LAS PostgreSQL/Kysely boundary skill missing');
+const claude=join(root,'.claude','skills');
+if(existsSync(claude))for(const name of expected){
+ const link=join(claude,name);
+ assert.ok(existsSync(link),'Claude missing local LAS skill link: '+name);
+ assert.equal(realpathSync(link),realpathSync(join(skillsRoot,name)),
+  'Claude LAS link must point to local source: '+name);
+}
 console.log('LAS agent skills: PASS ('+shared.length+' core + '+las.length+
   ' specialist = '+expected.length+' locally installed, AGENTS.md six modules)');

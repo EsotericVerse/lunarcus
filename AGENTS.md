@@ -73,6 +73,7 @@
 
 - 此 Repo 有與 LOC **同名且本地可讀**的 13 個頂層 Skills：`auth`、`deployment`、`impeccable`、`mcp-builder`、`media`、`security-audit`、`skill-creator`、`sql`、`superpowers`、`ui-ux-pro-max`、`visualization`、`web`、`writing-guidelines`。
 - LAS 另有專業 Skills：`better-auth`、`oauth-oidc`、`cloudflare-workers`、`chrome-extensions`、`mcp-transport`、`mcp-gateway`、`tunnel-data-mapping`、`native-packaging`、`protocol-security`、`protocol-testing`、`plugin-architecture`、`observability`。
+- 以 `.agents/skills/` 為單一來源；`npm install` 的 `prepare` 或手動 `npm run skills:sync` 會為 Claude 建立**逐項 Junction/Symlink** 至 `.claude/skills/`，不複製源文件、不預載所有 Skills，也不刪既有使用者技能目錄。
 - 以上 25 個都是 LAS `.agents/skills/<name>/SKILL.md` 的**實體檔**；參考資料與官方 docs 只在本地內容不足時從 `.agents/SKILL-LINKS.md` 按需取用。不能以外站連結假稱已在 LAS 安裝。
 - Agent 開工只選本次任務真正需要的一個主 Skill，跨越明確子領域時再加一份專用 Skill。技能不自動核發工具權限、不代表背景 agent、不能代替執行測試。
 
