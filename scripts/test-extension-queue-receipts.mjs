@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 
-const source=readFileSync(new URL('../extensions/lunarcus-galaxy-link/background.js',import.meta.url),'utf8');
+const source=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
 const listener={addListener(){}};
 const chrome={
  runtime:{getURL:path=>'chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna/'+path,

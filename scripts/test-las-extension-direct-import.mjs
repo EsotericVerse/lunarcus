@@ -5,12 +5,12 @@ import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 
 const root=new URL('../',import.meta.url);
-const extension=new URL('../extensions/lunarcus-galaxy-link/',import.meta.url);
+const extension=new URL('../plugins/chrome/',import.meta.url);
 const manifest=JSON.parse(readFileSync(new URL('manifest.json',extension),'utf8'));
 const bundled=JSON.parse(readFileSync(new URL('oauth-config.json',extension),'utf8'));
-const canonical=JSON.parse(readFileSync(new URL('public/extension/oauth/config.json',root),'utf8'));
+const canonical=JSON.parse(readFileSync(new URL('public/plugins/chrome/oauth/config.json',root),'utf8'));
 const background=readFileSync(new URL('background.js',extension),'utf8');
-const client=JSON.parse(readFileSync(new URL('public/extension/oauth/client.json',root),'utf8'));
+const client=JSON.parse(readFileSync(new URL('public/plugins/chrome/oauth/client.json',root),'utf8'));
 const EXTENSION_ID='hiaeafonocnjaclcfgjmdopbcgnafnna';
 const EXTENSION_ORIGIN='chrome-extension://'+EXTENSION_ID;
 const LOC_IMPORT='https://loc.lo3rwang.cc/api/loc-native';
@@ -65,6 +65,9 @@ function makeRuntime({config=bundled}={}){
 
 test('LAS Extension packages its own OAuth config without changing Chrome identity',()=>{
   assert.deepEqual(bundled,canonical);
+  assert.equal(manifest.name,'LunArcus');
+  assert.equal(manifest.short_name,'LunArcus');
+  assert.equal(manifest.action.default_title,'LunArcus');
   assert.equal(bundled.issuer,'https://auth.lo3rwang.cc/api/auth');
   assert.equal(bundled.client_id,client.client_id);
   assert.equal(bundled.import_url,LOC_IMPORT);
