@@ -17,7 +17,7 @@ test('las:plugins Chrome and public plugin settings do not rebuild LOC or server
 test('LAS CMS Data Mapping remains LAS-owned and never independently rebuilds LOC',()=>{
   const plan=planLasDeployment([file('app/las/tunnel/loc-mapping.mjs',
     '+const mcpOperation="mcp-read";')]);
-  assert.equal(plan.las.mcp,true);
+  assert.equal(plan.las.mcp,false);
   assert.equal(plan.loc,'skip');
 });
 
