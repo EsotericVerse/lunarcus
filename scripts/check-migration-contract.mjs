@@ -19,9 +19,10 @@ const files=[
   'public/plugins/chrome/oauth/client.json',
   'public/plugins/chrome/oauth/config.json',
   '.github/workflows/deploy-lunarcus-auth.yml',
-  '.github/workflows/ios-device-build.yml'
+  '.github/workflows/deploy-las-mcp.yml'
 ];
 for(const file of files)assert.ok(existsSync(resolve(root,file)),'Missing migration asset: '+file);
+assert.ok(!existsSync(resolve(root,'.github/workflows/ios-device-build.yml')),'IPA workflow belongs to LOC, not LAS');
 const authFiles=['index.mjs','auth.mjs','auth-qos.mjs','pg-driver.mjs','extension-client.mjs'];
 for(const name of authFiles){
  const file=resolve(root,'services/workers/lunarcus',name);
