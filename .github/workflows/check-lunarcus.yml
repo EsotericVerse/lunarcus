@@ -2,6 +2,8 @@ name: Check LunArcus Auth and Extension
 on:
   pull_request:
     paths:
+      - 'vendor/loc-dialect/**'
+      - 'scripts/test-las-dialect.mjs'
       - 'services/workers/lunarcus/**'
       - 'services/workers/las-mcp/**'
       - 'app/las/mcp/**'

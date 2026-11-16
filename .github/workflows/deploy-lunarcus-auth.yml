@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'wrangler.jsonc'
+      - 'vendor/loc-dialect/**'
+      - 'scripts/test-las-dialect.mjs'
       - 'services/workers/lunarcus/**'
       - 'package.json'
       - 'package-lock.json'
