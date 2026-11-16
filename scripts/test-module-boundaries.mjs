@@ -32,7 +32,9 @@ test('IPA workflow pins the same LOC commit across validation and native build',
   assert.ok(source.includes('lrs_commit: ${{ steps.meta.outputs.lrs_commit }}'));
   assert.ok(source.includes('ref: ${{ needs.guard.outputs.lrs_commit }}'));
   assert.ok(source.includes('consume-lrs-ios-artifacts.mjs'));
-  assert.ok(source.includes("if: ${{ needs.guard.outputs.lrs_commit != '' }}"));
+  assert.ok(source.includes('restore-lrs-native-ui.mjs'),'LAS must restore native-only Rune UI');
+  assert.ok(source.includes('build-rune-artifacts.mjs --target=ios'),'LAS must package real native Rune files');
+  assert.ok(source.includes('git ls-remote https://github.com/EsotericVerse/lunarunes.git refs/heads/main'),'LAS must resolve the LRS source SHA');
   assert.ok(source.includes('ref: ${{ needs.guard.outputs.loc_sha }}'));
   assert.ok(source.includes("$(git rev-parse HEAD)"));
   assert.ok(source.includes('workflow_dispatch:'));

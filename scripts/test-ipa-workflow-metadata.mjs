@@ -24,7 +24,8 @@ test('real IPA metadata bash step emits six correct outputs with one pinned LOC 
     const bin=join(tmp,'bin');
     mkdirSync(bin);
     const locSha='abcdef0123456789abcdef0123456789abcdef01';
-    writeFileSync(join(bin,'git'),'#!/bin/sh\nprintf "%s\\n" '+locSha+'\n',{mode:0o755});
+    const runeSha='0123456789abcdef0123456789abcdef01234567';
+    writeFileSync(join(bin,'git'),'#!/bin/sh\nif [ "$1" = "ls-remote" ]; then printf "%s\\trefs/heads/main\\n" '+runeSha+'; else printf "%s\\n" '+locSha+'; fi\n',{mode:0o755});
     const output=join(tmp,'GITHUB_OUTPUT');
     const env={...process.env,GITHUB_OUTPUT:output,REQUESTED_LRS_COMMIT:'',PATH:bin+':'+process.env.PATH};
     for(const tag of ['','v'+version]){
@@ -41,10 +42,9 @@ test('real IPA metadata bash step emits six correct outputs with one pinned LOC 
       assert.deepEqual(values,{
         version,base_version:'1.1.1',
         ipa_name:'LOC-'+version+'-device-unsigned.ipa',
-        release_tag:tag,loc_sha:locSha,lrs_commit:''
+        release_tag:tag,loc_sha:locSha,lrs_commit:runeSha
       });
     }
-    const runeSha='0123456789abcdef0123456789abcdef01234567';
     const selected=spawnSync('bash',['-e','-c',script],{
       cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'',REQUESTED_LRS_COMMIT:runeSha},encoding:'utf8'
     });
