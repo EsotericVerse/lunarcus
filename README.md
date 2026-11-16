@@ -19,7 +19,7 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 ## Auth (source staged; deployment not cut over)
 
 - Worker source: `services/workers/lunarcus/`
-- Existing Cloudflare Worker script: **`auth`**. Existing hostname/issuer **`auth.lo3rwang.cc`** stay unchanged. Do not create a second OIDC issuer or invalidate clients.
+- Existing Cloudflare Worker script: **`lunarcus`** (owner-renamed from `auth`). Existing hostname/issuer **`auth.lo3rwang.cc`** remains unchanged. Do not recreate an `auth` Worker, create a second OIDC issuer or invalidate clients.
 - Existing Cloudflare secret binding names beginning with `LOC_` remain **compatibility contracts**; rename the system LunArcus, not the live secret keys, OAuth scopes, extension ID, or existing user database.
 - `npm ci --ignore-scripts` installs a deliberately smaller **PostgreSQL-only** Auth runtime; no Next.js, MySQL, MSSQL, rune renderer, or Sharp/asset pipeline.
 - `npm run check:auth`; `npm run auth:dry-run`.
