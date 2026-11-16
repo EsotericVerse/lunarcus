@@ -14,9 +14,9 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 `lo3r@lrs` replaces the previously suggested module label `lrune`; it does **not** rename the existing `lrunes` database Scope, `lrunes.lo3rwang.cc`, asset directories, OAuth client, or other public compatibility keys.
 
-**Module contracts:** LAS owns cross-module transport and data mapping, not Galaxy business records or the actual LOC data schema; LOC keeps its existing SQL dialect implementation. LAS Auth uses the existing PostgreSQL runtime without bringing MySQL/MSSQL into this repo. Shared `packages` have **not** been migrated or reorganized, and no duplicate SQL adapter should be introduced to simulate sharing before a real package/service contract exists.
+**Module contracts:** LAS owns cross-module transport and data mapping, not Galaxy business records or the actual LOC data schema; LOC keeps its existing SQL dialect implementation. LAS Auth uses the existing PostgreSQL runtime without bringing MySQL/MSSQL into this repo. The pinned, module-only `vendor/loc-dialect/` snapshot shares Kysely dialect behavior, not LOC business data, credentials or packages. Shared application `packages` have **not** been migrated.
 
-## Auth (source staged; deployment not cut over)
+## Auth (LAS Worker deployed; real SSO callback not yet verified)
 
 - Worker source: `services/workers/lunarcus/`
 - Existing Cloudflare Worker script: **`lunarcus`** (owner-renamed from `auth`). Existing hostname/issuer **`auth.lo3rwang.cc`** remains unchanged. Do not recreate an `auth` Worker, create a second OIDC issuer or invalidate clients.
@@ -29,7 +29,7 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 ## Chrome Extension
 
 - Files: `plugins/chrome/`
-- Original `manifest.key`, OAuth `client_id` and Chromium redirect URI are retained to preserve the Extension identity and local Queue continuity.
+- Chrome `manifest.key` and the Chromium redirect URI are preserved. The OAuth Public Client ID is `lunarcus` for clean installs; it is independent of the Cloudflare Access OIDC Client ID.
 - The original binary icon and Hero are retained by Git blob SHA. Third-party attribution/license files remain alongside the vendored scripts.
 - The Chrome profile will still point at the old unpacked folder until it is deliberately switched after validation. **Do not clear storage or reinstall a second copy while the original is in use.**
 
@@ -53,6 +53,8 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 The three sibling folders are `C:\GitHub\lunacodex`, `C:\GitHub\lunarunes`, `C:\GitHub\lunarcus`.
 If `lunarcus` was cloned using sparse-checkout with only root files, the migrated directories will not appear until its sparse paths are expanded. Since this repository is small, after the approved branch merges, run `git -C C:\GitHub\lunarcus sparse-checkout disable` when you want all source files locally.
+
+**LAS Agent baseline:** `AGENTS.md` defines LAS-only working responsibility; `.agents/skills/` contains all 13 LOC-baseline skills plus five LAS-only gateway/transport/release specialties, with `npm run check:skills`. Only LAS files are changed.
 
 **Migration policy:** no source deletion from `lunacodex` or Cloudflare binding/secret/domain changes before full Auth+MCP+IPA acceptance.
 

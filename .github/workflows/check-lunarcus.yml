@@ -6,6 +6,9 @@ on:
       - '.agents/skills/**'
       - 'AGENTS.md'
       - 'scripts/test-las-dialect.mjs'
+      - 'scripts/check-las-agent-skills.mjs'
+      - '.agents/SKILL-LINKS.md'
+      - 'skills-lock.json'
       - 'services/workers/lunarcus/**'
       - 'services/workers/las-mcp/**'
       - 'app/las/mcp/**'
@@ -49,6 +52,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validate repo ownership, extension ID and immutable domains
         run: node scripts/check-migration-contract.mjs
+      - name: Validate LAS agent skills and current source contracts
+        run: npm run check:skills
       - name: Check LunArcus Worker and Extension syntax
         run: npm run check:auth && npm run check:extension
       - name: Validate MCP runtime contract and mapping
