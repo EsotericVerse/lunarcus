@@ -2,7 +2,7 @@
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50;
-const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
+const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 const MCP_PROVIDER_API='https://loc.lo3rwang.cc/api/mcp-provider-extension';
 const MCP_EXTENSION_RETURN='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/mcp';
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -352,7 +352,7 @@ async function getConfig(){
   const issuer=new URL(cfg.issuer);
   const api=new URL(cfg.import_url);
   if(issuer.protocol!=='https:'||api.protocol!=='https:'||
-     api.origin!=='https://mcp.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
+     api.origin!=='https://loc.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
      cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
      issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
     throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
@@ -500,7 +500,7 @@ async function sendViaAuth(scopeid,batch,token,config){
  if(!SCOPE.test(scopeid))throw Error('Invalid Scope');
  if(scopeid!=='lo3rwang'&&config.supports_scope_routing!==true)throw contractError('多 Scope 認證尚未啟用；Queue 保留，禁止錯誤寫入');
  const endpoint=new URL(config.import_url||'');
- if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC MCP 資料寫入位址錯誤');
+ if(endpoint.origin!=='https://loc.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC 網站短匯入位址錯誤');
  // The Scope is validated by LOC data authorization, not the Auth server.
  const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});
  await logDiagnostic('import.response',{scopeid,status:reply.status,batch_id:batch.id});
