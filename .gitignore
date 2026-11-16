@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.wrangler/
+dist/
+out/
+.next/
+ios/
+*.ipa
+.env
+.env.*
+!.env.example
