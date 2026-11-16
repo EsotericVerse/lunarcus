@@ -113,3 +113,17 @@ test('LunArcus public OAuth client is discoverable without dynamic registration'
     'https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc'
   ]);
 });
+
+test('Existing LunArcus Worker serves MCP without opening an Auth DB',async()=>{
+  const origin='https://mcp.lo3rwang.cc';
+  const resource=await worker.fetch(new Request(origin+'/.well-known/oauth-protected-resource'),{});
+  assert.equal(resource.status,200);
+  const metadata=await resource.json();
+  assert.equal(metadata.resource,origin);
+  assert.deepEqual(metadata.authorization_servers,['https://auth.lo3rwang.cc/api/auth']);
+  const challenge=await worker.fetch(new Request(origin+'/mcp'),{});
+  assert.equal(challenge.status,401);
+  assert.match(challenge.headers.get('www-authenticate')||'',/^Bearer /);
+  const disallowed=await worker.fetch(new Request(origin+'/api/auth/get-session'),{});
+  assert.equal(disallowed.status,404);
+});
