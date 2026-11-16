@@ -1,4 +1,4 @@
-import mcpWorker from '../las-mcp/index.mjs';
+import mcpWorker from './mcp.mjs';
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
