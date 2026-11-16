@@ -1,5 +1,14 @@
 name: Deploy LunArcus Auth (Better Auth)
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/workers/lunarcus/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/check-migration-contract.mjs'
+      - 'scripts/test-las-auth-http.mjs'
+      - '.github/workflows/deploy-lunarcus-auth.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,10 +36,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Require matching existing Cloudflare Worker identity and domain
         run: node scripts/check-migration-contract.mjs
-      - name: Validate Better Auth source syntax
-        run: |
-          node --check services/workers/lunarcus/index.mjs
-          node --check services/workers/lunarcus/auth.mjs
+      - name: Validate LAS current runtime tests
+        run: npm run check:auth
       - name: Validate Worker without publishing
         run: npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc --dry-run --outdir /tmp/auth-check
       - name: Reject deployment without approved Rainbow Auth storage bindings
