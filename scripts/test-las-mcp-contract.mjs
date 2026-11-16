@@ -16,6 +16,9 @@ const fetchFake=async (url,opts)=>{
     body.kind==='mcp-public-read'?{uid:'Aa123456',found:true}:[]}),
     {status:200,headers:{'content-type':'application/json'}});
 };
+test('MCP compatibility import preserves tunnel function identity',()=>{
+  assert.strictEqual(callLocOperation,tunnelCallLocOperation);
+});
 test('LAS does not advertise SQL or own LOC route-index source',()=>{
   assert.equal(MCP_TOOL_INPUTS.read_memory.safeParse({uid:'Aa123456',scopeid:'lrunes'}).success,true);
   const source=readFileSync(new URL('../app/las/mcp/tool-contracts.mjs',import.meta.url),'utf8');
