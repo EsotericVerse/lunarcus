@@ -68,6 +68,11 @@ test('LAS Extension packages its own OAuth config without changing Chrome identi
   assert.equal(manifest.name,'LunArcus');
   assert.equal(manifest.short_name,'LunArcus');
   assert.equal(manifest.action.default_title,'LunArcus');
+  assert.match(background,/title:'LunArcus',contexts:/);
+  const html=readFileSync(new URL('options.html',extension),'utf8');
+  const pages=readFileSync(new URL('options-pages.js',extension),'utf8');
+  for(const text of [html,pages])assert.doesNotMatch(text,/galaxy[ -]?link|彩虹橋/i);
+  assert.doesNotMatch(html,/LOC 彩虹橋|LOC galaxy-link/);
   assert.equal(bundled.issuer,'https://auth.lo3rwang.cc/api/auth');
   assert.equal(bundled.client_id,client.client_id);
   assert.equal(bundled.import_url,LOC_IMPORT);

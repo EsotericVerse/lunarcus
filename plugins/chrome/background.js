@@ -405,7 +405,7 @@ function registeredClient(config,redirect){
  const clientId='loc-galaxy-link';
  const callback='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
  if(config.client_id!==clientId||redirect!==callback)
-  throw oauthError('LunArcus固定 OAuth Client 與 Chrome 回呼不一致');
+  throw oauthError('LunArcus 固定 OAuth Client 與 Chrome 回呼不一致');
  return clientId;
 }
 async function disconnectLoc(){
@@ -711,7 +711,7 @@ async function shownMode(tab){
 }
 function installMenu(){
  chrome.contextMenus.removeAll().then(async()=>{
-  chrome.contextMenus.create({id:MENU_ROOT,title:'LunArcus｜galaxy-link',contexts:['page','selection']});
+  chrome.contextMenus.create({id:MENU_ROOT,title:'LunArcus',contexts:['page','selection']});
   for(const [id,title,contexts] of [
    [MENU_PAGE,'擷取整頁／可見對話',['page','selection']],
    [MENU_SELECTION,'擷取選取文字',['selection']],

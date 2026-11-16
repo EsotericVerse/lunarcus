@@ -108,8 +108,8 @@ function renderOverviewGuidance(result){
   description.textContent='內容已暫存在本機。可以前往 Queue 檢視送出情況與最近一次操作。';
   action={href:'#activity',label:'檢視待送資料'};
  }else{
-  title.textContent='LunArcus已可使用';
-  description.textContent='在想保存的網頁或對話上按右鍵，選擇 LunArcus的擷取功能。';
+  title.textContent='LunArcus 已可使用';
+  description.textContent='在想保存的網頁或對話上按右鍵，選擇 LunArcus 的擷取功能。';
   action={href:'#capture',label:'查看擷取方法'};
  }
  link.hidden=!action;
@@ -147,7 +147,7 @@ $('connect').addEventListener('click',async()=>{
  status.textContent='正在進行 LOC 授權…';
  try{
   const result=await call('loc-connect');
-  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'LOC 授權未完成');
+  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'LunArcus 授權未完成');
   if(!result.error){
    setAuthIndicator(Boolean(result.connected));
    renderOverviewGuidance({...overviewStatus,connected:Boolean(result.connected),error:null});
