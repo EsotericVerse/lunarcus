@@ -13,7 +13,7 @@ test('LunArcus Auth health metadata needs no database, secrets or session',async
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),{
     service:'LOC Auth',module:'better-auth',
-    issuer:BASE+'/api/auth'
+    issuer:BASE
   });
 });
 
