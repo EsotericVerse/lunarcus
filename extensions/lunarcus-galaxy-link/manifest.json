@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LOC galaxy-link｜LOC 彩虹橋",
-  "version": "0.2.12",
-  "description": "LOC 彩虹橋：OAuth PKCE、網頁／選區／對話／動態錄製、離線 Queue 與 LOC 短匯入",
+  "name": "LunArcus",
+  "version": "0.2.13",
+  "description": "LunArcus Chrome Extension：OAuth PKCE、網頁與對話擷取、離線 Queue 與 LOC 短匯入",
   "permissions": [
     "contextMenus",
     "activeTab",
@@ -23,14 +23,14 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "LOC galaxy-link｜LOC 彩虹橋",
+    "default_title": "LunArcus",
     "default_icon": {
       "16": "icons/loc-favicon.png",
       "48": "icons/loc-favicon.png",
       "128": "icons/loc-favicon.png"
     }
   },
-  "short_name": "LOC 彩虹橋",
+  "short_name": "LunArcus",
   "icons": {
     "16": "icons/loc-favicon.png",
     "48": "icons/loc-favicon.png",

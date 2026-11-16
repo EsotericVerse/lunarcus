@@ -6,7 +6,7 @@ The **canonical collision-resistant module identifiers** are `lo3r@loc`, `lo3r@l
 |---|---|---|
 | **lo3r@loc** (`loc`) = LunaCodex（月典／玄鑒） | Language of Codex; language codex SaaS and language appraisal framework | `loc:galaxy` (Z-Model Galaxy / Anchor), `loc:time`, `loc:locus`, `loc:site`, `loc:dialect` |
 | **lo3r@lrs** (`lrs`) = LunaRunes（月符／符韻） | Symbolic Language Galaxy; runes and rune-language system | `lrs:rune` (shared foundation), `lrs:boardgame`, `lrs:card`, `lrs:daily` |
-| **lo3r@las** (`las`) = LunArcus（虹月） | Former Galaxy Link; Luna Protocol cross-system integration | `las:auth`, `las:plugins` (Extension), `las:mcp`, `las:tunnel` (CMS/other-system mapping), `las:ipa`, `las:apk` |
+| **lo3r@las** (`las`) = LunArcus（虹月） | Luna Protocol cross-system integration | `las:auth`, `las:plugins` (Extension), `las:mcp`, `las:tunnel` (CMS/other-system mapping), `las:ipa`, `las:apk` |
 
 For full module-qualified submodule names use `lo3r@loc:galaxy`, `lo3r@lrs:rune` and `lo3r@las:tunnel`. The existing `loc:galaxy`, `lrs:rune`, `las:tunnel` strings in code or documents are **shorthand labels**, not instructions to migrate deployed interfaces.
 
@@ -33,7 +33,7 @@ The existing Auth Worker script was renamed separately from `auth` to `lunarcus`
 ## Implementation status
 
 - `las:auth`: source moved; isolated PostgreSQL install, syntax check and Wrangler dry-run pass. The `lunarcus` production Worker exists, but LAS source deployment and full SSO regression are not yet validated.
-- `las:plugins`: Chrome Galaxy Link extension source moved; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
+- `las:plugins`: LunArcus Chrome extension source moved to `plugins/chrome/`; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
 - `las:mcp` + `las:tunnel`: independent Worker remains in `app/las/mcp/`; fixed-operation LOC Data Mapping lives in `app/las/tunnel/loc-mapping.mjs`, with a compatibility re-export in MCP. The mapping cannot select SQL, DB targets, or untrusted service URLs. Full production OAuth/permission parity and Pages-domain cutover still required.
 - `las:ipa`: existing manual unified workflow has pinned LOC input and an **optional SHA-pinned LRS iOS art handoff**. When explicitly selected, LAS validates LRS manifest checksums then copies actual files into the same LOC static export before Capacitor sync. Empty input preserves the legacy workflow with no LRS checkout. This does not certify Effekseer or a physical IPA; neither has been built here.
 - `las:apk`: planned; no Android build pipeline or signing artifacts claimed.
