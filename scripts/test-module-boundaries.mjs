@@ -18,7 +18,9 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
   assert.ok(existsSync(new URL('../app/las/mcp/loc-mapping.mjs',import.meta.url)));
   assert.ok(!existsSync(new URL('../app/loc/mcp/',import.meta.url)),
     'Do not ship the duplicate LOC MCP source snapshot in LAS');
-  const mapping=read('app/las/mcp/loc-mapping.mjs');
+  const mapping=read('app/las/tunnel/loc-mapping.mjs');
+  const compatibility=read('app/las/mcp/loc-mapping.mjs');
+  assert.ok(compatibility.includes("export * from '../tunnel/loc-mapping.mjs'"));
   assert.ok(mapping.includes('https://loc.lo3rwang.cc/api/las-native'));
   assert.ok(!mapping.includes('createKyselyDialect'));
   const worker=JSON.parse(read('services/workers/las-mcp/wrangler.jsonc'));
