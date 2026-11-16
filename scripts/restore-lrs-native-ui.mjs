@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+/**
+ * Restore native-only LunaRunes UI in LAS's existing, temporary LOC checkout.
+ * LOC Web remains link-only; no source files are committed back to LOC.
+ * Native files come from the exact LunaRunes SHA checked out by LAS Actions.
+ *
+ * Usage: restore-lrs-native-ui.mjs <LRS checkout> <LOC checkout>
+ */
+import {cp,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
+import {resolve,relative,join,dirname,sep} from 'node:path';
+
+const [runeArg,locArg,...extra]=process.argv.slice(2);
+if(!runeArg||!locArg||extra.length)
+  throw Error('Usage: restore-lrs-native-ui.mjs <LRS checkout> <LOC checkout>');
+const lrs=resolve(runeArg),loc=resolve(locArg);
+if(lrs===loc||lrs.startsWith(loc+sep)||loc.startsWith(lrs+sep))
+  throw Error('LOC and LRS checkout directories must be separate');
+
+const originalFiles=['app/lrunes/RunesClient.jsx','app/lrunes/RuneUnifiedView.jsx',
+  'app/card/page.jsx','app/card/duel/page.jsx','app/daily/log/DailyLogClient.jsx',
+  'app/game/page.jsx','modules/lrs/rune/rune-directory.mjs'];
+for(const name of originalFiles){
+  const file=join(lrs,...name.split('/'));
+  if(!(await readFile(file)).length)throw Error('Missing native LRS source: '+name);
+}
+
+const excludedScopeDirs=/^app\/lrunes\/(?:culture|search|statics|trace|manage)\//;
+const sourceDirs=['app/lrunes','app/card','app/daily','app/game','modules/lrs','modules/lrune'];
+let count=0;
+async function walk(dir){
+  for(const item of await readdir(join(lrs,dir),{withFileTypes:true})){
+    if(item.isSymbolicLink())throw Error('Native LRS source must not contain symlinks: '+dir);
+    const rel=dir+'/'+item.name;
+    if(excludedScopeDirs.test(rel))continue;
+    if(item.isDirectory()){await walk(rel);continue;}
+    if(!item.isFile())throw Error('Unexpected native LRS source type: '+rel);
+    const source=join(lrs,...rel.split('/'));
+    const target=join(loc,...rel.split('/'));
+    if(!relative(loc,target).startsWith('..')){
+      await mkdir(dirname(target),{recursive:true});
+      await cp(source,target,{force:true});
+      count++;
+    }else throw Error('Refusing native LRS path escape');
+  }
+}
+for(const dir of sourceDirs)await walk(dir);
+
+// LOC Web deliberately imports its tiny LRS link view. Restore the original
+// Rune homepage *only in this temporary native checkout* before Next build.
+// These two exact, checked substitutions leave every other LOC edit intact.
+const app=join(loc,'app/loc/LocApp.jsx');
+let code=await readFile(app,'utf8');
+const replacements=[
+  ["const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});",
+   "const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});"],
+  ["lrunes:()=>import('./views/LrsPortalView')",
+   "lrunes:()=>import('../lrunes/RunesClient')"]
+];
+for(const [from,to] of replacements){
+  if(!code.includes(from)&&!code.includes(to))throw Error('Native Rune entry contract changed: '+from);
+  code=code.replace(from,to);
+}
+await writeFile(app,code);
+console.log('LAS native Rune UI restored from pinned LRS: '+count+' source files; LOC Web repository unchanged');
