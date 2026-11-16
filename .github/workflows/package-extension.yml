@@ -1,0 +1,47 @@
+name: Package LAS Chrome Extension
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/lunarcus-galaxy-link/**'
+      - 'public/extension/oauth/config.json'
+      - 'scripts/test-extension-*.mjs'
+      - 'scripts/test-las-extension-direct-import.mjs'
+      - '.github/workflows/package-extension.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: npm
+      - name: Install LAS dependencies without build hooks
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test Extension without OAuth, MCP or database writes
+        run: npm run check:extension
+      - name: Verify existing Chrome ID and local OAuth bundle
+        run: |
+          node -e "const fs=require('node:fs');const p='extensions/lunarcus-galaxy-link/';const m=JSON.parse(fs.readFileSync(p+'manifest.json'));const a=JSON.parse(fs.readFileSync(p+'oauth-config.json'));const b=JSON.parse(fs.readFileSync('public/extension/oauth/config.json'));if(!m.key||JSON.stringify(a)!==JSON.stringify(b)||a.import_url!=='https://loc.lo3rwang.cc/api/loc-native')process.exit(1)"
+      - name: Package unpacked Extension folder
+        run: |
+          cd extensions/lunarcus-galaxy-link
+          zip -q -r "$RUNNER_TEMP/las-extension.zip" . -x '*.DS_Store'
+          unzip -Z1 "$RUNNER_TEMP/las-extension.zip" | grep -Fx 'manifest.json'
+          unzip -Z1 "$RUNNER_TEMP/las-extension.zip" | grep -Fx 'oauth-config.json'
+          unzip -Z1 "$RUNNER_TEMP/las-extension.zip" | grep -Fx 'background.js'
+          unzip -Z1 "$RUNNER_TEMP/las-extension.zip" | grep -Fx 'options.html'
+      - name: Save downloadable ZIP; do not publish to Chrome Web Store
+        uses: actions/upload-artifact@v4
+        with:
+          name: las-extension-${{ github.sha }}
+          path: ${{ runner.temp }}/las-extension.zip
+          if-no-files-found: error
+          retention-days: 30
