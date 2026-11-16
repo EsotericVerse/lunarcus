@@ -141,7 +141,7 @@ async function show(){
  $('scope').value=saved.locTargetScope||'lo3rwang';
  $('includeAI').checked=saved.locIncludeAssistant===true;
  $('ssoEmail').value=saved.locSsoEmail||'';
- await refreshMcp();
+ if(window.location.hash==='#providers')await refreshMcp();
 }
 $('connect').addEventListener('click',async()=>{
  status.textContent='正在進行 LOC 授權…';
@@ -152,7 +152,7 @@ $('connect').addEventListener('click',async()=>{
    setAuthIndicator(Boolean(result.connected));
    renderOverviewGuidance({...overviewStatus,connected:Boolean(result.connected),error:null});
   }
-  await refreshMcp();
+  if(window.location.hash==='#providers')await refreshMcp();
  }catch(error){status.textContent=String(error?.message||error);}
 });
 $('disconnect').addEventListener('click',async()=>{
@@ -174,7 +174,7 @@ $('ssoEmail').addEventListener('input',()=>{
 });
 $('ssoEmail').addEventListener('change',async()=>{
  await chrome.storage.local.set({locSsoEmail:$('ssoEmail').value.trim()});
- await refreshMcp();
+ if(window.location.hash==='#providers')await refreshMcp();
 });
 $('scope').addEventListener('change',async()=>{
  const input=$('scope');
@@ -220,5 +220,8 @@ chrome.storage.onChanged?.addListener((changes,area)=>{
  if(area==='local'&&changes.locLastAction?.newValue){
   void show().catch(error=>status.textContent=String(error?.message||error));
  }
+});
+window.addEventListener('hashchange',()=>{
+ if(window.location.hash==='#providers')void refreshMcp();
 });
 show().catch(error=>status.textContent=String(error?.message||error));
