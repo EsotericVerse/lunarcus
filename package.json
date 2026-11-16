@@ -6,9 +6,11 @@
   "description": "LunArcus bridge: Better Auth, PostgreSQL SSO, MCP protocol, extension and IPA packaging",
   "scripts": {
     "check:auth": "node --check services/workers/lunarcus/index.mjs && node --check services/workers/lunarcus/auth.mjs && node --check services/workers/lunarcus/pg-driver.mjs",
-    "check:extension": "node --check extensions/lunarcus-galaxy-link/background.js && node --check extensions/lunarcus-galaxy-link/content.js",
+    "check:extension": "node --check extensions/lunarcus-galaxy-link/background.js && node --check extensions/lunarcus-galaxy-link/content.js && node --test scripts/test-extension-complete-history.mjs",
     "auth:dry-run": "npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc --dry-run",
-    "auth:deploy": "npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc"
+    "auth:deploy": "npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc",
+    "check:mcp": "node --check services/workers/las-mcp/index.mjs && node --check app/las/mcp/router.mjs && node --check app/las/mcp/loc-mapping.mjs && node --test scripts/test-las-mcp-contract.mjs",
+    "mcp:dry-run": "npx --yes wrangler@4.157.0 deploy --config services/workers/las-mcp/wrangler.jsonc --dry-run"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
