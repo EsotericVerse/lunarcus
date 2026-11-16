@@ -15,6 +15,7 @@ on:
       - 'docs/MCP-BOUNDARY.md'
       - 'docs/ISR-HANDOFF.md'
       - 'scripts/test-module-boundaries.mjs'
+      - 'scripts/test-las-mcp-worker-http.mjs'
       - 'scripts/test-ipa-workflow-metadata.mjs'
       - 'scripts/check-migration-contract.mjs'
       - '.github/workflows/check-lunarcus.yml'
