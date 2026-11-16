@@ -35,7 +35,7 @@ The existing Auth Worker script was renamed separately from `auth` to `lunarcus`
 - `las:auth`: source moved; isolated PostgreSQL install, syntax check and Wrangler dry-run pass. The `lunarcus` production Worker exists, but LAS source deployment and full SSO regression are not yet validated.
 - `las:plugins`: Chrome Galaxy Link extension source moved; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
 - `las:mcp` + `las:tunnel`: independent Worker remains in `app/las/mcp/`; fixed-operation LOC Data Mapping lives in `app/las/tunnel/loc-mapping.mjs`, with a compatibility re-export in MCP. The mapping cannot select SQL, DB targets, or untrusted service URLs. Full production OAuth/permission parity and Pages-domain cutover still required.
-- `las:ipa`: manual workflow transferred and LOC commit pinned between jobs; physical IPA not yet built.
+- `las:ipa`: existing manual unified workflow has pinned LOC input and an **optional SHA-pinned LRS iOS art handoff**. When explicitly selected, LAS validates LRS manifest checksums then copies actual files into the same LOC static export before Capacitor sync. Empty input preserves the legacy workflow with no LRS checkout. This does not certify Effekseer or a physical IPA; neither has been built here.
 - `las:apk`: planned; no Android build pipeline or signing artifacts claimed.
 - ISR: source migration blocked by missing original OpenNext source, runtime left intact.
 

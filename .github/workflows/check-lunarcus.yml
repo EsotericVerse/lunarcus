@@ -17,6 +17,8 @@ on:
       - 'scripts/test-module-boundaries.mjs'
       - 'scripts/test-las-mcp-worker-http.mjs'
       - 'scripts/test-ipa-workflow-metadata.mjs'
+      - 'scripts/test-las-ipa-runes.mjs'
+      - 'scripts/consume-lrs-ios-artifacts.mjs'
       - 'scripts/check-migration-contract.mjs'
       - '.github/workflows/check-lunarcus.yml'
   workflow_dispatch:
@@ -43,6 +45,6 @@ jobs:
       - name: Validate MCP runtime contract and mapping
         run: npm run check:mcp
       - name: Enforce module names, ownership and IPA input pinning
-        run: node --test scripts/test-module-boundaries.mjs scripts/test-ipa-workflow-metadata.mjs
+        run: node --test scripts/test-module-boundaries.mjs scripts/test-ipa-workflow-metadata.mjs scripts/test-las-ipa-runes.mjs
       - name: Dry-run Worker bundles (never publish)
         run: npm run auth:dry-run && npm run mcp:dry-run

@@ -15,7 +15,7 @@ assert.ok(runStart>start&&runEnd>runStart,'IPA metadata shell must be identifiab
 const script=workflow.slice(runStart+'        run: |\n'.length,runEnd)
   .split('\n').map(line=>line.startsWith('          ')?line.slice(10):line).join('\n');
 
-test('real IPA metadata bash step emits the five correct outputs with one pinned LOC SHA',()=>{
+test('real IPA metadata bash step emits six correct outputs with one pinned LOC SHA',()=>{
   const tmp=mkdtempSync(join(tmpdir(),'las-ipa-metadata-'));
   try{
     const version='1.1.1-rc.1';
@@ -26,13 +26,13 @@ test('real IPA metadata bash step emits the five correct outputs with one pinned
     const locSha='abcdef0123456789abcdef0123456789abcdef01';
     writeFileSync(join(bin,'git'),'#!/bin/sh\nprintf "%s\\n" '+locSha+'\n',{mode:0o755});
     const output=join(tmp,'GITHUB_OUTPUT');
-    const env={...process.env,GITHUB_OUTPUT:output,PATH:bin+':'+process.env.PATH};
+    const env={...process.env,GITHUB_OUTPUT:output,REQUESTED_LRS_COMMIT:'',PATH:bin+':'+process.env.PATH};
     for(const tag of ['','v'+version]){
       const run=spawnSync('bash',['-e','-c',script],{
         cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:tag},encoding:'utf8'
       });
       assert.equal(run.status,0,run.stderr||run.stdout);
-      const lines=readFileSync(output,'utf8').trim().split('\n').slice(-5);
+      const lines=readFileSync(output,'utf8').trim().split('\n').slice(-6);
       const values=Object.fromEntries(lines.map(line=>{
         const n=line.indexOf('=');
         assert.ok(n>0,'Invalid GITHUB_OUTPUT line: '+line);
@@ -41,9 +41,19 @@ test('real IPA metadata bash step emits the five correct outputs with one pinned
       assert.deepEqual(values,{
         version,base_version:'1.1.1',
         ipa_name:'LOC-'+version+'-device-unsigned.ipa',
-        release_tag:tag,loc_sha:locSha
+        release_tag:tag,loc_sha:locSha,lrs_commit:''
       });
     }
+    const runeSha='0123456789abcdef0123456789abcdef01234567';
+    const selected=spawnSync('bash',['-e','-c',script],{
+      cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'',REQUESTED_LRS_COMMIT:runeSha},encoding:'utf8'
+    });
+    assert.equal(selected.status,0,selected.stderr||selected.stdout);
+    assert.ok(readFileSync(output,'utf8').includes('lrs_commit='+runeSha+'\n'));
+    const unsafe=spawnSync('bash',['-e','-c',script],{
+      cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'',REQUESTED_LRS_COMMIT:'main'},encoding:'utf8'
+    });
+    assert.notEqual(unsafe.status,0,'Movable LRS branch refs are forbidden');
     const denied=spawnSync('bash',['-e','-c',script],{
       cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'v0.0.0'},encoding:'utf8'
     });

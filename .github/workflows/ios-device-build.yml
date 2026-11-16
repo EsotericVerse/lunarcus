@@ -9,6 +9,10 @@ on:
         description: 'Attach unsigned IPA to the matching current RC prerelease (optional)'
         required: false
         type: string
+      lrs_commit:
+        description: 'Optional exact LunaRunes SHA for native real-file handoff (empty retains existing assets)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -33,6 +37,7 @@ jobs:
       ipa_name: ${{ steps.meta.outputs.ipa_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
       loc_sha: ${{ steps.meta.outputs.loc_sha }}
+      lrs_commit: ${{ steps.meta.outputs.lrs_commit }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -55,6 +60,7 @@ jobs:
         shell: bash
         env:
           REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          REQUESTED_LRS_COMMIT: ${{ inputs.lrs_commit }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
@@ -68,12 +74,17 @@ jobs:
             echo "::error::Requested tag does not match package version."
             exit 1
           fi
+          if [[ -n "$REQUESTED_LRS_COMMIT" && ! "$REQUESTED_LRS_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::LunaRunes source must be pinned to an exact lowercase 40-character commit SHA.'
+            exit 1
+          fi
           printf '%s\n' \
             "version=$version" \
             "base_version=${version%%-*}" \
             "ipa_name=LOC-$version-device-unsigned.ipa" \
             "release_tag=$REQUESTED_RELEASE_TAG" \
-            "loc_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            "loc_sha=$(git rev-parse HEAD)" \
+            "lrs_commit=$REQUESTED_LRS_COMMIT" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
         run: npm run check:syntax
@@ -91,6 +102,7 @@ jobs:
       LOC_IPA_NAME: ${{ needs.guard.outputs.ipa_name }}
       LOC_RELEASE_TAG: ${{ needs.guard.outputs.release_tag }}
       LOC_BUILD_NUMBER: ${{ github.run_number }}
+      LRS_COMMIT: ${{ needs.guard.outputs.lrs_commit }}
     steps:
       - name: Checkout pinned LOC source for existing IPA flow
         uses: actions/checkout@v4
@@ -98,6 +110,21 @@ jobs:
           repository: EsotericVerse/lunacodex
           ref: ${{ needs.guard.outputs.loc_sha }}
           path: loc-source
+          persist-credentials: false
+      - name: Checkout LAS native artifact consumer (when requested)
+        if: ${{ needs.guard.outputs.lrs_commit != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: las-source
+          persist-credentials: false
+      - name: Checkout pinned LunaRunes source (when requested)
+        if: ${{ needs.guard.outputs.lrs_commit != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: EsotericVerse/lunarunes
+          ref: ${{ needs.guard.outputs.lrs_commit }}
+          path: rune-source
           persist-credentials: false
       - name: Install Node.js 22
         uses: actions/setup-node@v4
@@ -119,6 +146,14 @@ jobs:
         run: |
           npm run build:static
           test -f out/index.html
+      - name: Produce pinned original LunaRunes native art (no heavy effects)
+        if: ${{ needs.guard.outputs.lrs_commit != '' }}
+        run: |
+          test "$(git -C ../rune-source rev-parse HEAD)" = "$LRS_COMMIT"
+          node ../rune-source/scripts/build-rune-artifacts.mjs --target=ios --art-only
+      - name: Inject checksum-verified real Rune files into existing LOC export
+        if: ${{ needs.guard.outputs.lrs_commit != '' }}
+        run: node ../las-source/scripts/consume-lrs-ios-artifacts.mjs ../rune-source/dist/ios out
       - name: Check Guest and Admin static route exports
         run: node scripts/verify-release-static-export.mjs
       - name: Verify numeric source Rune card files (never rewrite)
