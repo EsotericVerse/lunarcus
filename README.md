@@ -23,9 +23,10 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 - Existing Cloudflare secret binding names beginning with `LOC_` remain **compatibility contracts**; rename the system LunArcus, not the live secret keys, OAuth scopes, extension ID, or existing user database.
 - `npm ci --ignore-scripts` installs a deliberately smaller **PostgreSQL-only** Auth runtime; no Next.js, MySQL, MSSQL, rune renderer, or Sharp/asset pipeline.
 - `npm run check:auth`; `npm run auth:dry-run`.
-- `.github/workflows/deploy-lunarcus-auth.yml` validates LAS Auth changes merged to `main`, then publishes to the existing `lunarcus` Worker using the LAS repo's own `CLOUDFLARE_API_TOKEN` GitHub Actions secret. `workflow_dispatch` is available for explicit releases. Changes confined to docs, Plugins, MCP, LOC or LRS do not trigger an Auth deploy.
-- The LAS Actions secret must be granted minimum required Cloudflare deployment permissions; secrets from LOC are not inherited. This workflow fails closed when the secret is unavailable. Do not also turn on Cloudflare Workers Builds for the same repository/Worker path: that would double-deploy.
-- Wrangler dry-run and deployment success do not prove browser SSO, OAuth exchange or session compatibility. These require separate HTTP/OIDC and browser validation.
+- Cloudflare **Workers Builds: lunarcus** is the connected GitHub build/deploy integration. The GitHub Actions `.github/workflows/deploy-lunarcus-auth.yml` validates scoped Auth changes (`main` or manual dispatch) and performs a dry-run **without publishing**; do not add a second Wrangler deployment job for the same Worker.
+- Keep the existing `lunarcus` Worker, `auth.lo3rwang.cc` issuer and existing secret bindings. Actual production Build Watch Paths and main deployments must be checked in Cloudflare (the presence of a PR check alone does not prove production publish).
+- No LAS GitHub Actions deployment secret is needed by this validation-only workflow. The manual LAS MCP workflow remains independently token-gated and cannot take over the MCP domain.
+- Build/preview/deployment success does not prove browser SSO, OAuth exchange or session compatibility. These require separate HTTP/OIDC and browser acceptance.
 
 ## Chrome Extension
 
