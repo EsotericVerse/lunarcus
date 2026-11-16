@@ -1,5 +1,5 @@
-// LOC Auth uses the same native pg/TCP connection lifecycle as LOC Web.
-// Auth keeps its own LOC_AUTH_DATABASE_URL, Rainbow models and isolation.
+// LAS uses a request-scoped native PostgreSQL connection.
+// LAS_DATABASE_URL is supplied by the Worker; no additional database role is assumed.
 // Each Kysely acquisition owns a fresh pg.Client; no sockets cross requests.
 import pg from 'pg';
 

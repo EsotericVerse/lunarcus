@@ -1,16 +1,16 @@
-// The existing Better Auth SQL model mappings are a single immutable source
+// The LAS Better Auth SQL model mappings are a single immutable source
 // for Better Auth and its ZenStack/Zod validation-only model contract.
 export const RAINBOW_TABLES=Object.freeze({
-  user:'rainbow_auth',
-  session:'rainbow_session',
-  account:'rainbow_account',
-  verification:'rainbow_verification',
-  jwks:'rainbow_jwks',
-  oauthClient:'rainbow_oauth_client',
-  oauthResource:'rainbow_oauth_resource',
-  oauthClientResource:'rainbow_oauth_client_resource',
-  oauthRefreshToken:'rainbow_oauth_refresh_token',
-  oauthAccessToken:'rainbow_oauth_access_token',
-  oauthConsent:'rainbow_oauth_consent',
-  oauthClientAssertion:'rainbow_oauth_client_assertion'
+  user:'las_auth',
+  session:'las_session',
+  account:'las_account',
+  verification:'las_verification',
+  jwks:'las_jwks',
+  oauthClient:'las_oauth_client',
+  oauthResource:'las_oauth_resource',
+  oauthClientResource:'las_oauth_client_resource',
+  oauthRefreshToken:'las_oauth_refresh_token',
+  oauthAccessToken:'las_oauth_access_token',
+  oauthConsent:'las_oauth_consent',
+  oauthClientAssertion:'las_oauth_client_assertion'
 });

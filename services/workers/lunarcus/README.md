@@ -22,10 +22,10 @@ been lost here, the longest costing three days, each one beginning with an
 agent deciding that the Auth store should be somewhere else.
 
 Storage always uses the database connection this service already has. Today
-that is Neon PostgreSQL, reached through `LOC_AUTH_DATABASE_URL`. It is always
-a database and always SQL. The twelve `public.rainbow_*` tables already exist
+that is Neon PostgreSQL, reached through `LAS_DATABASE_URL`. It is always
+a database and always SQL. The twelve `public.las_*` tables already exist
 and were verified again on 2026-11-13 against the live catalog; they hold 146
-columns between them, and the JWKS signing key is persisted in `rainbow_jwks`.
+columns between them, and the JWKS signing key is persisted in `las_jwks`.
 
 Do not introduce a second place to put data. Not D1, not KV, not R2, not a
 Durable Object, not an object store, whatever the apparent fit. D1 is itself
@@ -41,8 +41,8 @@ raises no error and fails no check; it appears quietly on the bill, and the
 person paying it did not ask for it.
 
 **The split.** LOC Auth and LOC Web are deliberately separate. Auth owns
-`public.rainbow_*`; LOC Web owns its own business tables and `api.manage`.
-They share a repository, not a store. That separation exists precisely so that
+`public.las_*`; LOC Web owns its own business tables and `api.manage`.
+They have separate repositories and database ownership. That separation exists precisely so that
 work on one side cannot quietly reshape the other, so a storage change on
 either side is never a local decision.
 
@@ -65,35 +65,35 @@ The code's **table-name mappings** (not actual SQL tables) are explicitly:
 
 | Logical model | Proposed PostgreSQL table |
 | --- | --- |
-| Better Auth user | `rainbow_auth` |
-| Better Auth session | `rainbow_session` |
-| Better Auth external account | `rainbow_account` |
-| Better Auth verification | `rainbow_verification` |
-| JWT JWKS | `rainbow_jwks` |
-| OAuth client | `rainbow_oauth_client` |
-| OAuth resource | `rainbow_oauth_resource` |
-| OAuth client-resource link | `rainbow_oauth_client_resource` |
-| OAuth refresh token | `rainbow_oauth_refresh_token` |
-| OAuth access token | `rainbow_oauth_access_token` |
-| OAuth consent | `rainbow_oauth_consent` |
-| OAuth client assertion | `rainbow_oauth_client_assertion` |
+| Better Auth user | `las_auth` |
+| Better Auth session | `las_session` |
+| Better Auth external account | `las_account` |
+| Better Auth verification | `las_verification` |
+| JWT JWKS | `las_jwks` |
+| OAuth client | `las_oauth_client` |
+| OAuth resource | `las_oauth_resource` |
+| OAuth client-resource link | `las_oauth_client_resource` |
+| OAuth refresh token | `las_oauth_refresh_token` |
+| OAuth access token | `las_oauth_access_token` |
+| OAuth consent | `las_oauth_consent` |
+| OAuth client assertion | `las_oauth_client_assertion` |
 
-**The twelve `public.rainbow_*` tables already exist on Neon, verified by a bounded read-only catalog check on 2026-11-11.** This PR did not create them. All twelve currently have RLS enabled with four permissive CRUD policies restricted to the `rainbow_runtime` PostgreSQL role; that role has LOGIN, public schema USAGE, and CRUD table grants. This establishes the policy/grant configuration, **not** successful Auth Worker connectivity or end-to-end persistence. The exact full model/field
+**The owner has renamed the twelve existing tables to `public.las_*` and updated RLS.** This PR did not create them. RLS policies and SQL grants are maintained by the owner; do not infer, create, or require a dedicated runtime role. This establishes the policy/grant configuration, **not** successful Auth Worker connectivity or end-to-end persistence. The exact full model/field
 inventory, constraints, indexes, plugin-specific additions, and **each table's
 RLS SELECT / INSERT / UPDATE / DELETE policy must be reviewed with the user**
-before any production DDL. The above is a code-side naming draft; if a pinned
+before any production DDL. The table mapping is a code-side contract; if a pinned
 plugin uses further models, do not create them automatically. Review the
 vendor model inventory first.
 
 **Naming invariant:** `loc_auth` is reserved as a non-LOC-Auth identifier:
 no LOC Auth table, schema, fallback, or automatic migration may adopt it.
-Every LOC Auth-owned table must start with `rainbow_` (including future plugin
+Every LAS-owned table must start with `las_` (including future plugin
 models). Existing objects named `loc_auth` belong to a different context and
 must not be renamed, imported, adopted, or modified as part of this rewrite.
 
-The verified existing Rainbow PostgreSQL schema is `public`. Auth uses
-`public` by default and refuses a conflicting `LOC_AUTH_SCHEMA`; do not
-point it at `silver` or recreate tables from an obsolete proposal. `LOC_AUTH_DATABASE_URL` configures the PostgreSQL connection.
+The LAS PostgreSQL schema is `public`. The code uses `LAS_DATABASE_URL` and
+existing `public.las_*` tables, without a schema override, new database role,
+DDL, or RLS changes.
 These are runtime credentials only; never put a schema-owner credential in
 the Worker.
 
@@ -160,9 +160,9 @@ The Auth Worker now uses the **published** `@zenstackhq/better-auth@3.10.1`
 adapter as its only Better Auth database adapter, via ZenStack v3 and the
 existing Kysely PostgreSQL dialect. `rainbow-zmodel.mjs` is a static model
 snapshot generated from the 146 existing columns of all twelve
-`public.rainbow_*` tables and their unique indexes; no per-request schema
+`public.las_*` tables and their unique indexes; no per-request schema
 query, runtime migration, RLS changes, or new SQL endpoint is introduced.
-The adapter uses `supportsArrays:false` because the existing Rainbow schema
+The adapter uses `supportsArrays:false` because the existing LAS schema
 stores OAuth array-valued fields in PostgreSQL JSONB columns, not native
 PostgreSQL arrays. Zod is supplied by Better Auth's native request validators,
 ZenStack's ORM validators and the existing Auth environment schema; the
@@ -174,7 +174,7 @@ to user listing/lookup/banning and Session listing/revocation/deletion;
 it has no role escalation, impersonation, or user-deletion capability. These
 Auth roles do not grant LOC Web business privileges. The five Admin fields
 (`role`, `banned`, `banReason`, `banExpires`, `impersonatedBy`) already
-exist on the two core Rainbow tables; the RLS policies are unchanged.
+exist on the two core LAS tables; the RLS policies are managed separately by the owner.
 
 Karaul's published `detectChangepoints(series, new PoissonCost())`
 provides a bounded 5-second time-series signal for all Auth endpoints,

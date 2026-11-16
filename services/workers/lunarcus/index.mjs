@@ -66,7 +66,7 @@ const CONSENT_JS="const q=OAUTH_QUERY,p=new URLSearchParams(q);\nfor(const [id,k
 // calls an /api/auth/admin/* endpoint that Better Auth re-checks for the admin
 // role, so the page is a convenience, not the security boundary.
 //
-// This console belongs to LOC Auth and touches only public.rainbow_* through
+// This console belongs to LOC Auth and touches only public.las_* through
 // Better Auth. It is NOT LOC Web: LOC Web owns its own business tables and
 // api.manage, and the two sides share a repository, not a store. Do not reach
 // across that line from here, and do not add a user-management surface for this
@@ -74,7 +74,7 @@ const CONSENT_JS="const q=OAUTH_QUERY,p=new URLSearchParams(q);\nfor(const [id,k
 // other.
 //
 // The data model, so a later reader does not "fix" it by inventing storage:
-//   identity   -> the existing rainbow_auth row (created here, or linked on
+//   identity   -> the existing las_auth row (created here, or linked on
 //                 first Google login to an email that already exists)
 //   tier       -> the existing `role` column: admin / scope / user. No note or
 //                 description column was added on purpose; role carries it.
@@ -342,7 +342,7 @@ export default {
           return reply({...debugInfo,error:'probe_rate_limited'},429);
         lastSsoHealthProbeAt=now;
         const started=Date.now();
-        const names=['LOC_AUTH_DATABASE_URL','LOC_CONTROL_ENCRYPTION_KEY',
+        const names=['LAS_DATABASE_URL','LOC_CONTROL_ENCRYPTION_KEY',
           'LOC_CLOUDFLARE_SSO_ISSUER','LOC_CLOUDFLARE_SSO_CLIENT_ID',
           'LOC_CLOUDFLARE_SSO_CLIENT_SECRET'];
         const keys=Object.fromEntries(names.map(name=>[
