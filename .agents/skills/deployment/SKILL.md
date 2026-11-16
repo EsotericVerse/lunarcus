@@ -1,14 +1,20 @@
 ---
 name: deployment
-description: "LAS GitHub Actions、Cloudflare Workers Builds、Preview、正式部署與最小觸發範圍。"
+description: "LAS 單一 lunarcus Worker、Auth/MCP 合併部署與成功後選擇性通知 LOC GitHub Workflow。"
 ---
 
-# deployment — LunArcus / LAS
+# LAS Deployment — 先部署、再選擇通知
 
-LAS 根目錄 `wrangler.jsonc` 的 `lunarcus` Worker 是 Auth，網域 `auth.lo3rwang.cc`。LAS MCP 使用 `services/workers/las-mcp/wrangler.jsonc`，**僅手動發布且不接管 `mcp.lo3rwang.cc`**。Extension ZIP 由 `.github/workflows/package-extension.yml` 獨立處理；IPA 是另一個手動工作流。
+**LAS 的正式目標只有 `lunarcus` Worker。** Root `wrangler.jsonc` 同時持有 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc`；MCP 為同一 Worker 的模組，不存在第二條 LAS MCP Worker 發布管線。Cloudflare Workers Builds 依 Production／Preview watch paths 發布 Auth 或 MCP 真正有變更的版本，`plugins/chrome/**`、`app/las/tunnel/**`、Skills／文件不應無條件觸發 Worker。
 
-- 先查 Worker Builds 的 Git repo、branch、watch paths、正式 deployment SHA、preview 與 Secret **名稱**；勿推論設定缺失。
-- `npm run auth:dry-run`、`npm run mcp:dry-run` 是建置測試，不發布。
-- Cloudflare 外部設定、路由、密鑰或建置觸發的變更，必須先列明差異、影響、復原方式再徵得使用者同意。
-- 不為 `plugins/chrome` 純介面、文案、Skill 文件的變更新增 Auth 部署；既有 Workers Builds 規則未授權不得自行 PATCH。
-- 見 `cloudflare-workers`、`protocol-testing`；不要把 Preview 綠燈當成正式 SSO 可用。
+## LAS → LOC 是部署成功後的可選決策
+1. LAS 先完成自己的正式部署，核對 Worker version、網域與必要 Health／MCP contract。
+2. LAS 分類變更：`skip`、`review`、`notify`。Plugins-only、CMS Data Mapping、Auth/MCP 內部調整原則上 `skip`；不向 LOC 發出請求。`review` 不自動發布 LOC。
+3. 只有已發布且**真的影響 LOC 已引用契約**、經驗證符合條件的 `notify`，才由 Cloudflare LAS 使用既有 `LOC_WORKFLOW_KEY` 授權通訊，通知 **LOC GitHub Workflow**；LOC 自己負責驗證與是否部署。相同發布版本不得重複通知。**不是**每次 LAS 變更都 POST LOC Pages Deploy Hook，更不是 LAS 直接發布 LOC。
+4. 這條跨 Repo 通知與冪等鏈在尚未經正式驗收之前保持「未完成」，不得用成功的 LAS Build 冒充 LOC 已通知或已部署。
+
+## 安全與成本
+- 先讀 Cloudflare、GitHub 真實設定。Dry-run 只確認 bundle，與 Production／SSO／MCP 實機皆不同。
+- 不為 Plugins／Skill／docs 修改觸發不必要的 Worker、LOC 或 LRS 編譯；不複製昂貴素材。
+- 外部 Secret、Access、Binding、路由、Workers Builds 設定需列明差異、影響、復原方式與本次授權，不能自行改動。
+- ISR 仍是關閉狀態、留在 `loc-isr`，未驗證前不合併進 Auth bundle，也不影響目前部署。
