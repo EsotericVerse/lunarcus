@@ -11,6 +11,8 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ios-device-build.yml'
+      - '.github/workflows/deploy-lunarcus-auth.yml'
+      - '.github/workflows/deploy-las-mcp.yml'
       - 'docs/MODULE-ARCHITECTURE.md'
       - 'docs/MCP-BOUNDARY.md'
       - 'docs/ISR-HANDOFF.md'
