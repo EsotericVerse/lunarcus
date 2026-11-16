@@ -39,7 +39,7 @@ const authRoles={
   user:authAc.newRole({user:[],session:[]})
 };
 
-// Auth owns only explicitly named Rainbow tables. This is model mapping,
+// Auth owns only explicitly named LAS tables. This is model mapping,
 // NOT SQL DDL. No table or RLS policy is created when this module loads.
 export {RAINBOW_TABLES} from './rainbow-tables.mjs';
 
@@ -121,18 +121,18 @@ function cloudflareSsoProvider(cloudflare){
 export function checkLocAuthEnvironment(env){
   const cloudflare=cloudflareSsoConfig(env);
   const data={
-    connectionString:env?.LOC_AUTH_DATABASE_URL,
+    connectionString:env?.LAS_DATABASE_URL,
     secret:env?.LOC_CONTROL_ENCRYPTION_KEY,
     cloudflareIssuer:cloudflare.issuer,
     cloudflareClientId:cloudflare.clientId,
     cloudflareClientSecret:cloudflare.clientSecret,
-    namespace:String(env?.LOC_AUTH_SCHEMA||'public')
+    namespace:'public'
   };
   if(data.namespace!=='public')
-    throw new Error('LOC Auth Rainbow tables are in the public PostgreSQL schema');
+    throw new Error('LAS tables must use the public PostgreSQL schema');
   const verified=AuthEnvironmentSchema.safeParse(data);
   if(!verified.success)
-    throw new Error('LOC Auth requires valid PostgreSQL and OAuth credentials (secret >= 32 characters)');
+    throw new Error('LAS requires PostgreSQL and OAuth credentials (secret >= 32 characters)');
   // The Access SaaS OIDC issuer path must end in the same Client ID.
   // Fail closed rather than issuing codes against a stale/mixed application.
   const issuer=new URL(cloudflare.issuer);
@@ -149,7 +149,7 @@ export function createLocAuth(env){
   // Match LOC Web's request-scoped transport: each acquisition opens and
   // releases its own TLS connection, never sharing a socket across requests.
   // No hand-written Auth storage, SQL, session, PKCE or OAuth state handling.
-  const pool=createAuthPostgresPool(env.LOC_AUTH_DATABASE_URL);
+  const pool=createAuthPostgresPool(env.LAS_DATABASE_URL);
   // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
