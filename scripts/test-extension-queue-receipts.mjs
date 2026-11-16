@@ -7,7 +7,8 @@ import {runInNewContext} from 'node:vm';
 const source=readFileSync(new URL('../extensions/lunarcus-galaxy-link/background.js',import.meta.url),'utf8');
 const listener={addListener(){}};
 const chrome={
- runtime:{onInstalled:listener,onStartup:listener,onMessage:listener},
+ runtime:{getURL:path=>'chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna/'+path,
+  onInstalled:listener,onStartup:listener,onMessage:listener},
  contextMenus:{onShown:listener,onClicked:listener},
  action:{onClicked:listener},alarms:{onAlarm:listener}
 };

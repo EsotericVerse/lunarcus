@@ -13,7 +13,7 @@ Neon／Supabase MCP 連線在同一設定頁完成：輸入一次 SSO Email，�
 
 僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。每次擷取入列後立即嘗試發送全部待送資料，無需累積筆數或容量門檻；手動發送同樣處理全部待送資料，傳輸仍依 API 限制分批；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
 
-非預設 Scope 由 MCP `/api/loc-native` 按 OAuth 身分與現有 `api.manage` 寫入授權核對；Extension 依擷取當時的 Scope 分批，不允許未授權 Scope 落入預設 Scope。程式不使用舊網站 Session Bridge、SQL Gateway、Clerk、Supabase Auth 或 Neon Auth。
+非預設 Scope 由 LOC 網站既有 `/api/loc-native` 依 OAuth 身分與既有 `api.manage` 寫入授權核對；Extension 依擷取當時的 Scope 分批，不允許未授權 Scope 落入預設 Scope。程式不使用舊網站 Session Bridge、SQL Gateway、Clerk、Supabase Auth 或 Neon Auth。
 
 **既有另一個已安裝 Extension 注意：** Chrome 不允許新 Extension 直接讀取不同 Extension ID 的 IndexedDB。若舊的 `loc-web-capture-v2` 已有待送資料，請先從舊版送達、確認 UID 再卸載；本倉庫不再提供第二套獨立 Extension。瀏覽器尚未載入的對話不會自動取得。
 
@@ -40,3 +40,12 @@ Apache-2.0 授權的 [ChatGPT Shadow](https://github.com/dialoguesai/chatgpt-sha
 ## v0.2.11：全頁擷取、對話錄製與 Queue 發送
 
 ChatGPT／Claude 開始錄製立即監看對話主區域，不需再點選錄製範圍；整頁擷取是已載入訊息的一次快照，不會被殘留的「尚在生成」狀態阻止。只有可見的生成停止按鈕代表正在生成；已完成的訊息可持續擷取，最後一則未完成的 AI 訊息暫不保存。Queue 不再等待擷取數量或大小門檻，接收擷取後立即發送全部待送資料；離線、未授權、回執不完整時原始 Queue 照常保留，底層維持分批傳輸與失敗退避。未載入於網頁 DOM 的歷史對話仍不能視為已保存，不能以 Queue 新增筆數宣稱完整封存。
+
+## v0.2.12：LAS 獨立 Extension 與 LOC 資料 API
+
+- `oauth-config.json` 隨 Extension 一同封裝，不再向 LOC 網站索取 Extension 的 OAuth 設定檔；OAuth Issuer 仍為 `auth.lo3rwang.cc`，Client ID 與 Chrome Extension ID 不變。
+- Queue 的短匯入直接發送至 `https://loc.lo3rwang.cc/api/loc-native`。這是 LOC 的業務資料 API，**不需要啟動 LAS MCP Worker**。既有 `resource` URI 仍保留為 `https://mcp.lo3rwang.cc`，僅供目前 OAuth Token audience 驗證使用，不代表啟用或呼叫 MCP 服務。
+- 既有安裝如已儲存舊匯入網址，第一次處理待送 Queue 時會只更新 `locConfig.import_url`；不清理 IndexedDB、UID 回執、Access/Refresh Token，也不強迫重新登入。
+- MCP Provider 狀態只在使用者主動進入「MCP 連線」頁時查詢；Extension 一般啟動、登入和 Queue 擷取不會主動探測它。
+- GitHub Actions 的 `Package LAS Chrome Extension` 會在本目錄更新時完成測試並產生 ZIP Artifact。解壓 ZIP 後以 Chrome「載入未封裝項目」指向含 `manifest.json` 的資料夾。維持相同的已安裝 Extension，不要刪掉舊 Extension 或清除瀏覽器儲存空間。
+- 本次測試不等於真實 OAuth 回呼與資料庫寫入驗收。實機仍需檢查登入、單篇擷取、Queue 完整 UID 回執及重啟瀏覽器後資料保存。
