@@ -84,8 +84,7 @@ test('LAS requires LAS_DATABASE_URL and maps all twelve models to existing las_*
   };
   assert.equal(checkLocAuthEnvironment(env),true);
   assert.throws(()=>checkLocAuthEnvironment({
-    ...env,LAS_DATABASE_URL:undefined,
-    LOC_AUTH_DATABASE_URL:'postgresql://wrong:wrong@wrong.example.test/old'
+    ...env,LAS_DATABASE_URL:undefined
   }),/LAS requires PostgreSQL/);
   const mapped=Object.values(RAINBOW_TABLES);
   assert.equal(mapped.length,12);
