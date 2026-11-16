@@ -5,6 +5,7 @@ on:
       - 'services/workers/lunarcus/**'
       - 'services/workers/las-mcp/**'
       - 'app/las/mcp/**'
+      - 'app/las/tunnel/**'
       - 'extensions/lunarcus-galaxy-link/**'
       - 'public/extension/oauth/**'
       - 'package.json'
