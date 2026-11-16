@@ -1,0 +1,57 @@
+name: One-time LunArcus source snapshot transfer
+on:
+  push:
+    branches:
+      - migration/luna-protocol-separation
+    paths:
+      - .github/workflows/migrate-lunarcus-source.yml
+permissions:
+  contents: write
+concurrency:
+  group: migrate-lunarcus-source
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Copy pinned cross-platform original sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(mktemp -d)"
+          git -C "$src" init -q
+          git -C "$src" remote add origin https://github.com/EsotericVerse/lunacodex.git
+          git -C "$src" sparse-checkout init --cone
+          git -C "$src" sparse-checkout set services extensions functions scripts
+          git -C "$src" fetch --quiet --depth=1 --filter=blob:none origin b7521860cbabb93f8d7c56d7c849a832d4251086
+          git -C "$src" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = b7521860cbabb93f8d7c56d7c849a832d4251086
+          mkdir -p services/workers/loc-authority services/loc-channel1 extensions/loc-galaxy-link functions/api functions/.well-known scripts
+          rsync -a "$src/services/workers/loc-authority/" services/workers/loc-authority/
+          rsync -a "$src/services/loc-channel1/" services/loc-channel1/
+          rsync -a "$src/extensions/loc-galaxy-link/" extensions/loc-galaxy-link/
+          rsync -a "$src/functions/.well-known/" functions/.well-known/
+          cp "$src/functions/_loc-delegation.mjs" functions/
+          cp "$src/functions/index.js" "$src/functions/mcp.js" "$src/functions/package.json" functions/
+          for name in loc-auth-connectivity.js loc-native.js loc-permissions.js mcp-provider-callback.js mcp-provider-extension.js mcp-provider.js; do
+            cp "$src/functions/api/$name" "functions/api/$name"
+          done
+          for name in check-extension-queue-zk-portability.mjs test-extension-chatgpt-capture.mjs test-extension-clear-diagnostics.mjs test-extension-queue-receipts.mjs test-auth-cloudflare-direct-login.mjs test-auth-pg-driver.mjs test-mcp-fixed-tools.mjs test-mcp-gateway-qos.mjs test-mcp-inbound-no-forwarding.mjs test-mcp-post-sse-id.mjs test-mcp-upstream-sse.mjs probe-loc-native-auth.mjs prepare-ios-app-icon.swift prepare-ios-static-assets.py verify-release-static-export.mjs; do
+            cp "$src/scripts/$name" "scripts/$name"
+          done
+          test -s services/workers/loc-authority/wrangler.jsonc
+          test -s extensions/loc-galaxy-link/manifest.json
+          test -s scripts/prepare-ios-static-assets.py
+          git config user.name 'Luna Protocol Migration'
+          git config user.email 'actions@users.noreply.github.com'
+          git add services extensions functions scripts
+          if git diff --cached --quiet; then
+            echo 'Snapshot already identical'; exit 0
+          fi
+          git commit -m 'feat: import pinned original LunArcus integration, auth and packaging sources'
+          git push origin HEAD:migration/luna-protocol-separation
