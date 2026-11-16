@@ -68,9 +68,12 @@ jobs:
             echo "::error::Requested tag does not match package version."
             exit 1
           fi
-          printf 'version=%s\nbase_version=%s\nipa_name=%s\nrelease_tag=%s\n' \
-          printf 'loc_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-            "$version" "${version%%-*}" "LOC-$version-device-unsigned.ipa" "$REQUESTED_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          printf '%s\n' \
+            "version=$version" \
+            "base_version=${version%%-*}" \
+            "ipa_name=LOC-$version-device-unsigned.ipa" \
+            "release_tag=$REQUESTED_RELEASE_TAG" \
+            "loc_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
         run: npm run check:syntax
