@@ -171,7 +171,7 @@ jobs:
           stage="$RUNNER_TEMP/loc-ios-package"
           mkdir -p "$stage/Payload" "$PWD/dist"
           ditto "$app" "$stage/Payload/App.app"
-          (cd "$stage" && zip -qry "$PWD/dist/$LOC_IPA_NAME" Payload)
+          (cd "$stage" && zip -qry "$GITHUB_WORKSPACE/loc-source/dist/$LOC_IPA_NAME" Payload)
           unzip -t "$PWD/dist/$LOC_IPA_NAME" | tail -1
           python3 - <<'PY'
           from zipfile import ZipFile
