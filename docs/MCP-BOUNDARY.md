@@ -1,6 +1,6 @@
 # MCP move: dependency and trust boundary
 
-LunArcus owns **protocol transport, OIDC/OAuth integration, Chrome Extension connectivity and the MCP Gateway**. LOC owns **business data, Scope authorization, imports, SQL portable CRUD, and the PostgreSQL/MySQL/MSSQL dialect adapters**.
+**`las` (LunArcus / Luna Protocol)** owns protocol transport, OIDC/OAuth integration, Chrome Extension, MCP Gateway and cross-module **Data Mapping**. **`loc` (LunaCodex)** owns Galaxy records/models, business authorization, imports, SQL Portable CRUD and PostgreSQL/MySQL/MSSQL dialect adapters. **`lrs` (LunaRunes)** owns rune assets and game/effects. These are module IDs, not renamed domains, database Scopes or OAuth client identifiers.
 
 The current `app/loc/mcp/` directory in this repository is an exact migration snapshot, **not yet a standalone runtime**. In particular:
 
@@ -13,6 +13,10 @@ The current `app/loc/mcp/` directory in this repository is an exact migration sn
 | `tool-contracts.mjs` | Imports LOC Scope route index |
 | `business-actions.mjs`, `private-galaxy.mjs`, `article-distribution.mjs` | LOC-side authorization and data semantics |
 | `upstream-*.mjs`, `stateless-transport.mjs`, `stream-json.mjs` | Candidate LunArcus-owned MCP transport/provider modules after dependency validation |
+
+## Data Mapping versus LOC data ownership
+
+LAS mapping may normalize field names, transport envelopes, object/version references and validated source-to-target contracts across LOC and LRS. It must NOT own or duplicate LOC Galaxy's Z-Model, UID semantics, Scope grants, SQL dialect factory or business queries. Contracts can use existing LOC module exports when explicitly packaged, or bounded authenticated service calls; **no filesystem-relative imports across separate repos**. The existing `packages/` layout is not being moved as part of this migration. Auth/SSO continues using its existing PostgreSQL dialect on LAS without a second SQL Portable implementation.
 
 ## Binding contract to implement before activating MCP in LunArcus
 
