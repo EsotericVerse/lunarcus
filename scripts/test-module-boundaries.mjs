@@ -24,7 +24,11 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
   assert.ok(mapping.includes('https://loc.lo3rwang.cc/api/las-native'));
   assert.ok(!mapping.includes('createKyselyDialect'));
   const worker=JSON.parse(read('services/workers/las-mcp/wrangler.jsonc'));
-  assert.deepEqual(worker.routes,[],'Must not silently rebind live MCP hostname');
+  assert.equal(worker.name,'las-mcp','Keep LAS MCP Worker separate from Auth and LRS');
+  assert.equal(worker.workers_dev,false,'Do not publish the MCP service under workers.dev');
+  assert.deepEqual(worker.routes,[{
+    pattern:'mcp.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc'
+  }],'Only the intentionally transferred MCP hostname may bind to LAS MCP');
 });
 test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
   const doc=read('docs/MODULE-ARCHITECTURE.md');
