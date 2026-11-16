@@ -13,6 +13,7 @@ import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
 import {authKaraulRatePolicy} from './auth-qos.mjs';
 import {extensionClientDiscovery} from './extension-client.mjs';
+import {ensureFirstPartyOAuthClient,isFirstPartyOAuthConsent} from './first-party-client.mjs';
 
 // LOC Auth is the issuer. Cloudflare Access is the delegated upstream OIDC
 // provider; it does not own LOC Sessions or LOC OAuth tokens.
@@ -212,6 +213,12 @@ export function createLocAuth(env){
           throw new APIError('UNAUTHORIZED',{
             message:'OAuth Session expired or revoked'
           });
+        // OAuth clientDiscovery serves the bundled first-party client before
+        // it exists in SQL. The persistent Consent row has a real FK to the
+        // OAuth Client table; register only this fixed public client, using
+        // the existing request-scoped LAS_DATABASE_URL connection.
+        if(ctx.path==='/oauth2/consent'&&isFirstPartyOAuthConsent(ctx.body))
+          await ensureFirstPartyOAuthClient(pool);
         return;
       }
       // has-permission is an introspection endpoint for ordinary users, not
