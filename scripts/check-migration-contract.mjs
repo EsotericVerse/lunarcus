@@ -33,8 +33,10 @@ for(const name of authFiles){
 }
 const source=readFileSync(resolve(root,'services/workers/lunarcus/wrangler.jsonc'),'utf8');
 const wrangler=JSON.parse(source);
-assert.equal(wrangler.name,'auth','Keep existing Cloudflare Worker identity');
+assert.equal(wrangler.name,'lunarcus','Target the existing LunArcus Worker script, never create auth');
 assert.equal(wrangler.routes?.[0]?.pattern,'auth.lo3rwang.cc');
+assert.equal(wrangler.routes?.[0]?.custom_domain,true,'Keep the current Auth custom domain');
+assert.equal(wrangler.workers_dev,false,'Do not open a new workers.dev Auth issuer');
 const manifest=JSON.parse(readFileSync(resolve(root,'extensions/lunarcus-galaxy-link/manifest.json'),'utf8'));
 const client=JSON.parse(readFileSync(resolve(root,'public/extension/oauth/client.json'),'utf8'));
 assert.equal(manifest.manifest_version,3);
