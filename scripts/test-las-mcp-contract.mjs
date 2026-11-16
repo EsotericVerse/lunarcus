@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {callLocOperation,assertLocMcpRole,readMemory,articleDistribution}
  from '../app/las/mcp/loc-mapping.mjs';
 import {MCP_TOOL_INPUTS} from '../app/las/mcp/tool-contracts.mjs';
+import {callLocOperation as tunnelCallLocOperation} from '../app/las/tunnel/loc-mapping.mjs';
 
 const samples=[];
 const fetchFake=async (url,opts)=>{
