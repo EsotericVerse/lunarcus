@@ -49,7 +49,7 @@ test('real IPA metadata bash step emits six correct outputs with one pinned LOC 
       cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'',REQUESTED_LRS_COMMIT:runeSha},encoding:'utf8'
     });
     assert.equal(selected.status,0,selected.stderr||selected.stdout);
-    assert.match(readFileSync(output,'utf8'),'lrs_commit='+runeSha+'\n');
+    assert.ok(readFileSync(output,'utf8').includes('lrs_commit='+runeSha+'\n'));
     const unsafe=spawnSync('bash',['-e','-c',script],{
       cwd:tmp,env:{...env,REQUESTED_RELEASE_TAG:'',REQUESTED_LRS_COMMIT:'main'},encoding:'utf8'
     });
