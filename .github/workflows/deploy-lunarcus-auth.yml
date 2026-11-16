@@ -25,6 +25,8 @@ jobs:
           fi
       - name: Install locked Auth dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Require matching existing Cloudflare Worker identity and domain
+        run: node scripts/check-migration-contract.mjs
       - name: Validate Better Auth source syntax
         run: |
           node --check services/workers/lunarcus/index.mjs
