@@ -8,7 +8,7 @@ test('global module identities and owner-defined module taxonomy',()=>{
   for(const key of ['lo3r@loc','lo3r@lrs','lo3r@las',
     'loc:galaxy','loc:time','loc:locus','loc:site','loc:dialect',
     'lrs:rune','lrs:boardgame','lrs:card','lrs:daily',
-    'las:auth','las:plugins','las:mcp','las:tunnel','las:ipa','las:apk'])
+    'las:auth','las:plugins','las:mcp','las:tunnel'])
     assert.ok(doc.includes(key),'Missing module identifier '+key);
   for(const domain of ['loc.lo3rwang.cc','lrunes.lo3rwang.cc',
     'auth.lo3rwang.cc','mcp.lo3rwang.cc','isr.lo3rwang.cc'])
@@ -26,19 +26,17 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
   const worker=JSON.parse(read('services/workers/las-mcp/wrangler.jsonc'));
   assert.deepEqual(worker.routes,[],'Must not silently rebind live MCP hostname');
 });
-test('IPA workflow pins the same LOC commit across validation and native build',()=>{
-  const source=read('.github/workflows/ios-device-build.yml');
-  assert.ok(source.includes('loc_sha: ${{ steps.meta.outputs.loc_sha }}'));
-  assert.ok(source.includes('lrs_commit: ${{ steps.meta.outputs.lrs_commit }}'));
-  assert.ok(source.includes('ref: ${{ needs.guard.outputs.lrs_commit }}'));
-  assert.ok(source.includes('consume-lrs-ios-artifacts.mjs'));
-  assert.ok(source.includes('restore-lrs-native-ui.mjs'),'LAS must restore native-only Rune UI');
-  assert.ok(source.includes('build-rune-artifacts.mjs --target=ios'),'LAS must package real native Rune files');
-  assert.ok(source.includes('git ls-remote https://github.com/EsotericVerse/lunarunes.git refs/heads/main'),'LAS must resolve the LRS source SHA');
-  assert.ok(source.includes('ref: ${{ needs.guard.outputs.loc_sha }}'));
-  assert.ok(source.includes("$(git rev-parse HEAD)"));
-  assert.ok(source.includes('workflow_dispatch:'));
-  assert.ok(!/on:\s*\n\s+push:/.test(source),'IPA must be manual');
+test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
+  const doc=read('docs/MODULE-ARCHITECTURE.md');
+  assert.ok(doc.includes('EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml'));
+  for(const path of [
+    '.github/workflows/ios-device-build.yml',
+    'scripts/restore-lrs-native-ui.mjs',
+    'scripts/consume-lrs-ios-artifacts.mjs',
+    'scripts/test-ipa-workflow-metadata.mjs',
+    'scripts/test-las-ipa-runes.mjs'
+  ]) assert.ok(!existsSync(new URL('../'+path,import.meta.url)),
+    'LOC-owned native source must not be duplicated in LAS: '+path);
 });
 test('ISR is not a hidden required Auth dependency',()=>{
   const doc=read('docs/ISR-HANDOFF.md');

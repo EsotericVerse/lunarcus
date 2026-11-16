@@ -16,15 +16,17 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 **Module contracts:** LAS owns cross-module transport and data mapping, not Galaxy business records or the actual LOC data schema; LOC keeps its existing SQL dialect implementation. LAS Auth uses the existing PostgreSQL runtime without bringing MySQL/MSSQL into this repo. Shared `packages` have **not** been migrated or reorganized, and no duplicate SQL adapter should be introduced to simulate sharing before a real package/service contract exists.
 
-## Auth (source staged; deployment not cut over)
+## Auth (LAS-owned deployment pipeline)
 
 - Worker source: `services/workers/lunarcus/`
 - Existing Cloudflare Worker script: **`lunarcus`** (owner-renamed from `auth`). Existing hostname/issuer **`auth.lo3rwang.cc`** remains unchanged. Do not recreate an `auth` Worker, create a second OIDC issuer or invalidate clients.
 - Existing Cloudflare secret binding names beginning with `LOC_` remain **compatibility contracts**; rename the system LunArcus, not the live secret keys, OAuth scopes, extension ID, or existing user database.
 - `npm ci --ignore-scripts` installs a deliberately smaller **PostgreSQL-only** Auth runtime; no Next.js, MySQL, MSSQL, rune renderer, or Sharp/asset pipeline.
 - `npm run check:auth`; `npm run auth:dry-run`.
-- `.github/workflows/deploy-lunarcus-auth.yml` is **manual**. Before using it, configure the new repository's `CLOUDFLARE_API_TOKEN` Actions secret with only required permissions. A token in the old repository is not transferred automatically.
-- Do not trigger this workflow until its dry-run succeeds and the live Worker bindings are compared to the expected configuration. Existing Worker and old deployment remain intact until handover.
+- Cloudflare **Workers Builds: lunarcus** is the connected GitHub build/deploy integration. The GitHub Actions `.github/workflows/deploy-lunarcus-auth.yml` validates scoped Auth changes (`main` or manual dispatch) and performs a dry-run **without publishing**; do not add a second Wrangler deployment job for the same Worker.
+- Keep the existing `lunarcus` Worker, `auth.lo3rwang.cc` issuer and existing secret bindings. Actual production Build Watch Paths and main deployments must be checked in Cloudflare (the presence of a PR check alone does not prove production publish).
+- No LAS GitHub Actions deployment secret is needed by this validation-only workflow. The manual LAS MCP workflow remains independently token-gated and cannot take over the MCP domain.
+- Build/preview/deployment success does not prove browser SSO, OAuth exchange or session compatibility. These require separate HTTP/OIDC and browser acceptance.
 
 ## Chrome Extension
 

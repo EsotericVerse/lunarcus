@@ -28,7 +28,7 @@ for(const name of expected){
   assert.ok(content.length>300,'Placeholder skill is not an installed working guide: '+name);
 }
 const rules=readFileSync(join(root,'AGENTS.md'),'utf8');
-for(const moduleName of ['las:auth','las:plugins','las:mcp','las:tunnel','las:ipa','las:apk'])
+for(const moduleName of ['las:auth','las:plugins','las:mcp','las:tunnel'])
   assert.ok(rules.includes(moduleName),'LAS AGENTS.md missing module: '+moduleName);
 for(const boundary of ['LOC','LRS','Cloudflare','RLS','OAuth','MCP'])
   assert.ok(rules.includes(boundary),'LAS agent boundary missing: '+boundary);
@@ -44,4 +44,4 @@ if(existsSync(claude))for(const name of expected){
   'Claude LAS link must point to local source: '+name);
 }
 console.log('LAS agent skills: PASS ('+shared.length+' core + '+las.length+
-  ' specialist = '+expected.length+' locally installed, AGENTS.md six modules)');
+  ' specialist = '+expected.length+' locally installed, AGENTS.md four LAS modules)');

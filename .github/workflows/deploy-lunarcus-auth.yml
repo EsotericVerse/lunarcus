@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/check-migration-contract.mjs'
+      - 'scripts/test-module-boundaries.mjs'
       - 'scripts/test-las-auth-http.mjs'
       - '.github/workflows/deploy-lunarcus-auth.yml'
   workflow_dispatch:
@@ -32,7 +33,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify Worker identity and root deployment config
         run: node scripts/check-migration-contract.mjs
-      - name: Validate LAS Auth runtime
-        run: npm run check:auth
+      - name: Validate LAS Auth runtime and module ownership
+        run: npm run check:auth && node --test scripts/test-module-boundaries.mjs
       - name: Build default root Worker without publishing
         run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir /tmp/las-auth-check
