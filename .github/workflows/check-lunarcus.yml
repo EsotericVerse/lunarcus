@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'services/workers/lunarcus/**'
+      - 'services/workers/las-mcp/**'
+      - 'app/las/mcp/**'
       - 'extensions/lunarcus-galaxy-link/**'
       - 'public/extension/oauth/**'
       - 'package.json'
@@ -30,5 +32,7 @@ jobs:
         run: node scripts/check-migration-contract.mjs
       - name: Check LunArcus Worker and Extension syntax
         run: npm run check:auth && npm run check:extension
-      - name: Dry-run Worker bundle (never publish)
-        run: npm run auth:dry-run
+      - name: Validate MCP runtime contract and mapping
+        run: npm run check:mcp
+      - name: Dry-run Worker bundles (never publish)
+        run: npm run auth:dry-run && npm run mcp:dry-run
