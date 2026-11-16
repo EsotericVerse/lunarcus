@@ -1,4 +1,4 @@
-name: Deploy LAS Auth (verify then publish)
+name: Validate LAS Auth (Cloudflare Builds deploys)
 on:
   push:
     branches: [main]
@@ -17,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: las-auth-deploy
+  group: las-auth-verify
   cancel-in-progress: true
 jobs:
   auth:
@@ -37,17 +37,3 @@ jobs:
         run: npm run check:auth && node --test scripts/test-module-boundaries.mjs
       - name: Build default root Worker without publishing
         run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir /tmp/las-auth-check
-      - name: Require LAS Cloudflare deployment credential
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        shell: bash
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo '::error::CLOUDFLARE_API_TOKEN must be configured in LAS repository Actions secrets.'
-            exit 1
-          fi
-      - name: Deploy existing lunarcus Auth Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: f730f29a620a25bb047a69d542457fc0
-        run: npm run auth:deploy
