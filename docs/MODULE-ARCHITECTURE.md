@@ -34,7 +34,7 @@ Do not rename any host, Worker Script, OAuth Client ID, Extension ID, Cloudflare
 
 - `las:auth`: source moved; isolated PostgreSQL install, syntax check and Wrangler dry-run pass. Existing production `auth` deployment is not cut over.
 - `las:plugins`: Chrome Galaxy Link extension source moved; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
-- `las:mcp` + `las:tunnel`: active separated Worker and fixed LOC bridge source compile; full production OAuth/permission parity and Pages-domain cutover still required.
+- `las:mcp` + `las:tunnel`: independent Worker remains in `app/las/mcp/`; fixed-operation LOC Data Mapping lives in `app/las/tunnel/loc-mapping.mjs`, with a compatibility re-export in MCP. The mapping cannot select SQL, DB targets, or untrusted service URLs. Full production OAuth/permission parity and Pages-domain cutover still required.
 - `las:ipa`: manual workflow transferred and LOC commit pinned between jobs; physical IPA not yet built.
 - `las:apk`: planned; no Android build pipeline or signing artifacts claimed.
 - ISR: source migration blocked by missing original OpenNext source, runtime left intact.
