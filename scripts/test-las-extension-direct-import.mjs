@@ -74,7 +74,9 @@ test('LAS Extension packages its own OAuth config without changing Chrome identi
   for(const text of [html,pages])assert.doesNotMatch(text,/galaxy[ -]?link|彩虹橋/i);
   assert.doesNotMatch(html,/LOC 彩虹橋|LOC galaxy-link/);
   assert.equal(bundled.issuer,'https://auth.lo3rwang.cc/api/auth');
-  assert.equal(bundled.client_id,client.client_id);
+  assert.equal(bundled.client_id,'lunarcus');
+  assert.equal(client.client_id,'lunarcus');
+  assert.equal(client.client_name,'LunArcus');
   assert.equal(bundled.import_url,LOC_IMPORT);
   // Resource identifier remains backward-compatible with LOC token validation.
   assert.equal(bundled.resource,'https://mcp.lo3rwang.cc');
@@ -111,23 +113,12 @@ test('Extension rejects obsolete MCP short-import endpoints without writing',asy
   assert.equal(requests.length,1,'invalid configuration must not contact OAuth or import APIs');
 });
 
-test('Cached LOC OAuth config migrates transport without replacing credentials or Queue',()=>{
-  const {sandbox}=makeRuntime();
-  const old={...bundled,import_url:'https://mcp.lo3rwang.cc/api/loc-native',
-    authorization_endpoint:'https://auth.lo3rwang.cc/api/auth/oauth2/authorize',
-    token_endpoint:'https://auth.lo3rwang.cc/api/auth/oauth2/token'};
-  const upgraded=vm.runInContext('upgradedImportConfig(old)',Object.assign(sandbox,{old}));
-  assert.notStrictEqual(upgraded,old);
-  assert.equal(upgraded.import_url,LOC_IMPORT);
-  assert.equal(upgraded.resource,old.resource);
-  assert.equal(upgraded.issuer,old.issuer);
-  assert.equal(upgraded.client_id,old.client_id);
-  assert.equal(old.import_url,'https://mcp.lo3rwang.cc/api/loc-native');
-  const unrelated={...old,client_id:'some-other-extension'};
-  assert.strictEqual(vm.runInContext('upgradedImportConfig(unrelated)',
-    Object.assign(sandbox,{unrelated})),unrelated);
-  assert.match(background,/settings\.locConfig=updatedConfig/);
-  const updater=background.slice(background.indexOf('function upgradedImportConfig'),
-    background.indexOf('function safeDiagnostic'));
-  assert.doesNotMatch(updater,/\.remove\(/);
+test('LunArcus clean install uses the new public OAuth client ID',async()=>{
+  const {sandbox,requests,values}=makeRuntime();
+  const config=await vm.runInContext('getConfig()',sandbox);
+  assert.equal(config.client_id,'lunarcus');
+  assert.equal(values.get('locConfig').client_id,'lunarcus');
+  assert.match(background,/const clientId='lunarcus'/);
+  assert.doesNotMatch(background,/loc-galaxy-link|upgradedImportConfig/);
+  assert.ok(requests.every(item=>item.url!=='https://mcp.lo3rwang.cc/api/loc-native'));
 });

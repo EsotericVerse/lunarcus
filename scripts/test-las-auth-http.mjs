@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import worker from '../services/workers/lunarcus/index.mjs';
 import {checkLocAuthEnvironment} from '../services/workers/lunarcus/auth.mjs';
 import {RAINBOW_TABLES} from '../services/workers/lunarcus/rainbow-tables.mjs';
+import {extensionClientDiscovery} from '../services/workers/lunarcus/extension-client.mjs';
 import {rainbowSchema} from '../services/workers/lunarcus/rainbow-zmodel.mjs';
 
 const BASE='https://auth.lo3rwang.cc';
@@ -96,4 +97,19 @@ test('LAS requires LAS_DATABASE_URL and maps all twelve models to existing las_*
       'ZenStack must use the physical PostgreSQL table '+table);
   }
   assert.doesNotMatch(modelSnapshot,/"value":"rainbow_/);
+});
+
+test('LunArcus public OAuth client is discoverable without dynamic registration',async()=>{
+  const extension=extensionClientDiscovery();
+  assert.equal(extension.id,'lunarcus');
+  assert.equal(extension.matches('lunarcus'),true);
+  assert.equal(extension.matches('legacy-client'),false);
+  const client=await extension.resolve({},'lunarcus',null);
+  assert.equal(client.clientId,'lunarcus');
+  assert.equal(client.name,'LunArcus');
+  assert.equal(client.requirePKCE,true);
+  assert.equal(client.tokenEndpointAuthMethod,'none');
+  assert.deepEqual(client.redirectUris,[
+    'https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc'
+  ]);
 });

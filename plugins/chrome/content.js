@@ -499,7 +499,7 @@
     }
   }
   function feedback(message,ok=false){
-    const id='loc-galaxy-link-status';
+    const id='lunarcus-status';
     let notice=document.getElementById(id);
     if(!notice){
       notice=document.createElement('div');notice.id=id;

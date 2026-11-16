@@ -47,6 +47,6 @@ assert.equal(wrangler.workers_dev,false,'Do not open a new workers.dev Auth issu
 const manifest=JSON.parse(readFileSync(resolve(root,'plugins/chrome/manifest.json'),'utf8'));
 const client=JSON.parse(readFileSync(resolve(root,'public/plugins/chrome/oauth/client.json'),'utf8'));
 assert.equal(manifest.manifest_version,3);
-assert.equal(client.client_id,'loc-galaxy-link','Preserve existing Extension OAuth identity');
+assert.equal(client.client_id,'lunarcus','LAS public OAuth client ID must match LunArcus');
 assert.ok(manifest.key,'Preserve installed Chrome Extension identity');
 console.log('LunArcus migration contracts: PASS ('+files.length+' checked paths, PostgreSQL-only dependencies)');

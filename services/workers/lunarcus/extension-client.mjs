@@ -9,14 +9,14 @@ const scopes=Object.freeze(String(metadata.scope||'').split(/\s+/).filter(Boolea
 // client-discovery package is involved.
 export function extensionClientDiscovery(){
   return {
-    id:'loc-galaxy-link',
+    id:'lunarcus',
     matches:clientId=>clientId===CLIENT_ID,
     resolve:async(_ctx,clientId,existing)=>{
       if(clientId!==CLIENT_ID)return null;
       if(existing)return existing;
       return {
         clientId:CLIENT_ID,
-        name:String(metadata.client_name||'LOC Galaxy'),
+        name:String(metadata.client_name||'LunArcus'),
         uri:String(metadata.client_uri||''),
         icon:String(metadata.logo_uri||''),
         redirectUris:[...metadata.redirect_uris],
