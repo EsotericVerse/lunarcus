@@ -26,7 +26,7 @@ const authFiles=['index.mjs','auth.mjs','auth-qos.mjs','pg-driver.mjs','extensio
 for(const name of authFiles){
  const file=resolve(root,'services/workers/lunarcus',name);
  const contents=readFileSync(file,'utf8');
- for(const match of contents.matchAll(/from\\s+['"]([.][^'"]+)['"]/g)){
+ for(const match of contents.matchAll(/from\s+['"]([.][^'"]+)['"]/g)){
   const candidate=resolve(dirname(file),match[1]);
   assert.ok(existsSync(candidate),name+' has missing relative import '+match[1]);
  }
