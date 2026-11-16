@@ -296,7 +296,7 @@ export function createLocAuth(env){
         grantTypes:['authorization_code','refresh_token'],
         // PKCE/authorization codes/refresh rotation/OIDC are native modules.
         allowDynamicClientRegistration:true,
-        // Galaxy-Link is a fixed first-party public client resolved from the
+        // LunArcus Chrome is a fixed first-party public client resolved from the
         // bundled client.json below; arbitrary anonymous DCR remains disabled.
         // Other client registrations must authenticate and pass privileges.
         allowUnauthenticatedClientRegistration:false,

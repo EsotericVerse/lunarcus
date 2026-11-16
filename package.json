@@ -6,7 +6,7 @@
   "description": "LunArcus bridge: Better Auth, PostgreSQL SSO, MCP protocol, extension and IPA packaging",
   "scripts": {
     "check:auth": "node --check services/workers/lunarcus/index.mjs && node --check services/workers/lunarcus/auth.mjs && node --check services/workers/lunarcus/pg-driver.mjs && node --test scripts/test-las-auth-http.mjs",
-    "check:extension": "node --check extensions/lunarcus-galaxy-link/background.js && node --check extensions/lunarcus-galaxy-link/content.js && node --test scripts/test-extension-complete-history.mjs scripts/test-extension-queue-receipts.mjs scripts/test-extension-clear-diagnostics.mjs scripts/test-las-extension-direct-import.mjs",
+    "check:extension": "node --check plugins/chrome/background.js && node --check plugins/chrome/content.js && node --test scripts/test-extension-complete-history.mjs scripts/test-extension-queue-receipts.mjs scripts/test-extension-clear-diagnostics.mjs scripts/test-las-extension-direct-import.mjs",
     "auth:dry-run": "npx --yes wrangler@4.157.0 deploy --dry-run",
     "auth:deploy": "npx --yes wrangler@4.157.0 deploy",
     "check:mcp": "node --check services/workers/las-mcp/index.mjs && node --check app/las/mcp/router.mjs && node --check app/las/mcp/loc-mapping.mjs && node --check app/las/tunnel/loc-mapping.mjs && node --test scripts/test-las-mcp-contract.mjs scripts/test-las-mcp-worker-http.mjs",
