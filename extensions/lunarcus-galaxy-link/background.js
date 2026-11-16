@@ -3,6 +3,18 @@ const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
+const LOC_IMPORT_URL='https://loc.lo3rwang.cc/api/loc-native';
+const OLD_MCP_IMPORT_URL='https://mcp.lo3rwang.cc/api/loc-native';
+// Existing installations retain their OAuth tokens and durable Queue.
+// Only the former short-import transport URL is migrated.
+function upgradedImportConfig(config){
+ if(config?.import_url!==OLD_MCP_IMPORT_URL||
+    config?.client_id!=='loc-galaxy-link'||
+    config?.issuer!=='https://auth.lo3rwang.cc/api/auth'||
+    config?.resource!=='https://mcp.lo3rwang.cc')return config;
+ return {...config,import_url:LOC_IMPORT_URL};
+}
+
 const MCP_PROVIDER_API='https://loc.lo3rwang.cc/api/mcp-provider-extension';
 const MCP_EXTENSION_RETURN='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/mcp';
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -538,6 +550,11 @@ async function flush(force=false){
   const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   if(!rows.length)return {message:'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
+  const updatedConfig=upgradedImportConfig(settings.locConfig);
+  if(updatedConfig!==settings.locConfig){
+   await chrome.storage.local.set({locConfig:updatedConfig});
+   settings.locConfig=updatedConfig;
+  }
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
   if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
      (!force||settings.locQueueRetryType==='rate'))
