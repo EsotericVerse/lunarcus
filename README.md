@@ -1,6 +1,6 @@
 # LunArcus — 虹月
 
-LunArcus is the integration and packaging repository for the LOC ecosystem. Its responsibilities are **Auth / SSO**, **Chrome Extension**, **MCP gateway**, and orchestration of the **existing unsigned iOS IPA build**.
+LunArcus is the authentication and cross-system integration repository for the LOC ecosystem. It owns **Auth / SSO**, **Chrome Extension / Plugins**, **MCP**, and **Tunnel**; LOC owns complete App/IPA packaging.
 
 ## Module identities and ownership
 
@@ -10,7 +10,7 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 |---|---|---|---|
 | `lo3r@loc` (loc) = LunaCodex | `EsotericVerse/lunacodex` | LOC SaaS, Galaxy data and Z-Model, business authorization, SQL Portable and database dialects (PostgreSQL / MySQL / MSSQL) | `loc.lo3rwang.cc` |
 | `lo3r@lrs` (lrs) = LunaRunes | `EsotericVerse/lunarunes` | Rune assets, Effekseer/effects, rune UI and games | `lrunes.lo3rwang.cc` |
-| `lo3r@las` (las) = LunArcus / Luna Protocol | `EsotericVerse/lunarcus` | Identity/SSO, Extension, MCP protocol/gateway, **cross-module Data Mapping**, IPA orchestration; ISR planned under LAS Auth | `auth.lo3rwang.cc`, `mcp.lo3rwang.cc` |
+| `lo3r@las` (las) = LunArcus / Luna Protocol | `EsotericVerse/lunarcus` | Identity/SSO, Extension, MCP protocol/gateway, **cross-module Data Mapping**; ISR planned under LAS Auth | `auth.lo3rwang.cc`, `mcp.lo3rwang.cc` |
 
 `lo3r@lrs` replaces the previously suggested module label `lrune`; it does **not** rename the existing `lrunes` database Scope, `lrunes.lo3rwang.cc`, asset directories, OAuth client, or other public compatibility keys.
 
@@ -44,21 +44,20 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 ## iOS IPA ownership
 
-- `.github/workflows/ios-device-build.yml` is a manual **LunArcus-owned orchestration** of the EXISTING LOC Capacitor/iOS build. It checks out `EsotericVerse/lunacodex` to `loc-source` and uses the current verified native steps.
-- An iOS App still packages its original required files, including rune images; the Web-only remote-asset strategy must not be applied to the native IPA.
-- Artifacts are produced by LunArcus Actions. No build/deploy is triggered by a LOC Web push. Current LRS asset integration remains dependent on the separate rune project's verified output.
-- Do not launch parallel old/new IPA jobs during handover. Release attachment is optional and only targets an already-existing LAS release; an unsigned Actions artifact is the default.
+- The existing manual unsigned iOS IPA workflow was returned to LOC: [`EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml`](https://github.com/EsotericVerse/lunacodex/blob/main/.github/workflows/ios-device-build.yml).
+- LOC builds the whole App and pins the LRS source SHA. LRS supplies original Rune images/Effekseer/WASM as real, checksum-verified files; LOC Web stays URL-only for Rune assets.
+- LAS no longer has an IPA workflow or an App artifact release path; its Auth, MCP, Tunnel and Plugins deployment remain independent.
 
 ## Local Windows checkout
 
 The three sibling folders are `C:\GitHub\lunacodex`, `C:\GitHub\lunarunes`, `C:\GitHub\lunarcus`.
 If `lunarcus` was cloned using sparse-checkout with only root files, the migrated directories will not appear until its sparse paths are expanded. Since this repository is small, after the approved branch merges, run `git -C C:\GitHub\lunarcus sparse-checkout disable` when you want all source files locally.
 
-**Migration policy:** no source deletion from `lunacodex` or Cloudflare binding/secret/domain changes before full Auth+MCP+IPA acceptance.
+**Migration policy:** this IPA ownership change does not authorize deleting LOC source or changing Cloudflare binding/secret/domain settings; LAS Auth and MCP require their own acceptance.
 
 ## Formal module namespaces
 
-The canonical namespace is `loc / lrs / las`, **not** `lrune`. LAS submodules are `las:auth`, `las:plugins` (including this Extension), `las:mcp`, `las:tunnel` (cross-system/CMS data mapping), `las:ipa`, and `las:apk` (planned). Ownership and implementation status are tracked in `docs/MODULE-ARCHITECTURE.md`.
+The canonical namespace is `loc / lrs / las`, **not** `lrune`. LAS submodules are `las:auth`, `las:plugins` (including this Extension), `las:mcp`, and `las:tunnel` (cross-system/CMS data mapping). Ownership and implementation status are tracked in `docs/MODULE-ARCHITECTURE.md`.
 
 ## ISR (planned service ownership)
 
