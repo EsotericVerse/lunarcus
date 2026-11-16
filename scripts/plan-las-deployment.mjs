@@ -37,10 +37,10 @@ export function planLasDeployment(changes) {
     const patch=typeof file==='string'?undefined:file?.patch;
     if(PLUGINS.test(path)){las.plugins=true;continue;}
     if(AUTH_RUNTIME.test(path)||AUTH_CONFIG.test(path))las.auth=true;
-    if(MCP_RUNTIME.test(path))las.mcp=true;
-    // LAS-owned CMS Data Mapping is implemented in LAS MCP. Even if the
-    // service needs a new bundle, this NEVER implies LOC website rebuild.
+    // LAS-owned CMS Data Mapping is a data contract, not a deployed server.
+    // Do not schedule either MCP or LOC solely because its model changed.
     if(path.startsWith('app/las/tunnel/'))continue;
+    if(MCP_RUNTIME.test(path))las.mcp=true;
     if(AUTH_PUBLIC.test(path)){
       const lines=changedCode(patch);
       if(lines===null){review=true;reasons.push('Auth public contract needs diff review: '+path);}
