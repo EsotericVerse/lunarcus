@@ -44,6 +44,8 @@ const wrangler=JSON.parse(source);
 assert.equal(wrangler.name,'lunarcus','Target the existing LunArcus Worker script, never create auth');
 assert.equal(wrangler.routes?.[0]?.pattern,'auth.lo3rwang.cc');
 assert.equal(wrangler.routes?.[0]?.custom_domain,true,'Keep the current Auth custom domain');
+assert.deepEqual(wrangler.routes?.map(route=>route.pattern),['auth.lo3rwang.cc','mcp.lo3rwang.cc']);
+assert.ok(wrangler.routes.every(route=>route.custom_domain===true));
 assert.equal(wrangler.workers_dev,false,'Do not open a new workers.dev Auth issuer');
 const manifest=JSON.parse(readFileSync(resolve(root,'plugins/chrome/manifest.json'),'utf8'));
 const client=JSON.parse(readFileSync(resolve(root,'public/plugins/chrome/oauth/client.json'),'utf8'));

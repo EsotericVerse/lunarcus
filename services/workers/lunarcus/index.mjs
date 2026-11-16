@@ -1,3 +1,4 @@
+import mcpWorker from '../las-mcp/index.mjs';
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
@@ -154,6 +155,10 @@ export default {
     let pool;
     try{
     const url=new URL(request.url);
+    // One deployed LAS Worker serves two existing custom domains.
+    // Route MCP before Auth origin/session handling; never create an Auth DB pool for MCP.
+    if(url.hostname==='mcp.lo3rwang.cc')
+      return mcpWorker.fetch(request,env,ctx);
     if(url.hostname!=='auth.lo3rwang.cc')
       return new Response('Not found',{status:404});
     const origin=request.headers.get('origin');
