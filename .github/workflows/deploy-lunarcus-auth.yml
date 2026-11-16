@@ -44,7 +44,7 @@ jobs:
         # Metadata-only Cloudflare check. Never print or connect using the secret.
         run: |
           npx --yes wrangler@4.157.0 secret list --config services/workers/lunarcus/wrangler.jsonc --format json > /tmp/las-secret-names.json
-          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/loc-auth-secret-names.json','utf8'));if(!Array.isArray(entries)||!entries.some(s=>s.name==='LAS_DATABASE_URL')){console.error('LAS_DATABASE_URL is required for deployment.');process.exit(1)}"
+          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/las-secret-names.json','utf8'));if(!Array.isArray(entries)||!entries.some(s=>s.name==='LAS_DATABASE_URL')){console.error('LAS_DATABASE_URL is required for deployment.');process.exit(1)}"
       - name: Deploy canonical LOC Auth domain
         run: npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc
       - name: Verify issuer metadata (no credentials used)
