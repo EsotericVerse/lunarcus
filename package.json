@@ -10,7 +10,7 @@
     "auth:dry-run": "npx --yes wrangler@4.157.0 deploy --dry-run",
     "auth:deploy": "npx --yes wrangler@4.157.0 deploy",
     "check:mcp": "node --check services/workers/las-mcp/index.mjs && node --check app/las/mcp/router.mjs && node --check app/las/mcp/loc-mapping.mjs && node --check app/las/tunnel/loc-mapping.mjs && node --test scripts/test-las-mcp-contract.mjs scripts/test-las-mcp-worker-http.mjs",
-    "mcp:dry-run": "npx --yes wrangler@4.157.0 deploy --config services/workers/las-mcp/wrangler.jsonc --dry-run",
+    "mcp:dry-run": "npx --yes wrangler@4.157.0 deploy --dry-run",
     "skills:sync": "node scripts/sync-claude-skills.mjs",
     "prepare": "npm run skills:sync",
     "check:las-dialect": "node --test scripts/test-las-dialect.mjs"
