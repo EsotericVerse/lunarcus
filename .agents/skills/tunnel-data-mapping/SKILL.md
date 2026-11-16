@@ -1,14 +1,12 @@
 ---
 name: tunnel-data-mapping
-description: "LAS 與其他 CMS/API 的 schema/field mapping、data transport、版本相容與拒絕任意 SQL。"
+description: "LAS CMS／跨系統 Data Mapping 的契約轉換與兼容檢查；預設不部署 Worker、不要求 LOC 重建。"
 ---
 
-# tunnel-data-mapping — LAS 專用能力
+# LAS Tunnel／CMS Data Mapping
 
-`las:tunnel` 屬於 **跨主體的資料映射與傳輸契約**，不是 LOC 的 `loc:galaxy`、ZModel、SQL Dialect 或資料庫權限系統。從 `app/las/tunnel/loc-mapping.mjs` 與 `app/las/mcp/loc-mapping.mjs` 的兼容匯出開始。
+`las:tunnel` 只管理**跨系統資料契約**：來源欄位、schema、nullable、時間／編碼、canonical envelope、固定 API 目的端與版本。入口 `app/las/tunnel/loc-mapping.mjs`；`app/las/mcp/loc-mapping.mjs` 是兼容輸出。不要在 LAS 建立 LOC 的 Galaxy、Z-Model、SQL 方言或 Scope 授權副本。
 
-- 建立輸入 schema → 欄位對映 → canonical envelope → 固定目的端的版本化 contract，不在 LAS 複製 CMS 的資料業務模型。
-- 外部 CMS mapping 要有來源型別、nullable、欄位缺失、ID/UID、日期時區、編碼和錯誤語義的明確決策。
-- 認證由 LAS `auth` 或正規服務 token 承擔，寫入權限仍由各目的服務判斷；傳輸成功不代表授權成功。
-- 禁止把任意來源 URL、SQL 語句、資料庫帳密做成通用使用者參數；僅 allowlisted provider/operation。
-- 確認 mapping round-trip、缺欄、拒絕範圍、冪等與版本變更；只測 `check:mcp` 相關檔案，不碰 LOC/LRS。
+- 變更 Mapping 預設為 **資料契約／客戶端層**，不應單獨觸發 `lunarcus` Worker 建置，也不直接通知 LOC 部署。只有**已使用於發行服務、確實改變 LOC 依賴的公開介面**時，才走 LAS 部署成功後的 impact 判定。
+- 只接受經允許的固定服務／operation，拒絕任意 URL、SQL、資料庫憑證與 ACL 的跨界傳遞。LAS 可驗證 token，LOC 保有最終資料權限與可攜式 SQL 引擎。
+- 測試：映射的 round-trip、缺欄、拒絕範圍、UID、版本兼容、冪等與錯誤回覆。必要時再檢查 MCP router 的實際消費方；不要為了「一同修好」擴大 LOC／LRS 變更。

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import worker from '../services/workers/lunarcus/index.mjs';
 import {checkLocAuthEnvironment} from '../services/workers/lunarcus/auth.mjs';
 import {RAINBOW_TABLES} from '../services/workers/lunarcus/rainbow-tables.mjs';
@@ -126,4 +128,68 @@ test('Existing LunArcus Worker serves MCP without opening an Auth DB',async()=>{
   assert.match(challenge.headers.get('www-authenticate')||'',/^Bearer /);
   const disallowed=await worker.fetch(new Request(origin+'/api/auth/get-session'),{});
   assert.equal(disallowed.status,404);
+});
+
+
+test('OAuth consent UI requests JSON and handles approve/deny redirects',async()=>{
+  // Better Auth returns a 302 redirect without Accept: application/json.
+  // fetch() would follow it instead of receiving {redirect:true,url}, leaving
+  // the consent screen on a generic "Consent failed" status.
+  const src=readFileSync(new URL('../services/workers/lunarcus/index.mjs',import.meta.url),'utf8');
+  const match=src.match(/^const CONSENT_JS=("(?:\\.|[^"\\])*");/m);
+  assert.ok(match,'Consent page must have a testable, self-contained script');
+  const script=JSON.parse(match[1]);
+  const signed='client_id=lunarcus&scope=openid%20email&redirect_uri=https%3A%2F%2Fexample.test%2Fcallback&sig=test-signature';
+  for(const accept of [true,false]){
+    const elements=new Map();
+    const byId=id=>{
+      if(!elements.has(id))elements.set(id,{textContent:'',onclick:null});
+      return elements.get(id);
+    };
+    let destination='',call=null;
+    const context={
+      URLSearchParams,
+      document:{getElementById:byId},
+      location:{assign:url=>{destination=url}},
+      fetch:async(path,options)=>{
+        call={path,options};
+        return {ok:true,status:200,json:async()=>({
+          redirect:true,url:'https://example.test/callback?state=verified'
+        })};
+      }
+    };
+    runInNewContext('const OAUTH_QUERY='+JSON.stringify(signed)+';\n'+script,context);
+    assert.equal(byId('client').textContent,'lunarcus');
+    await byId(accept?'approve':'deny').onclick();
+    assert.equal(call.path,'/api/auth/oauth2/consent');
+    assert.equal(call.options.method,'POST');
+    assert.equal(call.options.credentials,'include');
+    assert.equal(call.options.headers.accept,'application/json');
+    const payload=JSON.parse(call.options.body);
+    assert.equal(payload.accept,accept);
+    assert.equal(payload.oauth_query,signed,'Use the original verified signed query');
+    assert.equal(payload.scope,'openid email');
+    assert.equal(destination,'https://example.test/callback?state=verified');
+    assert.equal(byId('status').textContent,'');
+  }
+});
+
+test('OAuth consent UI reports HTTP failures without redirecting',async()=>{
+  const src=readFileSync(new URL('../services/workers/lunarcus/index.mjs',import.meta.url),'utf8');
+  const script=JSON.parse(src.match(/^const CONSENT_JS=("(?:\\.|[^"\\])*");/m)[1]);
+  const elements=new Map();
+  const byId=id=>{
+    if(!elements.has(id))elements.set(id,{textContent:'',onclick:null});
+    return elements.get(id);
+  };
+  let navigations=0;
+  runInNewContext('const OAUTH_QUERY="client_id=lunarcus&sig=test";\n'+script,{
+    URLSearchParams,
+    document:{getElementById:byId},
+    location:{assign:()=>{navigations++}},
+    fetch:async()=>({ok:false,status:503,json:async()=>({})})
+  });
+  await byId('approve').onclick();
+  assert.equal(navigations,0);
+  assert.equal(byId('status').textContent,'Consent failed (HTTP 503)');
 });

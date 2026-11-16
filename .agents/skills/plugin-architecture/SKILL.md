@@ -1,14 +1,14 @@
 ---
 name: plugin-architecture
-description: "LAS plugins 模組設計，Chrome Extension 與未來獨立 Plugin 的契約及交付。"
+description: "LAS Plugins 獨立版本與打包、Chrome Extension 契約，以及避免無關的 LOC／Auth/MCP 重複部署。"
 ---
 
-# plugin-architecture — LAS 專用能力
+# LAS Plugins — 獨立交付，不觸發 LOC Build
 
-LAS 的 Chrome Extension 固定歸 `las:plugins`，原始碼路徑 `plugins/chrome/`；不存在另一個產品模組。插件對外顯示 **LunArcus**，目前公開 OAuth Client `lunarcus`；既有 Chromium Extension ID 是不同的技術識別。
+`las:plugins` 是 LAS 的正式模組名稱，Chrome Extension 只是其中一個客戶端，來源 `plugins/chrome/`。不要把 Plugins 當 LAS Auth Worker、LOC Z-Model 或另一個 MCP Server 的替身。
 
-- 每個 Plugin 必須明確定義入口、manifest/metadata、權限、可使用的 LAS API、打包方式、資料回執和實機測試。
-- 不把 MCP 服務端、Auth Session、LOC 數據模型和 Browser Queue 合成同一個模組。
-- Chrome 擷取資料經 LOC 既有 `/api/loc-native`；Provider OAuth 流程與短匯入分離。
-- 其他插件僅在真正有使用情境時新增，不能為「插件」概念自動造任意 Script 執行框架。
-- 先按 `chrome-extensions` 與 `oauth-oidc` 判斷瀏覽器限制，依 `protocol-testing` 做回歸測試。
+- 每個 Plugin 各自管理入口、manifest、權限、UI、OAuth public client、Queue、匯入及 UID 回執。Chromium Extension ID、LAS OAuth client ID `lunarcus` 與 Cloudflare Access SSO client ID 必須區分，不更改舊客戶端身份。
+- Auth 與 MCP 均使用同一既有 `lunarcus` Worker 的**不同 hostname**；Plugins 以對外 API 使用它們，不隨每次 Plugin 發版重新編譯 Worker 或 LOC。
+- LOC 保有自己的 `/api/las-native`、短匯入、Scope、SQL Portable 業務授權；Plugins 的資料提交必須遵守這些契約，不取得任意 SQL／DB 入口。
+- **Plugins-only 變更 => LAS 部署決策紀錄可回傳 `locDeploy:skip`，不發 LOC GitHub 通知；不觸發 LRS 緊急部署。** 真正改變已發布公共協定時先做 LAS 本身測試與部署，再判斷 LOC 是否受影響。
+- 檢查 Extension 實機登入、回呼、Queue 冪等、匯入、回執與錯誤；`npm run check:extension` 只是一層，不能以打包成功證明整段服務已通。

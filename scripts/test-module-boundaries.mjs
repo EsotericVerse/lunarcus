@@ -31,6 +31,12 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
     {pattern:'mcp.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc'}
   ]);
   assert.ok(read('services/workers/lunarcus/index.mjs').includes("if(url.hostname==='mcp.lo3rwang.cc')"));
+  assert.ok(read('services/workers/lunarcus/index.mjs').includes("import mcpWorker from './mcp.mjs'"));
+  assert.ok(existsSync(new URL('../services/workers/lunarcus/mcp.mjs',import.meta.url)));
+  assert.ok(!existsSync(new URL('../services/workers/las-mcp/index.mjs',import.meta.url)),
+    'Do not keep a second MCP Worker entrypoint');
+  assert.ok(!existsSync(new URL('../services/workers/las-mcp/wrangler.jsonc',import.meta.url)),
+    'Do not recreate a second MCP deployment target');
 });
 test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
   const doc=read('docs/MODULE-ARCHITECTURE.md');

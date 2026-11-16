@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import worker from '../services/workers/las-mcp/index.mjs';
+import worker from '../services/workers/lunarcus/mcp.mjs';
 
 const HOST='https://mcp.lo3rwang.cc';
 const LOC='https://loc.lo3rwang.cc';

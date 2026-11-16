@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | `las:auth` | Better Auth、OAuth/OIDC、Cloudflare Access SSO、LAS Session | `services/workers/lunarcus/` |
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
-| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `app/las/mcp/`、`services/workers/las-mcp/` |
+| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP、Provider | `app/las/mcp/`、`services/workers/lunarcus/mcp.mjs` |
 | `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `app/las/tunnel/` |
 
 產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，與 Cloudflare Access SSO Client ID 是三件獨立的事。
@@ -30,7 +30,7 @@
 
 ## Auth / SSO / PostgreSQL
 
-- `auth.lo3rwang.cc` 是既有 LAS Auth issuer；Worker 名稱是 `lunarcus`。不要另建 Auth Worker 或重新指定 issuer。
+- `auth.lo3rwang.cc` 是既有 LAS Auth issuer；`mcp.lo3rwang.cc` 是 MCP Resource。**兩個 hostname 使用同一個 `lunarcus` Worker**，按 hostname 分流。不要另建 Auth／MCP Worker、平行編譯或重新指定 issuer。
 - LAS 的 PostgreSQL 表格已採 `las_*`，RLS 由使用者設定。應讀取現有 mapping 和 `LAS_DATABASE_URL` 綁定，**不得自行 migration、改表／RLS 或把 RLS 當登入故障的預設原因**。
 - 已存在的環境變數名稱中有 `LOC_*` 兼容鍵，不因產品更名批量刪掉或強迫換 Secret。
 - 登入分：Google OAuth、Cloudflare Access 上游 SSO、LAS Session、下游 OAuth Provider；任何「授權」不等於 LOC 文章寫入權。
@@ -62,7 +62,7 @@
 | Workers syntax/bundle | `npm run auth:dry-run`／`npm run mcp:dry-run`，不會發布 |
 | Agent Skills | `node scripts/check-las-agent-skills.mjs` |
 
-- 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。不得自行重新打開手動 MCP 發布、建立平行管線、接管 `mcp.lo3rwang.cc`、修改密鑰或 Build Watch Paths。
+- 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。現有 `lunarcus` Worker 同時服務 Auth/MCP，不允許重新打開手動獨立 MCP 發布或建立平行管線。Cloudflare 網域／密鑰／Build Watch Paths 只有當次明確授權才可變更。\n- **LAS 先完成自己的正式部署，再獨立判定是否通知 LOC**：Plugins、CMS Data Mapping、內部修改為 `skip`；`review` 不自動通知；確實影響已引用契約才以既有 Cloudflare → LOC GitHub Workflow 路徑驗證發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得以 LOC Pages Deploy Hook 當固定發布流程。
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
 - PR 要附最小充分測試和變更影響；他人正在變動時，先確認最新 `main`，不要用舊分支反向蓋掉。
 
