@@ -2,7 +2,7 @@
 
 **唯一 Chrome Extension：** 於 `chrome://extensions/` 載入 `plugins/chrome/`。
 
-**v0.2.7 OAuth ID／MCP SSO：** 恢復舊版 LunArcus Extension 使用的公開 `manifest.key`，Chrome 將用它固定擴充功能 ID `hiaeafonocnjaclcfgjmdopbcgnafnna`，並使用 LOC Auth 固定 public client `loc-galaxy-link` 與 callback `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc`；不使用 CIMD、不做匿名動態註冊。載入後應先核對 `chrome://extensions/` 顯示的 ID。**若先前安裝的未封裝版本顯示不同 ID 且仍有待送 Queue，請不要直接移除舊版**：Chrome 會按 Extension ID 隔離 IndexedDB，新增正式 ID 的 Extension 不會自動讀到舊 ID 下的 Queue；應先保留原資料並處理遷移。若原本就是上述正式 ID，可在同一 Chrome 使用者設定檔直接重新載入更新，不會清除 IndexedDB。
+**v0.2.14 OAuth：** 新安裝使用公開 Client ID `lunarcus`（Client 名稱 `LunArcus`）。已解除安裝的舊版不需遷移授權資料；重新安裝並重新 OAuth 登入即可。Chrome 擴充功能 ID 保持 `hiaeafonocnjaclcfgjmdopbcgnafnna`，這是 Chrome 回呼網址的識別，不是 OAuth Client ID；`manifest.key` 保持相同，以確保回呼 `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc` 正確。不使用動態註冊。
 
 
 本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LunArcus」即可選擇操作，工具列圖示只開啟設定頁，AI 回覆擷取預設關閉。
@@ -43,9 +43,9 @@ ChatGPT／Claude 開始錄製立即監看對話主區域，不需再點選錄製
 
 ## v0.2.12：LAS 獨立 Extension 與 LOC 資料 API
 
-- `oauth-config.json` 隨 Extension 一同封裝，不再向 LOC 網站索取 Extension 的 OAuth 設定檔；OAuth Issuer 仍為 `auth.lo3rwang.cc`，Client ID 與 Chrome Extension ID 不變。
+- `oauth-config.json` 隨 Extension 一同封裝，不再向 LOC 網站索取 Extension 的 OAuth 設定檔；OAuth Issuer 仍為 `auth.lo3rwang.cc`，Chrome Extension ID 不變，OAuth Client ID 自 v0.2.14 起為 `lunarcus`。
 - Queue 的短匯入直接發送至 `https://loc.lo3rwang.cc/api/loc-native`。這是 LOC 的業務資料 API，**不需要啟動 LAS MCP Worker**。既有 `resource` URI 仍保留為 `https://mcp.lo3rwang.cc`，僅供目前 OAuth Token audience 驗證使用，不代表啟用或呼叫 MCP 服務。
-- 既有安裝如已儲存舊匯入網址，第一次處理待送 Queue 時會只更新 `locConfig.import_url`；不清理 IndexedDB、UID 回執、Access/Refresh Token，也不強迫重新登入。
+- 這次依新安裝模式使用 `lunarcus` Client ID，重新登入後才會取得新 Token；不執行舊 OAuth Client 的自動遷移。
 - MCP Provider 狀態只在使用者主動進入「MCP 連線」頁時查詢；Extension 一般啟動、登入和 Queue 擷取不會主動探測它。
 - GitHub Actions 的 `Package LAS Chrome Extension` 會在本目錄更新時完成測試並產生 ZIP Artifact。解壓 ZIP 後以 Chrome「載入未封裝項目」指向含 `manifest.json` 的資料夾。維持相同的已安裝 Extension，不要刪掉舊 Extension 或清除瀏覽器儲存空間。
 - 本次測試不等於真實 OAuth 回呼與資料庫寫入驗收。實機仍需檢查登入、單篇擷取、Queue 完整 UID 回執及重啟瀏覽器後資料保存。

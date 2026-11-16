@@ -1,7 +1,7 @@
 {
   "issuer": "https://auth.lo3rwang.cc/api/auth",
   "resource": "https://mcp.lo3rwang.cc",
-  "client_id": "loc-galaxy-link",
+  "client_id": "lunarcus",
   "scope": "openid email loc:import offline_access",
   "import_url": "https://loc.lo3rwang.cc/api/loc-native"
 }
