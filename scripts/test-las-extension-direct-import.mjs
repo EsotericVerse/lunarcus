@@ -119,5 +119,7 @@ test('Cached LOC OAuth config migrates transport without replacing credentials o
   assert.strictEqual(vm.runInContext('upgradedImportConfig(unrelated)',
     Object.assign(sandbox,{unrelated})),unrelated);
   assert.match(background,/settings\.locConfig=updatedConfig/);
-  assert.doesNotMatch(background,/chrome\.storage\.local\.remove\(AUTH_KEYS\).*upgradedImportConfig/s);
+  const updater=background.slice(background.indexOf('function upgradedImportConfig'),
+    background.indexOf('function safeDiagnostic'));
+  assert.doesNotMatch(updater,/\.remove\(/);
 });
