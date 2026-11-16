@@ -45,6 +45,25 @@ async function walk(dir){
 }
 for(const dir of sourceDirs)await walk(dir);
 
+// The original Rune CSS and public-facing image assets are native-only LOC
+// checkout inputs now. The LOC Web source/release never carries these files.
+const nativeStyles=['app/styles/runes.css','app/styles/home-runes.css'];
+const runePictures=['01.soul.jpg','01.soul_s.jpg','02_connection.jpg','02_connection_s.jpg',
+  '03_life.jpg','03_life_s.jpg','04_nature.jpg','04_nature_s.jpg',
+  '05_mineral.jpg','05_mineral_s.jpg','06_element.jpg','06_element_s.jpg',
+  '07_order.jpg','07_order_s.jpg','08_disorder.jpg','08_disorder_s.jpg',
+  '09_specia.jpg','09_special_s.jpg',
+  'LunaRunes-hero.jpg','LunaRunes-hero_s.webp','LunaRunes.webp',
+  'LunaRunesGame.jpg','lrunes66_overview.jpg','lrunes66_overview_s.jpg'];
+for(const rel of [...nativeStyles,...runePictures.map(name=>'assets/pics/'+name)]){
+  const source=join(lrs,...rel.split('/'));
+  if(!(await readFile(source)).length)throw Error('Missing native Rune asset: '+rel);
+  const target=join(loc,...rel.split('/'));
+  await mkdir(dirname(target),{recursive:true});
+  await cp(source,target,{force:true});
+}
+
+
 // LOC Web deliberately imports its tiny LRS link view. Restore the original
 // Rune homepage *only in this temporary native checkout* before Next build.
 // These two exact, checked substitutions leave every other LOC edit intact.
@@ -80,4 +99,11 @@ for(const line of ['@import "./styles/home-runes.css";','@import "./styles/runes
     line+'\n@import "./styles/home-content.css";');
 }
 await writeFile(globals,css);
+// Retain the original native-only PDF download without restoring it in LOC Web.
+const pdf='assets/lunarunes/source/LunarRunesCardCut.pdf';
+const pdfFile=join(lrs,...pdf.split('/'));
+if(!(await readFile(pdfFile)).length)throw Error('Missing original LRS PDF');
+await mkdir(dirname(join(loc,...pdf.split('/'))),{recursive:true});
+await cp(pdfFile,join(loc,...pdf.split('/')),{force:true});
+
 console.log('LAS native Rune UI restored from pinned LRS: '+count+' source files; LOC Web repository unchanged');
