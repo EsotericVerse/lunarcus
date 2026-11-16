@@ -8,9 +8,9 @@
 2. 依問題選一個主要 Skill，必要時再讀一份更細的 LAS 專用 Skill；不能因 Skills 多就預載全部、追蹤全部引用或安裝對應 npm 套件。
 3. 可自行執行且可回復的 LAS 程式修正應完整做完；其他 Repo、Cloudflare 外部設定、Secret、權限、RLS、實際資料、公開網域或正式發布涉及額外授權時，先列明具體差異與影響。
 4. 不得以工具能寫入，推定可以修改外部資源。不要偷拆其他 Agent 的最新 main、不做整庫 reset/force push、不擅自刪部署入口、不做無授權資料清理。
-5. 每一層檢查只宣稱那一層結果：syntax ≠ CI ≠ preview ≠ main 部署 ≠ 真實 OAuth/SSO/MCP/Chrome/IPA 驗收。
+5. 每一層檢查只宣稱那一層結果：syntax ≠ CI ≠ preview ≠ main 部署 ≠ 真實 OAuth/SSO/MCP/Chrome 驗收。
 
-## 模組歸屬（六個，沒有第七個）
+## 模組歸屬（Auth／Plugins／MCP／Tunnel）
 
 | LAS 模組 | 主要職責 | 現行程式／入口 |
 | --- | --- | --- |
@@ -18,15 +18,13 @@
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
 | `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `app/las/mcp/`、`services/workers/las-mcp/` |
 | `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `app/las/tunnel/` |
-| `las:ipa` | 原本的 iOS Capacitor/IPA 打包協調 | `.github/workflows/ios-device-build.yml` |
-| `las:apk` | Android 打包；**規劃中，不能宣稱已實作** | 尚未建立正式建置流程 |
 
 產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，與 Cloudflare Access SSO Client ID 是三件獨立的事。
 
 ## 專案邊界：不跨 Repo 操作
 
 - **LOC（LunaCodex）** 擁有 Galaxy／Anchor、Z-Model 業務資料、Scope 寫入授權、資料庫與 SQL Portable、原有 `/api/loc-native` 短匯入；LAS 可以呼叫經核准的公開／認證契約，不複製其業務程式或修改 LOC Repo。
-- **LRS（LunaRunes）** 擁有 Rune 原創素材、Effekseer／WASM、`lrs:rune`、`lrs:card`、`lrs:daily` 和遊戲引擎。LAS 只依指定版本／manifest **消費**可驗證的 native 素材，不接管 LRS 網站或發布。
+- **LRS（LunaRunes）** 擁有 Rune 原創素材、Effekseer／WASM、`lrs:rune`、`lrs:card`、`lrs:daily` 和遊戲引擎。LOC 在 App 打包時依指定版本／manifest **消費**可驗證的 native 素材；LAS 不接管 LRS 網站、發布或 IPA。
 - Chrome Extension 由 LAS Plugin 負責，Auth 由 LAS Worker 負責，LOC 才決定匯入文章是否有權限；各層不直接授予另一層的權限。
 - 碰到跨 Repo 問題，**精確提出 API／檔案交付契約或阻礙**；未獲委託不得在其他 Repo 建分支、修碼、合併或改部署。
 
@@ -50,9 +48,9 @@
 
 ## iOS / Android 與素材
 
-- LAS 統一執行既有 native Packaging 流程；LRS 提供真實、固定版本、驗證 checksum 的圖片與 Effects/WASM 檔案。
-- **Web 不把符文圖帶入 LOC 主站 build**；**iOS／Android 需要真正的素材檔**。兩種交付不可混成一套 URL 方案。
-- 不新增第二條 IPA 流程，不未經確認改 Apple signing／Cloudflare token。Android APK 尚未完成，絕不可宣稱已出包。
+- 完整 App／IPA 打包與版本管理已交還 LOC；唯一手動 IPA Workflow 位於 `EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml`。LAS 不提供 App 打包入口。
+- LRS 保有素材所有權，LOC 打包時以固定 SHA、checksum 驗證後將圖片／Effekseer／WASM 納入實體 App；Web 仍使用獨立素材 URL。
+- 不從 LAS 重建 IPA／APK 打包流程，不修改 Apple signing／Cloudflare Secret；APK 尚未實作。
 
 ## 必要驗證與部署
 
@@ -62,7 +60,6 @@
 | Chrome Plugin | `npm run check:extension`；核 ZIP artifact |
 | MCP Gateway／Tunnel | `npm run check:mcp` |
 | Workers syntax/bundle | `npm run auth:dry-run`／`npm run mcp:dry-run`，不會發布 |
-| Native 輸入 | `node --test scripts/test-ipa-workflow-metadata.mjs scripts/test-las-ipa-runes.mjs` |
 | Agent Skills | `node scripts/check-las-agent-skills.mjs` |
 
 - 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。不得自行重新打開手動 MCP 發布、建立平行管線、接管 `mcp.lo3rwang.cc`、修改密鑰或 Build Watch Paths。
