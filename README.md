@@ -49,7 +49,7 @@ The Chrome Plugin is implemented as a browser extension in `plugins/chrome/`; **
 
 ## Adaptive deployment impact (LAS first, LOC only when needed)
 
-- `scripts/plan-las-deployment.mjs` independently classifies **LAS Auth Worker**, **LAS MCP Server**, and **las:plugins** changes. `app/las/tunnel/` CMS Data Mapping belongs to LAS, not LOC; a mapping change can require LAS MCP rebundling, but does **not** rebuild LOC.
+- `scripts/plan-las-deployment.mjs` independently classifies **LAS Auth Worker**, **LAS MCP Server**, and **las:plugins** changes. `app/las/tunnel/` CMS Data Mapping belongs to LAS, not LOC; a CMS Data Mapping-only change does **not** trigger either LAS MCP Server or LOC deployment.
 - `notify-loc-after-auth.yml` runs only after a successful Cloudflare `Workers Builds: lunarcus` check for the current LAS `main`, and uses the checked commit diff to classify whether LOC needs to rebuild. Published Auth/OAuth public contract changes can notify LOC; internal Auth implementation, Plugin, Data Mapping, routine package, documentation and Skills changes do not automatically notify it.
 - An MCP Server change concerns the **LAS MCP** deployment, which remains manual and route-less until cutover. A changed MCP-to-LOC API boundary is flagged **review** rather than silently redeploying LOC.
 - LOC impact is `notify`, `skip`, or `review`; automatic mode only sends the protected LOC Pages/main hook for `notify`. Manual `workflow_dispatch` provides `auto`, `notify`, or `skip` override. `review` means no automatic LOC release.
