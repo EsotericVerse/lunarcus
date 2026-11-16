@@ -5,7 +5,7 @@
   "type": "module",
   "description": "LunArcus bridge: Better Auth, PostgreSQL SSO, MCP protocol, extension and IPA packaging",
   "scripts": {
-    "check:auth": "node --check services/workers/lunarcus/index.mjs && node --check services/workers/lunarcus/auth.mjs && node --check services/workers/lunarcus/pg-driver.mjs",
+    "check:auth": "node --check services/workers/lunarcus/index.mjs && node --check services/workers/lunarcus/auth.mjs && node --check services/workers/lunarcus/pg-driver.mjs && node --test scripts/test-las-auth-http.mjs",
     "check:extension": "node --check extensions/lunarcus-galaxy-link/background.js && node --check extensions/lunarcus-galaxy-link/content.js && node --test scripts/test-extension-complete-history.mjs",
     "auth:dry-run": "npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc --dry-run",
     "auth:deploy": "npx --yes wrangler@4.157.0 deploy --config services/workers/lunarcus/wrangler.jsonc",
