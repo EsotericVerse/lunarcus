@@ -61,4 +61,23 @@ for(const [from,to] of replacements){
   code=code.replace(from,to);
 }
 await writeFile(app,code);
+
+// The LOC Web settings page links to LRS rather than loading native-only
+// daily Rune settings. Restore that original dependency for the IPA export.
+const preferences=join(loc,'app/loc/preferences/GlobalSettings.jsx');
+let preferencesCode=await readFile(preferences,'utf8');
+const webSettings="const DailyRuneCalendarSettings=dynamic(()=>import('./LrsDailySettingsLink'),{loading:PanelLoading});";
+const nativeSettings="const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});";
+if(!preferencesCode.includes(webSettings)&&!preferencesCode.includes(nativeSettings))
+  throw Error('Native LRS settings import contract changed');
+preferencesCode=preferencesCode.replace(webSettings,nativeSettings);
+await writeFile(preferences,preferencesCode);
+
+const globals=join(loc,'app/globals.css');
+let css=await readFile(globals,'utf8');
+for(const line of ['@import "./styles/home-runes.css";','@import "./styles/runes.css";']){
+  if(!css.includes(line))css=css.replace('@import "./styles/home-content.css";',
+    line+'\n@import "./styles/home-content.css";');
+}
+await writeFile(globals,css);
 console.log('LAS native Rune UI restored from pinned LRS: '+count+' source files; LOC Web repository unchanged');
