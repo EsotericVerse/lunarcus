@@ -19,6 +19,7 @@ on:
       - 'docs/ISR-HANDOFF.md'
       - 'scripts/test-module-boundaries.mjs'
       - 'scripts/test-las-mcp-worker-http.mjs'
+      - 'scripts/test-las-extension-direct-import.mjs'
       - 'scripts/test-las-auth-http.mjs'
       - 'scripts/test-ipa-workflow-metadata.mjs'
       - 'scripts/test-las-ipa-runes.mjs'
