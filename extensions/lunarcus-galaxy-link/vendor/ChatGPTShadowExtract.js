@@ -11,7 +11,7 @@ const ChatGPTShadowExtract = (() => {
   // The late-September 2026 ChatGPT front end dropped data-message-author-role.
   // Each user or assistant message is now a "search unit" whose key ends in its
   // role ("fallback-turn-13:2:assistant"), wrapping a div that carries the
-  // message id. Both layouts are read; the old one wins when it is present.
+  // message id. Both legacy and search-unit layouts are merged in DOM order.
   const UNIT_SELECTOR = "[data-chatgpt-search-unit-key]";
   const MESSAGE_ID_ATTR = "data-chatgpt-selection-message-id";
   const LOCAL_CONVERSATION_ATTR = "data-chatgpt-selection-conversation-id";
@@ -360,7 +360,11 @@ const ChatGPTShadowExtract = (() => {
     const own = attr(unit, MESSAGE_ID_ATTR) ||
       attr(unit.querySelector && unit.querySelector(`[${MESSAGE_ID_ATTR}]`), MESSAGE_ID_ATTR);
     if (own) return own;
-    return attr(unit, "data-chatgpt-search-message-ids").trim().split(/\s+/)[0] || "";
+    const listed = attr(unit, "data-chatgpt-search-message-ids").trim().split(/\s+/)[0];
+    // ChatGPT virtualizes long conversations. Search-unit keys remain tied to
+    // the turn while viewport-local indexes are reused during scrolling.
+    return listed || (attr(unit, "data-chatgpt-search-unit-key")
+      ? "search-unit:" + attr(unit, "data-chatgpt-search-unit-key") : "");
   }
 
   function unitText(unit, role) {

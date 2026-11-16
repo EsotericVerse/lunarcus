@@ -615,6 +615,14 @@ async function capture(tab,selection='',includeAssistant=false){
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
  if(reply?.error)throw Error(String(reply.error));
+ if(reply?.directQueued===true){
+  // Full ChatGPT history is admitted in bounded viewport batches.
+  return {message:String(reply.message||'已完成歷史對話掃描'),
+   queued:await queueCount(),detected:reply.detected,
+   user:reply.user,assistant:reply.assistant,
+   insertedCaptures:reply.queuedCaptures||0,
+   empty:!reply.queuedCaptures};
+ }
  if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
  if(!reply.items.length)throw Error('未找到可擷取的內容：目前頁面可能尚未載入對話，或網站 DOM 格式已變更');
  return acceptItems(reply.items);

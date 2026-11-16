@@ -78,6 +78,134 @@
         title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
       }));
   }
+  // A full-history capture must scroll the conversation's own viewport.
+  // ChatGPT only keeps a small set of turns mounted in the DOM at a time.
+  // One querySelectorAll snapshot is NOT a complete conversation archive.
+  function chatHistoryScroller(main){
+    const first=main.querySelector('[data-chatgpt-search-unit-key],[data-message-author-role]');
+    for(let el=first;el&&el!==document.body;el=el.parentElement){
+      if(!Number.isFinite(el.scrollHeight)||!Number.isFinite(el.clientHeight)||
+        el.scrollHeight<=el.clientHeight+40||el.clientHeight<100)continue;
+      const overflow=getComputedStyle(el).overflowY;
+      if(/auto|scroll/.test(overflow))return el;
+    }
+    // Some layouts put the scrolling viewport on an inner div that is not an
+    // ancestor of the currently mounted turn.
+    const candidates=[main,...main.querySelectorAll('[class*="overflow"],[data-testid]')];
+    for(const el of candidates){
+      if(!Number.isFinite(el.scrollHeight)||!Number.isFinite(el.clientHeight)||
+        el.scrollHeight<=el.clientHeight+40||el.clientHeight<100)continue;
+      if(!/auto|scroll/.test(getComputedStyle(el).overflowY))continue;
+      if(first&&!el.contains(first))continue;
+      return el;
+    }
+    const page=document.scrollingElement;
+    return page&&page.scrollHeight>page.clientHeight+40?page:null;
+  }
+  function setChatScroll(element,top){
+    if(typeof element.scrollTo==='function'){
+      try{element.scrollTo({top,behavior:'instant'});return;}catch{}
+    }
+    element.scrollTop=top;
+  }
+  const pauseChatScroll=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  async function captureChatHistory(includeAssistant){
+    if(state.historyCapture)throw Error('這篇對話已在進行全頁擷取');
+    if(state.mode==='record'||state.mode==='paused')
+      throw Error('請先停止目前錄製，再執行整篇歷史擷取');
+    const href=normalizeUrl(location.href);
+    const main=document.querySelector('main')||document.body;
+    const scroller=chatHistoryScroller(main);
+    if(!scroller)throw Error('找不到對話的捲動容器；不能把目前載入的幾則訊息當成完整對話');
+    const startTop=scroller.scrollTop;
+    const step=Math.max(180,Math.floor(scroller.clientHeight*0.65));
+    const seen=new Set(),buffer=[];
+    let detected=0,user=0,assistant=0,queuedCaptures=0,upSteps=0,downSteps=0;
+    state.historyCapture=true;
+    const ensureChat=()=>{
+      if(normalizeUrl(location.href)!==href)
+        throw Error('擷取期間已切換對話，已停止，避免不同來源混入同一篇');
+    };
+    const collect=()=>{
+      ensureChat();
+      const rows=shadowConversationTurns(main,includeAssistant,'record');
+      for(const item of rows){
+        const identity=item.source_key+':'+item.key+':'+fingerprint(item.content);
+        if(seen.has(identity))continue;
+        seen.add(identity);
+        buffer.push(item);
+        detected++;
+        if(item.content.startsWith('[user]\n'))user++;
+        if(item.content.startsWith('[assistant]\n'))assistant++;
+      }
+      return rows.map(row=>row.key).join('|');
+    };
+    const writeBuffered=async()=>{
+      if(!buffer.length)return;
+      const items=buffer.splice(0,buffer.length);
+      const result=await queuePublish(items);
+      if(result.error)throw Error('擷取資料入列失敗，已入列 '+queuedCaptures+' 則：'+result.error);
+      queuedCaptures+=result.insertedCaptures||0;
+    };
+    try{
+      // Seek the real beginning in overlapping increments, allowing older
+      // turns to be loaded. Repeated top-edge probes handle lazy backfill.
+      let still=0,lastSig='';
+      for(let n=0;n<3500;n++){
+        ensureChat();
+        const before=scroller.scrollTop,height=scroller.scrollHeight;
+        setChatScroll(scroller,Math.max(0,before-step));
+        await pauseChatScroll(before<=1?280:95);
+        const sig=shadowConversationTurns(main,includeAssistant,'record')
+          .map(x=>x.key).slice(0,3).join('|');
+        upSteps++;
+        if(scroller.scrollTop<=1&&before<=1&&scroller.scrollHeight===height&&sig===lastSig)
+          still++;
+        else still=0;
+        lastSig=sig;
+        if(still>=4)break;
+        if(n===3499)throw Error('歷史對話超過捲動掃描上限；未宣稱完整，請分段擷取');
+      }
+      // Walk from beginning to end. Overlap each viewport so virtualized
+      // turns are collected before ChatGPT unmounts them.
+      let stillAtEnd=0,lastAtEnd='';
+      for(let n=0;n<5000;n++){
+        const sig=collect();
+        if(buffer.length>=50&&(!includeAssistant||assistant>0))await writeBuffered();
+        const before=scroller.scrollTop,height=scroller.scrollHeight;
+        const bottom=Math.max(0,height-scroller.clientHeight);
+        const atEnd=before>=bottom-2;
+        if(atEnd){
+          if(sig===lastAtEnd&&scroller.scrollHeight===height)stillAtEnd++;
+          else stillAtEnd=0;
+          lastAtEnd=sig;
+          if(stillAtEnd>=4)break;
+          await pauseChatScroll(280);
+        }else{
+          stillAtEnd=0;
+          setChatScroll(scroller,Math.min(bottom,before+step));
+          await pauseChatScroll(95);
+        }
+        downSteps++;
+        if(n===4999)throw Error('對話長度超過單次掃描上限；已保留入列資料，不能宣稱全文完成');
+      }
+      if(includeAssistant&&assistant===0)
+        throw Error('已掃描對話，但沒有辨識到任何 AI 回覆；本次不寫入 Queue');
+      await writeBuffered();
+      const partial=includeAssistant&&globalThis.ChatGPTShadowExtract.isStreaming(document);
+      return {directQueued:true,detected,user,assistant,queuedCaptures,partial,
+        message:'已從對話頂端掃描至底端：辨識 '+detected+
+          ' 則（使用者 '+user+'／AI '+assistant+'）；'+
+          '本次新增 Queue '+queuedCaptures+' 則。'+
+          (partial?'最後一則仍在生成，暫未保存。':'')+
+          '僅涵蓋頁面可載入的對話。',
+        upSteps,downSteps};
+    }finally{
+      setChatScroll(scroller,Math.min(startTop,
+        Math.max(0,scroller.scrollHeight-scroller.clientHeight)));
+      state.historyCapture=false;
+    }
+  }
   function roleOf(turn){
     const own=(turn.getAttribute?.('data-message-author-role')||
       turn.getAttribute?.('data-role')||'').toLowerCase();
@@ -246,12 +374,12 @@
   async function publish(items){
     const pending=[];
     for(const item of items){
-      const key=item.source_key+':'+fingerprint(item.content);
+      const key=item.source_key+':'+(item.key||'')+':'+fingerprint(item.content);
       if(state.seen.has(key)||state.sending.has(key))continue;
       state.sending.add(key);pending.push({item,key});
     }
     if(!pending.length)return {accepted:0,queued:false};
-    let accepted=0,queued=0;
+    let accepted=0,insertedCaptures=0,queued=0;
     try{
       // A long conversation must be recorded in 100-turn chunks;
       // partial Queue acknowledgements survive a later failed chunk.
@@ -266,14 +394,15 @@
         if(state.seen.size>=5000)state.seen.clear();
         for(const {key} of part)state.seen.add(key);
         accepted+=part.length;
+        insertedCaptures+=Number(result.insertedCaptures||0);
         queued=result.queued;
       }
       state.emptyReported=false;
-      return {accepted,queued};
+      return {accepted,insertedCaptures,queued};
     }catch(error){
       const reason=String(error?.message||error);
       void reportCapture('錄製擷取未全部入列（已確認 '+accepted+'/'+pending.length+' 則）：'+reason,false);
-      return {accepted,error:reason,queued};
+      return {accepted,insertedCaptures,error:reason,queued};
     }finally{
       for(const {key} of pending)state.sending.delete(key);
     }
@@ -389,6 +518,11 @@
   chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
     if(msg.type==='page.feedback'){feedback(msg.message,msg.ok===true);reply({ok:true});return;}
     if(msg.type==='page.capture'){
+      if(CHAT_HOST.test(location.hostname.toLowerCase())&&!msg.selection?.trim()){
+        void captureChatHistory(Boolean(msg.includeAssistant))
+          .then(reply).catch(error=>reply({error:String(error?.message||error)}));
+        return true;
+      }
       try{
         const text=msg.selection?.trim();
         const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
