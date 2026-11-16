@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import worker from '../services/workers/lunarcus/index.mjs';
+import {checkLocAuthEnvironment} from '../services/workers/lunarcus/auth.mjs';
+import {RAINBOW_TABLES} from '../services/workers/lunarcus/rainbow-tables.mjs';
+import {rainbowSchema} from '../services/workers/lunarcus/rainbow-zmodel.mjs';
 
 const BASE='https://auth.lo3rwang.cc';
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
@@ -68,4 +71,30 @@ test('Public OAuth protocol preflight remains public without allowing session cr
   assert.equal(response.status,204);
   assert.equal(response.headers.get('access-control-allow-origin'),'*');
   assert.equal(response.headers.get('access-control-allow-credentials'),null);
+});
+
+test('LAS requires LAS_DATABASE_URL and maps all twelve models to existing las_* tables',()=>{
+  const env={
+    LAS_DATABASE_URL:'postgresql://test:test@database.example.test:5432/las',
+    LOC_CONTROL_ENCRYPTION_KEY:'x'.repeat(48),
+    LOC_CLOUDFLARE_SSO_ISSUER:
+      'https://access.example.test/cdn-cgi/access/sso/oidc/test-client',
+    LOC_CLOUDFLARE_SSO_CLIENT_ID:'test-client',
+    LOC_CLOUDFLARE_SSO_CLIENT_SECRET:'test-secret'
+  };
+  assert.equal(checkLocAuthEnvironment(env),true);
+  assert.throws(()=>checkLocAuthEnvironment({
+    ...env,LAS_DATABASE_URL:undefined,
+    LOC_AUTH_DATABASE_URL:'postgresql://wrong:wrong@wrong.example.test/old'
+  }),/LAS requires PostgreSQL/);
+  const mapped=Object.values(RAINBOW_TABLES);
+  assert.equal(mapped.length,12);
+  assert.equal(new Set(mapped).size,12);
+  const modelSnapshot=JSON.stringify(rainbowSchema.models);
+  for(const table of mapped){
+    assert.match(table,/^las_[a-z_]+$/);
+    assert.ok(modelSnapshot.includes('"value":"'+table+'"'),
+      'ZenStack must use the physical PostgreSQL table '+table);
+  }
+  assert.doesNotMatch(modelSnapshot,/"value":"rainbow_/);
 });
