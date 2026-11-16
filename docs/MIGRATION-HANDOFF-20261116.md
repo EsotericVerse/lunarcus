@@ -23,6 +23,9 @@
 3. [LAS PR #3](https://github.com/EsotericVerse/lunarcus/pull/3)：獨立 `app/las/mcp/`、`services/workers/las-mcp/`，使用 `app/las/mcp/loc-mapping.mjs` 向 LOC 固定 API 傳遞有 OAuth Bearer 的請求。MCP 不直接引用 LOC 業務庫；新增手動、**無正式網域 Route** 的 Wrangler workflow。Extension 整篇 ChatGPT 歷史擷取改為逐段捲動與去重，模擬 9 則 DOM、80 則完整對話的測試通過。
 4. [LAS PR #4](https://github.com/EsotericVerse/lunarcus/pull/4)：清除 **LAS Repo** 內 23 個過時 `app/loc/mcp/*` 快照（**不刪 LOC 原始資料**），正式命名空間、完整分工、IPA 在 guard 與 build 採同一 LOC commit、ISR 現況交接、模組邊界測試。當前 PR 分支 `chore/las-repo-cleanup-ipa-isr-20261116`。CI: [run 43806631002](https://github.com/EsotericVerse/lunarcus/actions/runs/43806631002) 通過：npm 安裝、Auth／Extension 語法與擷取測試、MCP 合約測試、命名與打包契約檢查、兩個 Worker dry-run。
 
+5. [LAS PR #5](https://github.com/EsotericVerse/lunarcus/pull/5)：修復 IPA Guard 的 Bash `printf` 輸出錯接，確實產生 `version`、`base_version`、`ipa_name`、`release_tag`、`loc_sha` 五項；新增執行真實 shell 的回歸測試，CI [run 43807796925](https://github.com/EsotericVerse/lunarcus/actions/runs/43807796925) 通過，合併 commit `d1d799d9b23b2fa668673fbb03dda345baafd103`。**只驗證 Guard 輸出，並非已完成 IPA 實機建置**。
+6. [LAS PR #6](https://github.com/EsotericVerse/lunarcus/pull/6)：正式將 LOC 固定 API／Data Mapping 搬至 `app/las/tunnel/loc-mapping.mjs`；MCP 原路徑改為 re-export 保持介面相容。新增跨目錄功能身分檢查、建構語法驗證及 tunnel CI path。CI [run 43808108562](https://github.com/EsotericVerse/lunarcus/actions/runs/43808108562) 通過。未引入 CMS SQL 引擎、沒有改 Cloudflare 路由。
+
 ## LOC 配套 PR 尚須核對
 
 [LOC PR #1728](https://github.com/EsotericVerse/lunacodex/pull/1728) 在現有 LOC Pages 新增 `/api/las-native`，只允許固定的 OAuth 驗證業務操作，仍由 LOC 查核 `api.manage` 權限、Galaxy 模型與 SQL。原來的 `/api/loc-native` 保持。分支 `feat/loc-las-native-bridge-20261116`，最後檢查 head `1d0a7b553d2a338b8a0af7dd6d6fdf71828c95eb`；LOC workflow guard 已通過，另有**手動**的輕量測試 workflow。不要違反 LOC Guard 的「其他 workflow 僅允許 workflow_dispatch」規則。LAS MCP 依賴 LOC 此橋接端點，所以不能在 LOC 端部署、進行實際授權驗收前宣稱新 MCP 已可正式使用。
