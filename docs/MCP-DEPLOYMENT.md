@@ -1,24 +1,25 @@
-# LAS MCP deployment and existing domain
+# LAS MCP domain handoff and deployment
 
-The existing `mcp.lo3rwang.cc` hostname is attached to **LOC Cloudflare Pages** today; its record is NOT a Worker Custom Domain. LAS must **not** attempt to bind an additional Worker to that same hostname while Pages owns it.
+## Ownership and source of truth (2026-11-17)
 
-## Build status
+- Cloudflare Pages project `loc` **no longer** owns `mcp.lo3rwang.cc` (verified by reading the active Pages custom-domain list after the owner detached it).
+- The MCP protocol server source is `app/las/mcp/**` with entrypoint `services/workers/las-mcp/index.mjs` in `EsotericVerse/lunarcus`.
+- `services/workers/las-mcp/wrangler.jsonc` owns Worker `las-mcp` and binds **only** the transferred `mcp.lo3rwang.cc` Custom Domain. The Auth Worker `lunarcus` and hostname `auth.lo3rwang.cc` are unchanged.
+- `.github/workflows/deploy-las-mcp.yml` publishes on LAS MCP server/source/config changes on `main`, or by manual dispatch. It uses LAS's existing `LOC_WORKFLOW_KEY` GitHub Actions secret as the designated Cloudflare credential, as specified by the owner. Secret presence and API permissions must be proven in the actual publish job.
+- Never use this workflow to deploy `lunarunes`, modify its emergency release gate, or trigger LOC Pages. Client-only `las:plugins` and `las:tunnel` / CMS mapping changes do not trigger MCP release.
 
-- Independent LAS protocol Worker: `services/workers/las-mcp/index.mjs`.
-- Worker name: `las-mcp`, deliberately `workers_dev=false` and `routes=[]` for safe staging.
-- Commands: `npm run check:mcp` and `npm run mcp:dry-run` (no deployment).
-- `.github/workflows/deploy-las-mcp.yml` is manual only. It publishes only a **route-less Worker**, not a live MCP cutover.
-- `loc` exposes `/api/las-native` with fixed, OAuth-verified operations. Current `mcp.lo3rwang.cc/api/loc-native` remains available until the future switchover.
+## Live cutover verification
 
-## LAS Data Mapping
+A GitHub Workflow or Wrangler dry-run alone is not evidence of a working production MCP server.
 
-MCP input/output schemas and wire envelopes live in `app/las/mcp/loc-mapping.mjs`. The fixed LOC service URL is `https://loc.lo3rwang.cc/api/las-native`. LAS never opens the LOC SaaS business database or constructs SQL. The existing Kysely/ZenStack Z-Model and Postgres/MySQL/MSSQL factories remain in `loc`; standalone LAS Auth has its own existing PostgreSQL pool and official `PostgresDialect`.
+1. LAS MCP job succeeds and Cloudflare lists a deployed `las-mcp` Worker with an active `mcp.lo3rwang.cc` route.
+2. `GET https://mcp.lo3rwang.cc/.well-known/oauth-protected-resource` returns the expected OAuth resource metadata. Without bearer auth, `/mcp` returns an OAuth challenge; other unsupported routes return 404.
+3. The fixed `/api/loc-native` proxy reaches LOC's existing `/api/las-native` without forwarding website session cookies. Verify actual valid OAuth, scope permission, streaming, Queue receipts and provider callbacks separately.
+4. Confirm `loc.lo3rwang.cc` remains attached to LOC Pages and `auth.lo3rwang.cc` remains on `lunarcus`. Do not change the names or the credentials of those live services.
 
-## Production cutover prerequisites
+## Security and deployment boundaries
 
-1. LOC's `/api/las-native` is deployed and tested for unauthenticated rejection, valid OAuth identity binding, active LOC api.manage role enforcement, per-Scope read/record permissions, public read, statistics, append and native import.
-2. The route-less LAS Worker has been deployed and smoke-tested under a safe preview channel or Worker Preview against the LOC API, including Extension client `hiaeafonocnjaclcfgjmdopbcgnafnna`, Queue receipts and OAuth callback.
-3. The current LOC Pages-owned `mcp.lo3rwang.cc` binding is detached **only when LAS Worker cutover is immediately ready**; attach the existing hostname to the LAS Worker without modifying its DNS name, then validate and retain rollback to LOC Pages.
-4. No change to `auth.lo3rwang.cc`, OIDC issuer or Auth secrets. All production routing modifications require verifying existing Cloudflare bindings and CLI authorization. Never infer that a dry-run equals live permission parity.
-
-MCP source duplicated in `app/loc/mcp` is an inactive migration snapshot; active LAS runtime is `app/las/mcp`. Remove the archived snapshot only after live cutover and dependency checks.
+- A signing secret is **not automatically** a Cloudflare API token. The existing `LOC_WORKFLOW_KEY` can authorize the Wrangler deployment only if its value is a Cloudflare credential with sufficient permissions. Fail closed if absent or invalid, and never print the value.
+- The relationship to LOC's `CLOUDFLARE_API_TOKEN` and LRS's `LOC_EMERGENCY_KEY` is owner-specified compatibility. This workflow contains no call to `loc-lrs-emergency` or LRS release code.
+- Keep the LOC business/data service under `https://loc.lo3rwang.cc/api/las-native`; LAS MCP provides protocol transport, not LOC SQL or business permissions.
+- Rollback requires an explicit routing decision; do not silently reattach `mcp.lo3rwang.cc` to LOC Pages.

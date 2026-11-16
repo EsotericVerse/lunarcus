@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.LOC_WORKFLOW_KEY }}
       CLOUDFLARE_ACCOUNT_ID: f730f29a620a25bb047a69d542457fc0
     steps:
       - uses: actions/checkout@v4
@@ -28,17 +28,31 @@ jobs:
         with:
           node-version: '22.23.5'
           cache: npm
-      - name: Require authorized deployment token
+      - name: Verify LAS MCP target and existing workflow credential
         shell: bash
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::LAS repository lacks Cloudflare API Token"; exit 1; }
+          set -euo pipefail
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::error::LAS LOC_WORKFLOW_KEY is unavailable to this workflow"
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const config=JSON.parse(readFileSync('services/workers/las-mcp/wrangler.jsonc','utf8'));
+          assert.equal(config.name,'las-mcp');
+          assert.equal(config.workers_dev,false);
+          assert.deepEqual(config.routes,[{
+            pattern:'mcp.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc'
+          }]);
+          NODE
       - name: Install minimal LAS dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validate gateway contract
         run: npm run check:mcp
       - name: Validate actual worker bundle
         run: npm run mcp:dry-run
-      - name: Publish LAS MCP Worker WITHOUT custom-domain takeover
+      - name: Publish LAS MCP Worker to transferred custom domain
         run: npx --yes wrangler@4.157.0 deploy --config services/workers/las-mcp/wrangler.jsonc
-      - name: Confirm safe staging
-        run: echo 'LAS MCP Worker deployed without mcp.lo3rwang.cc route. LOC Pages remains in production.'
+      - name: Confirm target intent
+        run: echo 'LAS MCP deployment targeted las-mcp and transferred mcp.lo3rwang.cc only; verify live route separately.'
