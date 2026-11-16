@@ -1,4 +1,4 @@
-// One LOC galaxy-link extension: one LOC Auth, one queue, multiple capture modes.
+// LAS Extension: one identity connection, one Queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50;
@@ -151,7 +151,7 @@ async function updateQueueBadge(rows=null){
  const totals=captureTotals(rows||await allEvents());
  const count=totals.pendingCaptures;
  await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
- await chrome.action.setTitle?.({title:count?'LOC 彩虹橋：待送 '+count+' 次擷取':'LOC 彩虹橋：Queue 0 次待送'});
+ await chrome.action.setTitle?.({title:count?'LAS｜虹月：待送 '+count+' 次擷取':'LAS｜虹月：Queue 0 次待送'});
  return totals;
 }
 async function clearLegacyTabBadges(){
@@ -207,7 +207,7 @@ async function acceptItems(items){
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const all=await allEvents();
  if(all.length)void flush(false).catch(async error=>{
-  console.warn('[LOC galaxy-link automatic import]',String(error));
+  console.warn('[LAS import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
  return {message,queued:all.length,detected,user,assistant,
@@ -393,7 +393,7 @@ function registeredClient(config,redirect){
  const clientId='loc-galaxy-link';
  const callback='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
  if(config.client_id!==clientId||redirect!==callback)
-  throw oauthError('LOC 彩虹橋固定 OAuth Client 與 Chrome 回呼不一致');
+  throw oauthError('LAS 的既有 OAuth Client 與 Chrome 回呼不一致');
  return clientId;
 }
 async function disconnectLoc(){
@@ -594,7 +594,7 @@ async function flush(force=false){
   // A capture may arrive while a previous snapshot is being sent.
   // Drain that new work immediately instead of waiting for the retry alarm.
   if(again)void flush(false).catch(async error=>{
-   console.warn('[LOC galaxy-link automatic import]',String(error));
+   console.warn('[LAS import]',String(error));
    await noteAction('自動傳送',false,error?.message||String(error));
   });
  });return inFlight;
@@ -694,7 +694,7 @@ async function shownMode(tab){
 }
 function installMenu(){
  chrome.contextMenus.removeAll().then(async()=>{
-  chrome.contextMenus.create({id:MENU_ROOT,title:'LOC 彩虹橋｜galaxy-link',contexts:['page','selection']});
+  chrome.contextMenus.create({id:MENU_ROOT,title:'LAS｜虹月',contexts:['page','selection']});
   for(const [id,title,contexts] of [
    [MENU_PAGE,'擷取整頁／可見對話',['page','selection']],
    [MENU_SELECTION,'擷取選取文字',['selection']],
@@ -705,7 +705,7 @@ function installMenu(){
    [MENU_STOP,'停止錄製',['page','selection']]
   ])chrome.contextMenus.create({id,parentId:MENU_ROOT,title,contexts,
     visible:menuVisibility()[id]});
- }).catch(e=>console.warn('[LOC galaxy-link menu]',String(e)));
+ }).catch(e=>console.warn('[LAS menu]',String(e)));
 }
 chrome.runtime.onInstalled.addListener(async()=>{
  installMenu();
@@ -752,7 +752,7 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
   await noteAction(label,!result?.empty,result?.message||'操作已完成',tab.id);
   await updateQueueBadge().catch(()=>{});
  })().catch(async e=>{
-  console.warn('[LOC galaxy-link '+label+']',e);
+  console.warn('[LAS '+label+']',e);
   await noteAction(label,false,e?.message||String(e),tab.id);
   await updateQueueBadge().catch(()=>{});
  });
