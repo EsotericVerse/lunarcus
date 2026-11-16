@@ -1,4 +1,4 @@
-// LOC Galaxy Link: local views inside one extension options document.
+// LunArcus: local views inside one extension options document.
 // No new routes, permissions, OAuth requests or remote dependencies.
 const CONSOLE_PAGES=Object.freeze({
   overview:'總覽',
@@ -25,7 +25,7 @@ function renderConsolePage(){
     else link.removeAttribute('aria-current');
   }
   document.getElementById('currentPageName').textContent=CONSOLE_PAGES[selected];
-  document.title='LOC 彩虹橋｜'+CONSOLE_PAGES[selected];
+  document.title='LunArcus｜'+CONSOLE_PAGES[selected];
 }
 for(const link of consoleNav){
   link.addEventListener('click',event=>{

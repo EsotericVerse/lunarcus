@@ -11,13 +11,13 @@ const files=[
   'services/workers/lunarcus/index.mjs',
   'services/workers/lunarcus/auth.mjs',
   'services/workers/lunarcus/extension-client.mjs',
-  'extensions/lunarcus-galaxy-link/manifest.json',
-  'extensions/lunarcus-galaxy-link/background.js',
-  'extensions/lunarcus-galaxy-link/content.js',
-  'extensions/lunarcus-galaxy-link/icons/loc-favicon.png',
-  'extensions/lunarcus-galaxy-link/assets/lunarcus-rainbow-hero.avif',
-  'public/extension/oauth/client.json',
-  'public/extension/oauth/config.json',
+  'plugins/chrome/manifest.json',
+  'plugins/chrome/background.js',
+  'plugins/chrome/content.js',
+  'plugins/chrome/icons/loc-favicon.png',
+  'plugins/chrome/assets/lunarcus-rainbow-hero.avif',
+  'public/plugins/chrome/oauth/client.json',
+  'public/plugins/chrome/oauth/config.json',
   '.github/workflows/deploy-lunarcus-auth.yml',
   '.github/workflows/ios-device-build.yml'
 ];
@@ -44,8 +44,8 @@ assert.equal(wrangler.name,'lunarcus','Target the existing LunArcus Worker scrip
 assert.equal(wrangler.routes?.[0]?.pattern,'auth.lo3rwang.cc');
 assert.equal(wrangler.routes?.[0]?.custom_domain,true,'Keep the current Auth custom domain');
 assert.equal(wrangler.workers_dev,false,'Do not open a new workers.dev Auth issuer');
-const manifest=JSON.parse(readFileSync(resolve(root,'extensions/lunarcus-galaxy-link/manifest.json'),'utf8'));
-const client=JSON.parse(readFileSync(resolve(root,'public/extension/oauth/client.json'),'utf8'));
+const manifest=JSON.parse(readFileSync(resolve(root,'plugins/chrome/manifest.json'),'utf8'));
+const client=JSON.parse(readFileSync(resolve(root,'public/plugins/chrome/oauth/client.json'),'utf8'));
 assert.equal(manifest.manifest_version,3);
 assert.equal(client.client_id,'loc-galaxy-link','Preserve existing Extension OAuth identity');
 assert.ok(manifest.key,'Preserve installed Chrome Extension identity');

@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-const folder=new URL('../extensions/lunarcus-galaxy-link/',import.meta.url);
+const folder=new URL('../plugins/chrome/',import.meta.url);
 const vendor=readFileSync(new URL('vendor/ChatGPTShadowExtract.js',folder),'utf8');
 const content=readFileSync(new URL('content.js',folder),'utf8');
 const background=readFileSync(new URL('background.js',folder),'utf8');

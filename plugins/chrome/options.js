@@ -97,8 +97,8 @@ function renderOverviewGuidance(result){
  }else if(!result.connected){
   title.textContent='先建立 LOC 身分連線';
   description.textContent=pending
-   ?'本機仍有 '+pending+' 次擷取待送。先使用上方「連接 LOC Auth」，Queue 會保留原有資料。'
-   :'使用上方「連接 LOC Auth」完成授權。擷取時才會加入本機 Queue。';
+   ?'本機仍有 '+pending+' 次擷取待送。先使用上方「連接 LunArcus Auth」，Queue 會保留原有資料。'
+   :'使用上方「連接 LunArcus Auth」完成授權。擷取時才會加入本機 Queue。';
  }else if(result.paused){
   title.textContent='Queue 暫時保留中';
   description.textContent='自動送出已暫停。請在 Queue 頁查看原因，需要時手動處理；原有資料不會因切頁而清除。';
@@ -108,8 +108,8 @@ function renderOverviewGuidance(result){
   description.textContent='內容已暫存在本機。可以前往 Queue 檢視送出情況與最近一次操作。';
   action={href:'#activity',label:'檢視待送資料'};
  }else{
-  title.textContent='彩虹橋已可使用';
-  description.textContent='在想保存的網頁或對話上按右鍵，選擇 LOC 彩虹橋的擷取功能。';
+  title.textContent='LunArcus 已可使用';
+  description.textContent='在想保存的網頁或對話上按右鍵，選擇 LunArcus 的擷取功能。';
   action={href:'#capture',label:'查看擷取方法'};
  }
  link.hidden=!action;
@@ -124,7 +124,7 @@ async function show(){
   call('loc-status'),
   chrome.storage.local.get(['locTargetScope','locIncludeAssistant','locSsoEmail'])
  ]);
- status.textContent=result.error||(result.connected?'已連接 LOC Auth':'尚未連接 LOC Auth');
+ status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'尚未連接 LunArcus Auth');
  setAuthIndicator(Boolean(result.connected));
  $('captureCount').textContent=result.error?'—':String(result.pendingCaptures??0);
  $('itemCount').textContent=result.error?'—':String(result.pending??0);
@@ -147,7 +147,7 @@ $('connect').addEventListener('click',async()=>{
  status.textContent='正在進行 LOC 授權…';
  try{
   const result=await call('loc-connect');
-  status.textContent=result.error||(result.connected?'已連接 LOC Auth':'LOC 授權未完成');
+  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'LunArcus 授權未完成');
   if(!result.error){
    setAuthIndicator(Boolean(result.connected));
    renderOverviewGuidance({...overviewStatus,connected:Boolean(result.connected),error:null});

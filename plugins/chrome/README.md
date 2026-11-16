@@ -1,11 +1,11 @@
-# LOC galaxy-link｜LOC 彩虹橋
+# LunArcus｜Chrome Extension
 
-**唯一 Chrome Extension：** 於 `chrome://extensions/` 載入 `extensions/lunarcus-galaxy-link/`。
+**唯一 Chrome Extension：** 於 `chrome://extensions/` 載入 `plugins/chrome/`。
 
-**v0.2.7 OAuth ID／MCP SSO：** 恢復舊版 LOC Galaxy Extension 使用的公開 `manifest.key`，Chrome 將用它固定擴充功能 ID `hiaeafonocnjaclcfgjmdopbcgnafnna`，並使用 LOC Auth 固定 public client `loc-galaxy-link` 與 callback `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc`；不使用 CIMD、不做匿名動態註冊。載入後應先核對 `chrome://extensions/` 顯示的 ID。**若先前安裝的未封裝版本顯示不同 ID 且仍有待送 Queue，請不要直接移除舊版**：Chrome 會按 Extension ID 隔離 IndexedDB，新增正式 ID 的 Extension 不會自動讀到舊 ID 下的 Queue；應先保留原資料並處理遷移。若原本就是上述正式 ID，可在同一 Chrome 使用者設定檔直接重新載入更新，不會清除 IndexedDB。
+**v0.2.7 OAuth ID／MCP SSO：** 恢復舊版 LunArcus Extension 使用的公開 `manifest.key`，Chrome 將用它固定擴充功能 ID `hiaeafonocnjaclcfgjmdopbcgnafnna`，並使用 LOC Auth 固定 public client `loc-galaxy-link` 與 callback `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc`；不使用 CIMD、不做匿名動態註冊。載入後應先核對 `chrome://extensions/` 顯示的 ID。**若先前安裝的未封裝版本顯示不同 ID 且仍有待送 Queue，請不要直接移除舊版**：Chrome 會按 Extension ID 隔離 IndexedDB，新增正式 ID 的 Extension 不會自動讀到舊 ID 下的 Queue；應先保留原資料並處理遷移。若原本就是上述正式 ID，可在同一 Chrome 使用者設定檔直接重新載入更新，不會清除 IndexedDB。
 
 
-本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LOC 彩虹橋｜galaxy-link」即可選擇操作，工具列圖示只開啟設定頁，AI 回覆擷取預設關閉。
+本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LunArcus」即可選擇操作，工具列圖示只開啟設定頁，AI 回覆擷取預設關閉。
 
 若連線或匯入失敗，開啟 extension 設定頁按「複製診斷紀錄」；紀錄只保留端點、HTTP 狀態與遮罩後的錯誤摘要，不包含 access token、refresh token、授權碼或 PKCE verifier。
 
@@ -19,7 +19,7 @@ Neon／Supabase MCP 連線在同一設定頁完成：輸入一次 SSO Email，�
 
 ## 操作入口（0.2.1）
 
-請直接在**網頁內容上按右鍵**，打開 Chrome 原生「LOC 彩虹橋｜galaxy-link」子選單，再選擇整頁、選字、選區或錄製及其控制指令。工具列圖示僅打開設定頁（LOC Auth、Scope、是否包含 AI 回覆、Queue），**不提供擷取 Popup**。升級不改原本的 Chrome Extension ID、IndexedDB 名稱或儲存的 Queue。
+請直接在**網頁內容上按右鍵**，打開 Chrome 原生「LunArcus」子選單，再選擇整頁、選字、選區或錄製及其控制指令。工具列圖示僅打開設定頁（LOC Auth、Scope、是否包含 AI 回覆、Queue），**不提供擷取 Popup**。升級不改原本的 Chrome Extension ID、IndexedDB 名稱或儲存的 Queue。
 
 ## v0.2.2：互動狀態與故障回饋
 

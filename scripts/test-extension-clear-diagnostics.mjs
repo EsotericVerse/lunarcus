@@ -2,7 +2,7 @@
 // or retry controls. No Chrome installation, database or network needed.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-const root=new URL('../extensions/lunarcus-galaxy-link/',import.meta.url);
+const root=new URL('../plugins/chrome/',import.meta.url);
 const background=readFileSync(new URL('background.js',root),'utf8');
 const options=readFileSync(new URL('options.js',root),'utf8');
 const html=readFileSync(new URL('options.html',root),'utf8');
