@@ -1,13 +1,19 @@
-name: Notify LOC Pages after LAS Auth production success
+name: Notify LOC only when a published LAS contract requires it
 
-# Cloudflare Workers Builds owns LAS Auth production deployment.
-# A completed successful Cloudflare check on the CURRENT LAS main commit
-# may request a build of LOC's existing Pages/main project via deploy hook.
-# Never push a dummy LOC commit, change LOC's workflow guard, or publish MCP.
+# The LAS Auth Worker is published by Cloudflare Workers Builds.
+# A successful Auth production check does not imply the LOC site needs rebuilding.
+# MCP publishing is independent/manual, and LAS Plugins/CMS mappings never trigger LOC.
 on:
   check_run:
     types: [completed]
   workflow_dispatch:
+    inputs:
+      loc_deploy:
+        description: 'Override the automatic LOC impact decision'
+        type: choice
+        required: true
+        default: auto
+        options: [auto, notify, skip]
 
 permissions:
   contents: read
@@ -19,54 +25,43 @@ concurrency:
 jobs:
   notify-loc:
     if: >-
-      github.event_name == 'check_run' &&
-      github.event.check_run.name == 'Workers Builds: lunarcus' &&
-      github.event.check_run.app.slug == 'cloudflare-workers-and-pages' &&
-      github.event.check_run.conclusion == 'success'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'check_run' &&
+       github.event.check_run.name == 'Workers Builds: lunarcus' &&
+       github.event.check_run.app.slug == 'cloudflare-workers-and-pages' &&
+       github.event.check_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Confirm Cloudflare published the current LAS main commit
-        id: eligibility
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Classify independently deployable LAS modules and LOC impact
+        id: impact
         env:
           GH_TOKEN: ${{ github.token }}
           LAS_SHA: ${{ github.event.check_run.head_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
-          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
-          main_sha="$(curl --fail --silent --show-error "${auth[@]}" \
-            "$GITHUB_API_URL/repos/$repo/git/ref/heads/main" | jq -r '.object.sha')"
-          if [[ "$LAS_SHA" != "$main_sha" ]]; then
-            echo "Skipping stale/preview LAS version (not current main)"
-            echo "eligible=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          files="$(curl --fail --silent --show-error "${auth[@]}" \
-            "$GITHUB_API_URL/repos/$repo/commits/$LAS_SHA" | jq -r '.files[].filename')"
-          if ! grep -Eq '^(services/workers/lunarcus/|vendor/loc-dialect/|wrangler\.jsonc$|package(-lock)?\.json$)' <<< "$files"; then
-            echo "Skipping LAS-only docs, skills, extension or MCP changes"
-            echo "eligible=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "eligible=true" >> "$GITHUB_OUTPUT"
-      - name: Trigger existing LOC Pages main build (no LOC Git push)
-        if: steps.eligibility.outputs.eligible == 'true'
+          LOC_DEPLOY_MODE: ${{ inputs.loc_deploy || 'auto' }}
+        run: node scripts/resolve-las-deployment-impact.mjs
+      - name: Trigger existing LOC Pages main build only if needed
+        if: steps.impact.outputs.decision == 'notify'
         env:
           LOC_PAGES_DEPLOY_HOOK: ${{ secrets.LOC_PAGES_DEPLOY_HOOK }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "$LOC_PAGES_DEPLOY_HOOK" ]]; then
-            echo "::error::Set the protected LOC_PAGES_DEPLOY_HOOK Actions secret in LAS; no LOC deployment requested"
-            exit 1
+            echo "LOC deploy hook not configured; LOC will consume the published LAS service on its next normal deployment."
+            exit 0
           fi
           if [[ "$LOC_PAGES_DEPLOY_HOOK" != https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/* ]]; then
-            echo "::error::LOC_PAGES_DEPLOY_HOOK is not a Cloudflare Pages deploy hook URL"
+            echo "::error::Invalid Cloudflare Pages deploy hook format"
             exit 1
           fi
           curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
             --connect-timeout 10 --max-time 30 --request POST \
             "$LOC_PAGES_DEPLOY_HOOK" > /dev/null
-          echo "Triggered LOC existing Cloudflare Pages main build"
+          echo "Requested one existing LOC Pages/main build (no LOC Git push)"

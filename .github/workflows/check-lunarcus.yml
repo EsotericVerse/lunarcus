@@ -1,4 +1,4 @@
-name: Check LunArcus Auth and Extension
+name: Check LunArcus Auth, MCP and Plugins
 on:
   pull_request:
     paths:
@@ -17,6 +17,8 @@ on:
       - '.github/workflows/deploy-las-mcp.yml'
       - '.github/workflows/notify-loc-after-auth.yml'
       - 'scripts/test-las-deployment-notify.mjs'
+      - 'scripts/plan-las-deployment.mjs'
+      - 'scripts/resolve-las-deployment-impact.mjs'
       - 'docs/MODULE-ARCHITECTURE.md'
       - 'AGENTS.md'
       - '.agents/**'

@@ -1,6 +1,6 @@
 # LunArcus — 虹月
 
-LunArcus is the authentication and cross-system integration repository for the LOC ecosystem. It owns **Auth / SSO**, **Chrome Extension / Plugins**, **MCP**, and **Tunnel**; LOC owns complete App/IPA packaging.
+LunArcus is the authentication and cross-system integration repository for the LOC ecosystem. It owns **Auth / SSO**, **Plugins** (including the Chrome Plugin), **MCP**, and **Tunnel**; LOC owns complete App/IPA packaging.
 
 ## Module identities and ownership
 
@@ -10,7 +10,7 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 |---|---|---|---|
 | `lo3r@loc` (loc) = LunaCodex | `EsotericVerse/lunacodex` | LOC SaaS, Galaxy data and Z-Model, business authorization, SQL Portable and database dialects (PostgreSQL / MySQL / MSSQL) | `loc.lo3rwang.cc` |
 | `lo3r@lrs` (lrs) = LunaRunes | `EsotericVerse/lunarunes` | Rune assets, Effekseer/effects, rune UI and games | `lrunes.lo3rwang.cc` |
-| `lo3r@las` (las) = LunArcus / Luna Protocol | `EsotericVerse/lunarcus` | Identity/SSO, Extension, MCP protocol/gateway, **cross-module Data Mapping**; ISR planned under LAS Auth | `auth.lo3rwang.cc`, `mcp.lo3rwang.cc` |
+| `lo3r@las` (las) = LunArcus / Luna Protocol | `EsotericVerse/lunarcus` | Identity/SSO, Plugins, MCP protocol/gateway, **cross-module Data Mapping**; ISR planned under LAS Auth | `auth.lo3rwang.cc`, `mcp.lo3rwang.cc` |
 
 `lo3r@lrs` replaces the previously suggested module label `lrune`; it does **not** rename the existing `lrunes` database Scope, `lrunes.lo3rwang.cc`, asset directories, OAuth client, or other public compatibility keys.
 
@@ -28,7 +28,10 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 - No LAS GitHub Actions deployment secret is needed by this validation-only workflow. The manual LAS MCP workflow remains independently token-gated and cannot take over the MCP domain.
 - Build/preview/deployment success does not prove browser SSO, OAuth exchange or session compatibility. These require separate HTTP/OIDC and browser acceptance.
 
-## Chrome Extension
+## Plugins (las:plugins)
+
+The Chrome Plugin is implemented as a browser extension in `plugins/chrome/`; **Plugins** is the LAS module name. Client-side Plugin changes alone do not rebuild LAS server Workers or LOC.
+
 
 - Files: `plugins/chrome/`
 - Original `manifest.key`, OAuth `client_id` and Chromium redirect URI are retained to preserve the Extension identity and local Queue continuity.
@@ -43,6 +46,15 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 - The duplicate original MCP source snapshot has been removed from LAS. It is still safely retained in `lunacodex`.
 - `mcp.lo3rwang.cc` remains on LOC Cloudflare Pages until live end-to-end cutover, not merely Wrangler dry-run.
 - See `docs/MCP-BOUNDARY.md` and `docs/MCP-DEPLOYMENT.md`.
+
+## Adaptive deployment impact (LAS first, LOC only when needed)
+
+- `scripts/plan-las-deployment.mjs` independently classifies **LAS Auth Worker**, **LAS MCP Server**, and **las:plugins** changes. `app/las/tunnel/` CMS Data Mapping belongs to LAS, not LOC; a CMS Data Mapping-only change does **not** trigger either LAS MCP Server or LOC deployment.
+- `notify-loc-after-auth.yml` runs only after a successful Cloudflare `Workers Builds: lunarcus` check for the current LAS `main`, and uses the checked commit diff to classify whether LOC needs to rebuild. Published Auth/OAuth public contract changes can notify LOC; internal Auth implementation, Plugin, Data Mapping, routine package, documentation and Skills changes do not automatically notify it.
+- An MCP Server change concerns the **LAS MCP** deployment, which remains manual and route-less until cutover. A changed MCP-to-LOC API boundary is flagged **review** rather than silently redeploying LOC.
+- LOC impact is `notify`, `skip`, or `review`; automatic mode only sends the protected LOC Pages/main hook for `notify`. Manual `workflow_dispatch` provides `auto`, `notify`, or `skip` override. `review` means no automatic LOC release.
+- `LOC_PAGES_DEPLOY_HOOK` is optional in LAS GitHub Actions Secrets; when unset, LOC can consume LAS's already-published service at the next normal LOC deployment. Never commit the hook URL, duplicate LOC's deploy pipeline or push an artificial LOC commit.
+- Deployment classification is a conservative **path plus changed-code heuristic**, not a guarantee of application compatibility. Real OAuth/SSO and MCP tests remain separate.
 
 ## iOS IPA ownership
 
