@@ -45,6 +45,20 @@ async function walk(dir){
 }
 for(const dir of sourceDirs)await walk(dir);
 
+// The original Rune CSS and public-facing image assets are native-only LOC
+// checkout inputs now. The LOC Web source/release never carries these files.
+const nativeStyles=['app/styles/runes.css','app/styles/home-runes.css'];
+const runePictures=['LunaRunes-hero.jpg','LunaRunes-hero_s.webp','LunaRunes.webp',
+  'LunaRunesGame.jpg','lrunes66_overview.jpg','lrunes66_overview_s.jpg'];
+for(const rel of [...nativeStyles,...runePictures.map(name=>'assets/pics/'+name)]){
+  const source=join(lrs,...rel.split('/'));
+  if(!(await readFile(source)).length)throw Error('Missing native Rune asset: '+rel);
+  const target=join(loc,...rel.split('/'));
+  await mkdir(dirname(target),{recursive:true});
+  await cp(source,target,{force:true});
+}
+
+
 // LOC Web deliberately imports its tiny LRS link view. Restore the original
 // Rune homepage *only in this temporary native checkout* before Next build.
 // These two exact, checked substitutions leave every other LOC edit intact.
