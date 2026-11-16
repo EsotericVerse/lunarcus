@@ -32,6 +32,7 @@ jobs:
       base_version: ${{ steps.meta.outputs.base_version }}
       ipa_name: ${{ steps.meta.outputs.ipa_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
+      loc_sha: ${{ steps.meta.outputs.loc_sha }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -68,6 +69,7 @@ jobs:
             exit 1
           fi
           printf 'version=%s\nbase_version=%s\nipa_name=%s\nrelease_tag=%s\n' \
+          printf 'loc_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             "$version" "${version%%-*}" "LOC-$version-device-unsigned.ipa" "$REQUESTED_RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
@@ -87,11 +89,11 @@ jobs:
       LOC_RELEASE_TAG: ${{ needs.guard.outputs.release_tag }}
       LOC_BUILD_NUMBER: ${{ github.run_number }}
     steps:
-      - name: Checkout LOC source for existing IPA flow
+      - name: Checkout pinned LOC source for existing IPA flow
         uses: actions/checkout@v4
         with:
           repository: EsotericVerse/lunacodex
-          ref: main
+          ref: ${{ needs.guard.outputs.loc_sha }}
           path: loc-source
           persist-credentials: false
       - name: Install Node.js 22
@@ -199,7 +201,10 @@ jobs:
         if: ${{ needs.guard.outputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$LOC_RELEASE_TAG" "dist/$LOC_IPA_NAME"
+        run: |
+          gh release view "$LOC_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null ||
+            { echo "::error::The requested LAS release does not exist; unsigned Actions artifact is retained."; exit 1; }
+          gh release upload "$LOC_RELEASE_TAG" "dist/$LOC_IPA_NAME" --repo "$GITHUB_REPOSITORY"
       - name: Publish build summary and artifact link
         env:
           ARTIFACT_URL: ${{ steps.ipa_upload.outputs.artifact-url }}

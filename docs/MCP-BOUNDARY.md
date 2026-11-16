@@ -1,8 +1,8 @@
 # MCP move: dependency and trust boundary
 
-**`las` (LunArcus / Luna Protocol)** owns protocol transport, OIDC/OAuth integration, Chrome Extension, MCP Gateway and cross-module **Data Mapping**. **`loc` (LunaCodex)** owns Galaxy records/models, business authorization, imports, SQL Portable CRUD and PostgreSQL/MySQL/MSSQL dialect adapters. **`lrs` (LunaRunes)** owns rune assets and game/effects. These are module IDs, not renamed domains, database Scopes or OAuth client identifiers.
+**`lo3r@las` (LAS / LunArcus / Luna Protocol)** owns protocol transport, OIDC/OAuth integration, Chrome Extension, MCP Gateway and cross-module **Data Mapping**. **`lo3r@loc` (LOC / LunaCodex)** owns Galaxy records/models, business authorization, imports, SQL Portable CRUD and PostgreSQL/MySQL/MSSQL dialect adapters. **`lo3r@lrs` (LRS / LunaRunes)** owns rune assets and game/effects. These are module IDs, not renamed domains, database Scopes or OAuth client identifiers.
 
-The current `app/loc/mcp/` directory in this repository is an exact migration snapshot, **not yet a standalone runtime**. In particular:
+The active independently bundling LAS runtime is now `app/las/mcp/`. The modules below remain in the original **LOC repository** as the SaaS business/data implementation; they are not duplicated in the LAS runtime.
 
 | Copied module | Cross-repository requirements remaining |
 |---|---|
@@ -26,4 +26,4 @@ LAS mapping may normalize field names, transport envelopes, object/version refer
 4. Preserve existing MCP tools, SSE streaming, idempotency receipts, resource metadata and Chrome OAuth callbacks before cutover.
 5. Keep the existing production `mcp.lo3rwang.cc` route until a replacement has functional parity and real authentication/permission regression verification. No Cloudflare changes are authorized by this snapshot alone.
 
-MCP source here is therefore a preservation/porting baseline, not evidence of deployment readiness.
+LAS MCP syntax, contract checks and Worker dry-run have passed. Production equivalence and domain cutover have **not** been performed.

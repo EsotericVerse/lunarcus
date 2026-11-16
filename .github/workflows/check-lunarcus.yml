@@ -9,6 +9,11 @@ on:
       - 'public/extension/oauth/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.github/workflows/ios-device-build.yml'
+      - 'docs/MODULE-ARCHITECTURE.md'
+      - 'docs/MCP-BOUNDARY.md'
+      - 'docs/ISR-HANDOFF.md'
+      - 'scripts/test-module-boundaries.mjs'
       - 'scripts/check-migration-contract.mjs'
       - '.github/workflows/check-lunarcus.yml'
   workflow_dispatch:
@@ -34,5 +39,7 @@ jobs:
         run: npm run check:auth && npm run check:extension
       - name: Validate MCP runtime contract and mapping
         run: npm run check:mcp
+      - name: Enforce module names, ownership and IPA input pinning
+        run: node --test scripts/test-module-boundaries.mjs
       - name: Dry-run Worker bundles (never publish)
         run: npm run auth:dry-run && npm run mcp:dry-run
