@@ -31,7 +31,14 @@ for(const name of authFiles){
   assert.ok(existsSync(candidate),name+' has missing relative import '+match[1]);
  }
 }
-const source=readFileSync(resolve(root,'services/workers/lunarcus/wrangler.jsonc'),'utf8');
+const source=readFileSync(resolve(root,'wrangler.jsonc'),'utf8');
+const legacy=JSON.parse(readFileSync(resolve(root,'services/workers/lunarcus/wrangler.jsonc'),'utf8'));
+const {main:legacyMain,...legacyOptions}=legacy;
+const rootConfig=JSON.parse(source);
+const {main:rootMain,...rootOptions}=rootConfig;
+assert.equal(rootMain,'./services/workers/lunarcus/index.mjs','Root deploy must target LAS Auth, not MCP');
+assert.deepEqual(rootOptions,legacyOptions,'Root and nested Auth Worker settings must match');
+assert.deepEqual(rootConfig.previews,{},'The default root config must support Workers Previews');
 const wrangler=JSON.parse(source);
 assert.equal(wrangler.name,'lunarcus','Target the existing LunArcus Worker script, never create auth');
 assert.equal(wrangler.routes?.[0]?.pattern,'auth.lo3rwang.cc');
