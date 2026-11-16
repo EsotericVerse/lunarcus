@@ -1,5 +1,16 @@
 name: Deploy LAS MCP Worker
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/workers/las-mcp/**'
+      - 'app/las/mcp/**'
+      - 'app/las/tunnel/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/test-las-mcp-contract.mjs'
+      - 'scripts/test-las-mcp-worker-http.mjs'
+      - '.github/workflows/deploy-las-mcp.yml'
   workflow_dispatch:
 
 permissions:
@@ -7,7 +18,7 @@ permissions:
 
 concurrency:
   group: las-mcp-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   mcp:
