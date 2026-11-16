@@ -33,19 +33,21 @@ The stable **module IDs** are `loc`, `lrs`, and `las` (lowercase). Repository na
 - The original binary icon and Hero are retained by Git blob SHA. Third-party attribution/license files remain alongside the vendored scripts.
 - The Chrome profile will still point at the old unpacked folder until it is deliberately switched after validation. **Do not clear storage or reinstall a second copy while the original is in use.**
 
-## MCP gateway (source staged; NOT yet a standalone live deployment)
+## MCP Gateway (built independently; production routing unchanged)
 
-- Existing source copied to `app/loc/mcp/` for a lossless handover.
-- The old router/native operations have LOC business-service imports (queries, Scope authorization, Z-Model and portable SQL). A copied folder alone is **not** a working independent gateway.
-- Keep the production `mcp.lo3rwang.cc` service on its existing route while moving pure gateway/identity/protocol components to LunArcus. LOC's business queries and portable SQL dialects remain in `lunacodex` behind verified, bounded server-side interfaces.
-- See `docs/MCP-BOUNDARY.md` for outstanding dependencies. Do not deploy or expose a new MCP endpoint from these staged files.
+- Active LAS protocol lives in `app/las/mcp/` and `services/workers/las-mcp/`.
+- The fixed mapping in `app/las/mcp/loc-mapping.mjs` calls LOC's OAuth-verified business endpoint. LOC owns Galaxy, Z-Model, Scope permissions and SQL dialects.
+- LAS builds independently with `npm run check:mcp` and `npm run mcp:dry-run` without MySQL, MSSQL or LOC business packages.
+- The duplicate original MCP source snapshot has been removed from LAS. It is still safely retained in `lunacodex`.
+- `mcp.lo3rwang.cc` remains on LOC Cloudflare Pages until live end-to-end cutover, not merely Wrangler dry-run.
+- See `docs/MCP-BOUNDARY.md` and `docs/MCP-DEPLOYMENT.md`.
 
 ## iOS IPA ownership
 
 - `.github/workflows/ios-device-build.yml` is a manual **LunArcus-owned orchestration** of the EXISTING LOC Capacitor/iOS build. It checks out `EsotericVerse/lunacodex` to `loc-source` and uses the current verified native steps.
 - An iOS App still packages its original required files, including rune images; the Web-only remote-asset strategy must not be applied to the native IPA.
-- Artifacts are produced by LunArcus Actions. No build/deploy is triggered by a LOC Web push. Current source integration from `lunarunes` is pending the other agent's migration.
-- Do not launch parallel old/new IPA jobs during handover. No releases are published unless explicitly requested and compatible tags exist.
+- Artifacts are produced by LunArcus Actions. No build/deploy is triggered by a LOC Web push. Current LRS asset integration remains dependent on the separate rune project's verified output.
+- Do not launch parallel old/new IPA jobs during handover. Release attachment is optional and only targets an already-existing LAS release; an unsigned Actions artifact is the default.
 
 ## Local Windows checkout
 
@@ -53,3 +55,11 @@ The three sibling folders are `C:\GitHub\lunacodex`, `C:\GitHub\lunarunes`, `C:\
 If `lunarcus` was cloned using sparse-checkout with only root files, the migrated directories will not appear until its sparse paths are expanded. Since this repository is small, after the approved branch merges, run `git -C C:\GitHub\lunarcus sparse-checkout disable` when you want all source files locally.
 
 **Migration policy:** no source deletion from `lunacodex` or Cloudflare binding/secret/domain changes before full Auth+MCP+IPA acceptance.
+
+## Formal module namespaces
+
+The canonical namespace is `loc / lrs / las`, **not** `lrune`. LAS submodules are `las:auth`, `las:plugins` (including this Extension), `las:mcp`, `las:tunnel` (cross-system/CMS data mapping), `las:ipa`, and `las:apk` (planned). Ownership and implementation status are tracked in `docs/MODULE-ARCHITECTURE.md`.
+
+## ISR (planned service ownership)
+
+The existing `loc-isr` Worker at `isr.lo3rwang.cc` contains an OpenNext bundle but its original source is not in the current LOC Git tree. It remains untouched until source recovery and separate build verification. ISR is optional and off by default; it must never block `las:auth`. See `docs/ISR-HANDOFF.md`.
