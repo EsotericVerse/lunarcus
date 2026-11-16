@@ -16,15 +16,16 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 **Module contracts:** LAS owns cross-module transport and data mapping, not Galaxy business records or the actual LOC data schema; LOC keeps its existing SQL dialect implementation. LAS Auth uses the existing PostgreSQL runtime without bringing MySQL/MSSQL into this repo. Shared `packages` have **not** been migrated or reorganized, and no duplicate SQL adapter should be introduced to simulate sharing before a real package/service contract exists.
 
-## Auth (source staged; deployment not cut over)
+## Auth (LAS-owned deployment pipeline)
 
 - Worker source: `services/workers/lunarcus/`
 - Existing Cloudflare Worker script: **`lunarcus`** (owner-renamed from `auth`). Existing hostname/issuer **`auth.lo3rwang.cc`** remains unchanged. Do not recreate an `auth` Worker, create a second OIDC issuer or invalidate clients.
 - Existing Cloudflare secret binding names beginning with `LOC_` remain **compatibility contracts**; rename the system LunArcus, not the live secret keys, OAuth scopes, extension ID, or existing user database.
 - `npm ci --ignore-scripts` installs a deliberately smaller **PostgreSQL-only** Auth runtime; no Next.js, MySQL, MSSQL, rune renderer, or Sharp/asset pipeline.
 - `npm run check:auth`; `npm run auth:dry-run`.
-- `.github/workflows/deploy-lunarcus-auth.yml` is **manual**. Before using it, configure the new repository's `CLOUDFLARE_API_TOKEN` Actions secret with only required permissions. A token in the old repository is not transferred automatically.
-- Do not trigger this workflow until its dry-run succeeds and the live Worker bindings are compared to the expected configuration. Existing Worker and old deployment remain intact until handover.
+- `.github/workflows/deploy-lunarcus-auth.yml` validates LAS Auth changes merged to `main`, then publishes to the existing `lunarcus` Worker using the LAS repo's own `CLOUDFLARE_API_TOKEN` GitHub Actions secret. `workflow_dispatch` is available for explicit releases. Changes confined to docs, Plugins, MCP, LOC or LRS do not trigger an Auth deploy.
+- The LAS Actions secret must be granted minimum required Cloudflare deployment permissions; secrets from LOC are not inherited. This workflow fails closed when the secret is unavailable. Do not also turn on Cloudflare Workers Builds for the same repository/Worker path: that would double-deploy.
+- Wrangler dry-run and deployment success do not prove browser SSO, OAuth exchange or session compatibility. These require separate HTTP/OIDC and browser validation.
 
 ## Chrome Extension
 
