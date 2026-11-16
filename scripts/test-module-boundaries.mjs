@@ -29,6 +29,10 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
 test('IPA workflow pins the same LOC commit across validation and native build',()=>{
   const source=read('.github/workflows/ios-device-build.yml');
   assert.ok(source.includes('loc_sha: ${{ steps.meta.outputs.loc_sha }}'));
+  assert.ok(source.includes('lrs_commit: ${{ steps.meta.outputs.lrs_commit }}'));
+  assert.ok(source.includes('ref: ${{ needs.guard.outputs.lrs_commit }}'));
+  assert.ok(source.includes('consume-lrs-ios-artifacts.mjs'));
+  assert.ok(source.includes("if: ${{ needs.guard.outputs.lrs_commit != '' }}"));
   assert.ok(source.includes('ref: ${{ needs.guard.outputs.loc_sha }}'));
   assert.ok(source.includes("$(git rev-parse HEAD)"));
   assert.ok(source.includes('workflow_dispatch:'));
