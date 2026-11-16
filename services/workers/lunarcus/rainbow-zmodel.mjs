@@ -1,4 +1,4 @@
-// Generated from the existing Neon public.rainbow_* catalog on 2026-11-13.
+// Generated from the LAS public.las_* physical table contract; field definitions preserved from the previous catalog.
 // Better Auth official ZenStack adapter consumes these physical field contracts;
 // no runtime introspection, DDL, migrations, or LOC Web models.
 export const RAINBOW_MODEL_NAMES=Object.freeze({
@@ -229,7 +229,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_auth"
+              "value": "las_auth"
             }
           }
         ]
@@ -392,7 +392,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_session"
+              "value": "las_session"
             }
           }
         ]
@@ -600,7 +600,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_account"
+              "value": "las_account"
             }
           }
         ]
@@ -730,7 +730,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_verification"
+              "value": "las_verification"
             }
           }
         ]
@@ -854,7 +854,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_jwks"
+              "value": "las_jwks"
             }
           }
         ]
@@ -1247,7 +1247,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_client"
+              "value": "las_oauth_client"
             }
           }
         ]
@@ -1481,7 +1481,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_resource"
+              "value": "las_oauth_resource"
             }
           }
         ]
@@ -1576,7 +1576,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_client_resource"
+              "value": "las_oauth_client_resource"
             }
           }
         ]
@@ -1810,7 +1810,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_refresh_token"
+              "value": "las_oauth_refresh_token"
             }
           }
         ]
@@ -2016,7 +2016,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_access_token"
+              "value": "las_oauth_access_token"
             }
           }
         ]
@@ -2177,7 +2177,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_consent"
+              "value": "las_oauth_consent"
             }
           }
         ]
@@ -2235,7 +2235,7 @@ export const rainbowSchema={provider:{type:'postgresql',defaultSchema:'public'},
             "name": "name",
             "value": {
               "kind": "literal",
-              "value": "rainbow_oauth_client_assertion"
+              "value": "las_oauth_client_assertion"
             }
           }
         ]
