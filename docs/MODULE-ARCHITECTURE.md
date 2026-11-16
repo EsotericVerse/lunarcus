@@ -24,15 +24,15 @@ The person and brand aliases `Lucas Oscar Wang`, `lo3rwang`, `lo3r`, and `Luciph
 
 - `loc.lo3rwang.cc` = LOC SaaS
 - `lrunes.lo3rwang.cc` = existing Rune/SaaS domain
-- `auth.lo3rwang.cc` = existing Cloudflare `auth` Worker, OAuth/OIDC Issuer
+- `auth.lo3rwang.cc` = OAuth/OIDC Issuer (unchanged); existing Cloudflare Worker script is **`lunarcus`**
 - `mcp.lo3rwang.cc` = existing MCP hostname (currently LOC Pages)
 - `isr.lo3rwang.cc` = existing separate ISR Worker
 
-Do not rename any host, Worker Script, OAuth Client ID, Extension ID, Cloudflare secret binding or existing Scope as part of module naming. `packages/` currently remains in its original repository and **has not been transferred**.
+The existing Auth Worker script was renamed separately from `auth` to `lunarcus` by the owner; do not recreate the old `auth` script or alter its `auth.lo3rwang.cc` custom domain, OAuth Client ID, Extension ID, Cloudflare secret bindings or existing Scopes as part of module naming. `packages/` currently remains in its original repository and **has not been transferred**.
 
 ## Implementation status
 
-- `las:auth`: source moved; isolated PostgreSQL install, syntax check and Wrangler dry-run pass. Existing production `auth` deployment is not cut over.
+- `las:auth`: source moved; isolated PostgreSQL install, syntax check and Wrangler dry-run pass. The `lunarcus` production Worker exists, but LAS source deployment and full SSO regression are not yet validated.
 - `las:plugins`: Chrome Galaxy Link extension source moved; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
 - `las:mcp` + `las:tunnel`: independent Worker remains in `app/las/mcp/`; fixed-operation LOC Data Mapping lives in `app/las/tunnel/loc-mapping.mjs`, with a compatibility re-export in MCP. The mapping cannot select SQL, DB targets, or untrusted service URLs. Full production OAuth/permission parity and Pages-domain cutover still required.
 - `las:ipa`: manual workflow transferred and LOC commit pinned between jobs; physical IPA not yet built.
