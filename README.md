@@ -2,13 +2,19 @@
 
 LunArcus is the integration and packaging repository for the LOC ecosystem. Its responsibilities are **Auth / SSO**, **Chrome Extension**, **MCP gateway**, and orchestration of the **existing unsigned iOS IPA build**.
 
-## Ownership
+## Module identities and ownership
 
-| Repository | Responsibility |
-|---|---|
-| `EsotericVerse/lunacodex` | LOC Web, business databases and SQL-portable PostgreSQL/MySQL/SQL Server data access |
-| `EsotericVerse/lunarunes` | Rune assets, effects, rune presentation/game |
-| `EsotericVerse/lunarcus` | Identity and SSO, bridge protocol, Galaxy Link extension, MCP gateway, IPA packaging |
+The stable **module IDs** are `loc`, `lrs`, and `las` (lowercase). Repository names and existing service hostnames are separate identifiers.
+
+| Module | Repository | Responsibility | Existing hostnames |
+|---|---|---|---|
+| `loc` = LunaCodex | `EsotericVerse/lunacodex` | LOC SaaS, Galaxy data and Z-Model, business authorization, SQL Portable and database dialects (PostgreSQL / MySQL / MSSQL) | `loc.lo3rwang.cc` |
+| `lrs` = LunaRunes | `EsotericVerse/lunarunes` | Rune assets, Effekseer/effects, rune UI and games | `lrunes.lo3rwang.cc` |
+| `las` = LunArcus / Luna Protocol | `EsotericVerse/lunarcus` | Identity/SSO, Extension, MCP protocol/gateway, **cross-module Data Mapping**, IPA orchestration; ISR planned under LAS Auth | `auth.lo3rwang.cc`, `mcp.lo3rwang.cc` |
+
+`lrs` replaces the previously suggested module label `lrune`; it does **not** rename the existing `lrunes` database Scope, `lrunes.lo3rwang.cc`, asset directories, OAuth client, or other public compatibility keys.
+
+**Module contracts:** LAS owns cross-module transport and data mapping, not Galaxy business records or the actual LOC data schema; LOC keeps its existing SQL dialect implementation. LAS Auth uses the existing PostgreSQL runtime without bringing MySQL/MSSQL into this repo. Shared `packages` have **not** been migrated or reorganized, and no duplicate SQL adapter should be introduced to simulate sharing before a real package/service contract exists.
 
 ## Auth (source staged; deployment not cut over)
 
