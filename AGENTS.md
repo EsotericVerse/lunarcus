@@ -78,7 +78,8 @@
 | Workers syntax/bundle | `npm run auth:dry-run`／`npm run mcp:dry-run`，不會發布 |
 | Agent Skills | `node scripts/check-las-agent-skills.mjs` |
 
-- 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。現有 `lunarcus` Worker 同時服務 Auth/MCP，不允許重新打開手動獨立 MCP 發布或建立平行管線。Cloudflare 網域／密鑰／Build Watch Paths 只有當次明確授權才可變更。\n- **LAS 先完成自己的正式部署，再獨立判定是否通知 LOC**：Plugins、CMS Data Mapping、內部修改為 `skip`；`review` 不自動通知；確實影響已引用契約才以既有 Cloudflare → LOC GitHub Workflow 路徑驗證發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得以 LOC Pages Deploy Hook 當固定發布流程。
+- 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。現有 `lunarcus` Worker 同時服務 Auth/MCP，不允許重新打開手動獨立 MCP 發布或建立平行管線。Cloudflare 網域／密鑰／Build Watch Paths 只有當次明確授權才可變更。
+- **LAS 先完成自己的正式部署，再獨立判定是否通知 LOC**：Plugins、CMS Data Mapping、內部修改為 `skip`；`review` 不自動通知；確實影響已引用契約才以既有 Cloudflare → LOC GitHub Workflow 路徑驗證發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得以 LOC Pages Deploy Hook 當固定發布流程。
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
 - PR 要附最小充分測試和變更影響；他人正在變動時，先確認最新 `main`，不要用舊分支反向蓋掉。
 
