@@ -473,10 +473,13 @@ async function sendViaAuth(scopeid,batch,token,config){
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
-  const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''));
-  if(rows.some(isUnorderedConversationCapture))
-   throw Error('Queue 含舊版無序對話碎片，已阻止自動 append；Queue 原始資料保留，請勿清除');
-  if(!rows.length)return {message:'Queue 已清空',sent:0};
+  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''));
+  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
+  const rows=pending.filter(row=>!isUnorderedConversationCapture(row));
+  // Preserve legacy conversations without preventing unrelated posts from sending.
+  if(!rows.length)return {message:legacyConversationCount
+   ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
+   :'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
   if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
