@@ -49,7 +49,7 @@ test('PR metadata stays outside conversation reconstruction',()=>{
  assert.equal(pr.reason,'not-a-conversation');
 });
 test('generic conversation requires explicit ordinal sequence rather than captured_at',()=>{
- const generic={id,messages:[
+ const generic={id,platform:'chatgpt',messages:[
   {id:'2',sequence:1,role:'assistant',text:'answer'},
   {id:'1',sequence:0,role:'user',text:'question'}
  ]};
