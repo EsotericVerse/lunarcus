@@ -4,6 +4,7 @@ const CONSOLE_PAGES=Object.freeze({
   overview:'總覽',
   daily:'每日符文',
   capture:'擷取',
+  organize:'訊息重整',
   activity:'Queue',
   settings:'設定'
 });

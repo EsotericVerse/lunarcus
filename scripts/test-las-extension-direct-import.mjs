@@ -167,7 +167,7 @@ test('conversation fragments without source order never enter the Queue',async()
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
   assert.ok(background.includes('const chat=isConversationSource(tab.url)'));
-  assert.ok(background.includes("const ordered=pending.filter(row=>row.kind==='ordered_conversation')"));
+  assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
   assert.match(background,/legacyConversationCount/);
 });
 
@@ -237,4 +237,47 @@ test('ordered Queue goes only to canonical MCP tool, validates receipt',async()=
  assert.equal(body.params.arguments.records[0].source_order,20);
  assert.equal(body.params.arguments.records[0].message_id,'msg-20');
  assert.equal(requests.some(req=>req.url===LOC_IMPORT),false);
+});
+
+test('six function keys include pre-send message organizer without restoring provider selection',()=>{
+ const html=readFileSync(new URL('options.html',extension),'utf8');
+ const pages=readFileSync(new URL('options-pages.js',extension),'utf8');
+ const js=readFileSync(new URL('options.js',extension),'utf8');
+ for(const id of ['overview','daily','capture','organize','activity','settings']){
+  assert.ok(html.includes('id="'+id+'"'),'Missing page: '+id);
+  assert.equal((html.match(new RegExp('data-page="'+id+'"','g'))||[]).length,1);
+  assert.ok(pages.includes(id+':'),'Missing page registration: '+id);
+ }
+ assert.match(html,/id="organizeGroups"/);
+ assert.match(html,/id="organizeRefresh"/);
+ assert.ok(js.includes("call('conversation.review')"));
+ assert.ok(js.includes("call('conversation.approve'"));
+ assert.ok(js.includes("call('loc-flush')"));
+ assert.ok(!html.includes('href="#providers"'));
+ assert.ok(!html.includes('mcpProviders'));
+});
+test('pre-send organizer restores source order, but blocks duplicate ordinals and quarantines legacy',()=>{
+ const {sandbox}=makeRuntime();
+ const base={scopeid:'lo3rwang',kind:'ordered_conversation',
+  source_key:'https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940',
+  title:'Test',role:'user',text:'message'};
+ const items=[
+  {...base,id:'late',message_id:'m100',source_order:100},
+  {...base,id:'early',message_id:'m20',source_order:20},
+  {id:'legacy',kind:'capture',source_key:base.source_key,url:base.source_key,
+    content:'[user]\\nold'}
+ ];
+ const preview=vm.runInContext('reviewGroups(organizeRows)',
+  Object.assign(sandbox,{organizeRows:items}));
+ assert.equal(preview.ordered_count,2);
+ assert.equal(preview.legacy_count,1);
+ assert.equal(preview.conversations[0].valid,true);
+ assert.equal(preview.conversations[0].ready,false);
+ assert.equal(preview.conversations[0].messages[0].source_order,20);
+ assert.equal(preview.conversations[0].messages[1].source_order,100);
+ const duplicate=vm.runInContext('reviewGroups(organizeRows)',
+  Object.assign(sandbox,{organizeRows:[items[0],{...items[1],source_order:100}]}));
+ assert.equal(duplicate.conversations[0].valid,false);
+ assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
+ assert.ok(background.includes("sender?.id!==chrome.runtime.id"));
 });
