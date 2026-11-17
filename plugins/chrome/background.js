@@ -78,6 +78,67 @@ async function putEvents(events){
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
 }
+// Local-only ordered-message review. Nothing is sent, deleted or re-ordered
+// in IndexedDB until an explicit review confirmation succeeds.
+function reviewGroups(rows){
+ const grouped=new Map(),legacy=[];
+ for(const row of rows){
+  if(isUnorderedConversationCapture(row)){legacy.push(row);continue;}
+  if(row.kind!=='ordered_conversation')continue;
+  const key=(row.scopeid||'lo3rwang')+'|'+row.source_key;
+  if(!grouped.has(key))grouped.set(key,[]);
+  grouped.get(key).push(row);
+ }
+ const conversations=[...grouped].map(([key,items])=>{
+  const sorted=[...items].sort((a,b)=>a.source_order-b.source_order);
+  const ids=new Set(sorted.map(r=>r.message_id));
+  const positions=new Set(sorted.map(r=>r.source_order));
+  const valid=sorted.every(r=>Number.isSafeInteger(r.source_order)&&r.source_order>=0&&
+   typeof r.message_id==='string'&&r.message_id.length>0&&
+   ['user','assistant'].includes(r.role)&&typeof r.text==='string')&&
+   ids.size===sorted.length&&positions.size===sorted.length;
+  return {key,scopeid:sorted[0].scopeid||'lo3rwang',
+   source:sorted[0].source_key,title:sorted[0].title||'對話',
+   valid,ready:valid&&sorted.every(r=>r.reviewed===true),
+   message_count:sorted.length,unreviewed:sorted.filter(r=>r.reviewed!==true).length,
+   messages:sorted.map(r=>({id:r.id,message_id:r.message_id,role:r.role,
+    source_order:r.source_order,parent_id:r.parent_id||null,
+    preview:String(r.text||'').slice(0,300),reviewed:r.reviewed===true}))
+  };
+ });
+ return {conversations,legacy_count:legacy.length,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
+}
+async function approveReviewedConversation(key,expectedIds){
+ if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
+    expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
+ const rows=await allEvents();
+ const group=reviewGroups(rows).conversations.find(g=>g.key===key);
+ if(!group||!group.valid||group.message_count!==expectedIds.length||
+   new Set(expectedIds).size!==expectedIds.length||
+   group.messages.some(m=>!expectedIds.includes(m.id)))
+  throw Error('待送內容已改變，請重新預覽時序；沒有確認任何資料');
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+  let pending=group.messages.length,changed=0,invalid=false;
+  for(const entry of group.messages){
+   const req=store.get(entry.id);
+   req.onsuccess=()=>{
+    const item=req.result;
+    if(!item||item.kind!=='ordered_conversation'||
+       (item.scopeid||'lo3rwang')+'|'+item.source_key!==key||
+       item.source_order!==entry.source_order||item.message_id!==entry.message_id){
+      invalid=true;tx.abort();return;
+    }
+    if(item.reviewed!==true){item.reviewed=true;store.put(item);changed++;}
+    if(--pending===0&&!invalid){} 
+   };
+  }
+  tx.oncomplete=()=>{db.close();resolve({approved:changed,ready:true});};
+  tx.onabort=()=>{db.close();reject(Error('Queue 已異動，請重新預覽；沒有送出'))};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
 async function removeEvents(records){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
@@ -543,7 +604,7 @@ async function flush(force=false){
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
-  const ordered=pending.filter(row=>row.kind==='ordered_conversation');
+  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed===true);
   const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
    row.kind!=='ordered_conversation');
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
@@ -839,6 +900,19 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      throw Error('Only Extension settings may clear diagnostics');
     await chrome.storage.local.remove([DIAGNOSTIC_KEY,'locLastAction']);
     return {cleared:true};
+   }
+   case 'conversation.review':{
+    // Trusted options page only; never expose private Queue text to websites.
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
+    return reviewGroups(await allEvents());
+   }
+   case 'conversation.approve':{
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('只有 LunArcus 設定頁能確認訊息時序');
+    return approveReviewedConversation(String(message.key||''),message.ids);
    }
    case 'loc-diagnostics':{
     const [stored,last]=await Promise.all([
