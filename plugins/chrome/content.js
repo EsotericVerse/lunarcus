@@ -50,8 +50,9 @@
     // The URL is the durable Galaxy source identity. Never archive a local
     // placeholder or attach old DOM turns to the next conversation on SPA nav.
     if(!threadId||pendingId)return [];
-    const source=normalizeUrl(location.href);
-    if(!source)return [];
+    // Canonical source identity must remain stable across project routes,
+    // query strings and SPA navigation around one conversation.
+    const source='https://chatgpt.com/c/'+threadId;
     // Never stop an entire chat because one turn is still generating.
     // A visible Stop button is the only active-generation signal; save all
     // completed turns in both whole-page capture and ongoing recording.
