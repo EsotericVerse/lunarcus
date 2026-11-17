@@ -14,11 +14,24 @@ test('las:plugins Chrome and public plugin settings do not rebuild LOC or server
   assert.equal(plan.loc,'skip');
 });
 
-test('LAS CMS Data Mapping remains LAS-owned and never independently rebuilds LOC',()=>{
+test('LOC Tunnel contract changes require review, never an automatic LOC build',()=>{
   const plan=planLasDeployment([file('app/las/tunnel/loc-mapping.mjs',
     '+const mcpOperation="mcp-read";')]);
   assert.equal(plan.las.mcp,false);
-  assert.equal(plan.loc,'skip');
+  assert.equal(plan.loc,'review');
+  assert.equal(chooseLocAction(plan,'auto'),'review');
+});
+test('Tunnel documentation-only changes and unrelated CMS mapping do not rebuild LOC',()=>{
+  const docs=planLasDeployment([file('app/las/tunnel/loc-mapping.mjs',
+    '@@ -1 +1 @@\\n-// Data Model Mapping\\n+// LOC Mapping')]);
+  assert.equal(docs.loc,'skip');
+  const mapping=planLasDeployment([file('app/las/tunnel/cms-model-mapping.mjs',
+    '+const mapping="changed";')]);
+  assert.equal(mapping.loc,'skip');
+});
+test('Missing LOC Tunnel bridge diff fails closed for review',()=>{
+  const plan=planLasDeployment([{filename:'app/las/tunnel/loc-mapping.mjs',patch:null}]);
+  assert.equal(plan.loc,'review');
 });
 
 test('LAS MCP server deployment is independent; only LOC-facing protocol changes need review',()=>{
