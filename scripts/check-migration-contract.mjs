@@ -8,9 +8,9 @@ assert.deepEqual(lock.packages[''].dependencies,pkg.dependencies,'Auth package-l
 assert.equal(lock.name,pkg.name);
 for(const name of ['mysql2','tedious','next','sharp','three'])assert.ok(!pkg.dependencies[name],'LunArcus root unexpectedly includes '+name);
 const files=[
-  'services/workers/lunarcus/index.mjs',
-  'services/workers/lunarcus/auth.mjs',
-  'services/workers/lunarcus/extension-client.mjs',
+  'app/las/index.mjs',
+  'app/las/auth/auth.mjs',
+  'app/las/auth/extension-client.mjs',
   'plugins/chrome/manifest.json',
   'plugins/chrome/background.js',
   'plugins/chrome/content.js',
@@ -23,9 +23,18 @@ const files=[
 ];
 for(const file of files)assert.ok(existsSync(resolve(root,file)),'Missing migration asset: '+file);
 assert.ok(!existsSync(resolve(root,'.github/workflows/ios-device-build.yml')),'IPA workflow belongs to LOC, not LAS');
-const authFiles=['index.mjs','auth.mjs','auth-qos.mjs','pg-driver.mjs','extension-client.mjs'];
-for(const name of authFiles){
- const file=resolve(root,'services/workers/lunarcus',name);
+const runtimeFiles=[
+  'app/las/index.mjs',
+  'app/las/auth/auth.mjs',
+  'app/las/auth/auth-qos.mjs',
+  'app/las/auth/pg-driver.mjs',
+  'app/las/auth/extension-client.mjs',
+  'app/las/auth/first-party-client.mjs',
+  'app/las/auth/loc-notification.mjs',
+  'app/las/mcp/server.mjs'
+];
+for(const name of runtimeFiles){
+ const file=resolve(root,name);
  const contents=readFileSync(file,'utf8');
  for(const match of contents.matchAll(/from\s+['"]([.][^'"]+)['"]/g)){
   const candidate=resolve(dirname(file),match[1]);
@@ -33,12 +42,11 @@ for(const name of authFiles){
  }
 }
 const source=readFileSync(resolve(root,'wrangler.jsonc'),'utf8');
-const legacy=JSON.parse(readFileSync(resolve(root,'services/workers/lunarcus/wrangler.jsonc'),'utf8'));
-const {main:legacyMain,...legacyOptions}=legacy;
 const rootConfig=JSON.parse(source);
-const {main:rootMain,...rootOptions}=rootConfig;
-assert.equal(rootMain,'./services/workers/lunarcus/index.mjs','Root deploy must target LAS Auth, not MCP');
-assert.deepEqual(rootOptions,legacyOptions,'Root and nested Auth Worker settings must match');
+assert.equal(rootConfig.main,'./app/las/index.mjs',
+  'Root Wrangler must deploy the LAS root entrypoint');
+assert.ok(!existsSync(resolve(root,'services/workers/lunarcus/wrangler.jsonc')),
+  'Do not retain a duplicate Wrangler deployment config');
 assert.deepEqual(rootConfig.previews,{},'The default root config must support Workers Previews');
 const wrangler=JSON.parse(source);
 assert.equal(wrangler.name,'lunarcus','Target the existing LunArcus Worker script, never create auth');
