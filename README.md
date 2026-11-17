@@ -18,7 +18,7 @@ The unique, stable **logical module identifiers** are `lo3r@loc`, `lo3r@lrs`, an
 
 ## Auth (LAS-owned deployment pipeline)
 
-- Worker source: `services/workers/lunarcus/`
+- Worker source: `app/las/auth/`
 - Existing Cloudflare Worker script: **`lunarcus`** (owner-renamed from `auth`). Existing hostname/issuer **`auth.lo3rwang.cc`** remains unchanged. Do not recreate an `auth` Worker, create a second OIDC issuer or invalidate clients.
 - Existing Cloudflare secret binding names beginning with `LOC_` remain **compatibility contracts**; rename the system LunArcus, not the live secret keys, OAuth scopes, extension ID, or existing user database.
 - `npm ci --ignore-scripts` installs a deliberately smaller **PostgreSQL-only** Auth runtime; no Next.js, MySQL, MSSQL, rune renderer, or Sharp/asset pipeline.
@@ -40,7 +40,7 @@ The Chrome Plugin is implemented as a browser extension in `plugins/chrome/`; **
 
 ## MCP Gateway (built independently; production routing unchanged)
 
-- Active LAS protocol lives in `app/las/mcp/` and `services/workers/las-mcp/`.
+- Active LAS protocol lives in `app/las/mcp/`; the single Worker entrypoint is `app/las/index.mjs`.
 - The fixed mapping in `app/las/mcp/loc-mapping.mjs` calls LOC's OAuth-verified business endpoint. LOC owns Galaxy, Z-Model, Scope permissions and SQL dialects.
 - LAS builds independently with `npm run check:mcp` and `npm run mcp:dry-run` without MySQL, MSSQL or LOC business packages.
 - The duplicate original MCP source snapshot has been removed from LAS. It is still safely retained in `lunacodex`.

@@ -6,7 +6,7 @@ on:
       - 'wrangler.jsonc'
       - 'vendor/loc-dialect/**'
       - 'scripts/test-las-dialect.mjs'
-      - 'services/workers/lunarcus/**'
+      - 'app/las/**'
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/check-migration-contract.mjs'

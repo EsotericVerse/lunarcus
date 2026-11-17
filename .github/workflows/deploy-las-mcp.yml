@@ -2,8 +2,7 @@ name: Verify MCP in existing LunArcus Worker (no second deployment)
 on:
   pull_request:
     paths:
-      - 'services/workers/lunarcus/**'
-      - 'services/workers/las-mcp/**'
+      - 'app/las/**'
       - 'app/las/mcp/**'
       - 'wrangler.jsonc'
       - '.github/workflows/deploy-las-mcp.yml'
