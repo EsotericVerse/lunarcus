@@ -125,6 +125,7 @@
     if(state.mode==='record'||state.mode==='paused')
       throw Error('請先停止目前錄製，再執行整篇歷史擷取');
     const href=normalizeUrl(location.href);
+    const deadline=Date.now()+180000; // Bound virtualized-history scans; never silently claim completeness.
     const main=document.querySelector('main')||document.body;
     const scroller=chatHistoryScroller(main);
     if(!scroller)throw Error('找不到對話的捲動容器；不能把目前載入的幾則訊息當成完整對話');
@@ -163,6 +164,7 @@
       // turns to be loaded. Repeated top-edge probes handle lazy backfill.
       let still=0,lastSig='';
       for(let n=0;n<3500;n++){
+        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
         ensureChat();
         const before=scroller.scrollTop,height=scroller.scrollHeight;
         setChatScroll(scroller,Math.max(0,before-step));
@@ -181,6 +183,7 @@
       // turns are collected before ChatGPT unmounts them.
       let stillAtEnd=0,lastAtEnd='';
       for(let n=0;n<5000;n++){
+        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
         const sig=collect();
         if(buffer.length>=50&&(!includeAssistant||assistant>0))await writeBuffered();
         const before=scroller.scrollTop,height=scroller.scrollHeight;
@@ -349,7 +352,9 @@
       }
     }
     const unique=[...new Set(articles)];
-    const cards=(unique.length?unique:(mode==='record'?[]:[doc])).slice(0,50);
+    // Never archive an entire social post page as one record: that includes
+    // comments, recommendations and unrelated feed cards under one identity.
+    const cards=(unique.length?unique:(mode==='record'||socialHost()?[]:[doc])).slice(0,50);
     const emittedSources=new Set();
     return cards.map(el=>{
       const source=stableSource(el);
