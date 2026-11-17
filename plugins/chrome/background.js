@@ -721,9 +721,8 @@ async function currentTab(){
 }
 async function capture(tab,selection='',includeAssistant=false){
  await inject(tab.id);
- const chat=isConversationSource(tab.url);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
-  includeAssistant:chat?true:includeAssistant});
+  includeAssistant:includeAssistant===true});
  if(reply?.error)throw Error(String(reply.error));
  if(reply?.directQueued===true){
   // Full ChatGPT history is admitted in bounded viewport batches.
@@ -749,7 +748,6 @@ async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  // reader. Missing original source ordinals fail before entering the Queue.
  if(isConversationSource(tab.url)&&type!=='page.record')
   throw Error('對話使用被動錄製或目前頁面擷取，不能以選取範圍取代完整時序');
- if(isConversationSource(tab.url))includeAssistant=true;
  // One active recorder. Stop the prior tab before moving the recorder.
  const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
  if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
