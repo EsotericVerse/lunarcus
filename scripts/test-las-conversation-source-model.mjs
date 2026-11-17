@@ -59,7 +59,7 @@ test('Claude no longer silently invents assistant content from a user-only snaps
   assert.equal(registry.project(profile,body,{...callbacks,includeAssistant:true,record:true}).length,1);
 });
 test('LLM source capture registry is injected and used; no duplicated per-platform parser',()=>{
-  assert.match(background,/conversation-source-model\\.js','content\\.js'/);
+  assert.ok(background.includes("'capture-source-model.js','conversation-source-model.js','content.js'"));
   assert.match(bridge,/LasConversationSourceModel/);
   assert.match(bridge,/registry\.project\(profile/);
   assert.doesNotMatch(bridge,/const selector=provider==='gemini'/);
