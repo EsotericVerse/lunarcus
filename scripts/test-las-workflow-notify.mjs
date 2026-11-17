@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {
-  verifyWorkflowOidc,makeLocSignedRequest,signLocRequest,
+  verifyWorkflowOidc,makeLocNotification,
   handleLocDeploymentSignal,LOC_SIGNAL_PATH
 } from '../services/workers/lunarcus/loc-notification.mjs';
 const crypto=webcrypto;
@@ -58,15 +58,12 @@ function build(jwt){return new Request(audience,{
   headers:{Authorization:'Bearer '+jwt,'Content-Type':'application/json'},
   body:JSON.stringify({sha})
 })}
-test('Signed envelope is short-lived and does not contain credentials',async()=>{
-  globalThis.crypto=crypto;
-  try{
-    const req=makeLocSignedRequest(sha,version,secret,Date.parse('2026-11-17T01:00:00Z'));
-    assert.equal(req.schema,'loc.las-published.v1');
-    assert.equal(Date.parse(req.expiresAt)-Date.parse(req.issuedAt),300000);
-    assert.match(await signLocRequest(req,secret),/^[a-f0-9]{64}$/);
-    assert.ok(!JSON.stringify(req).includes(secret));
-  }finally{globalThis.crypto=origCrypto;}
+test('Release envelope is short-lived and uses no new secrets',()=>{
+  const req=makeLocNotification(sha,version,Date.parse('2026-11-17T01:00:00Z'));
+  assert.equal(req.schema,'loc.las-published.v1');
+  assert.equal(Date.parse(req.expiresAt)-Date.parse(req.issuedAt),300000);
+  assert.equal(req.worker,'lunarcus');
+  assert.ok(!JSON.stringify(req).includes(secret));
 });
 test('OIDC GitHub signature, repo, branch, workflow and SHA protect notification',async()=>{
   await withMocks(async(calls)=>{
@@ -79,12 +76,12 @@ test('OIDC GitHub signature, repo, branch, workflow and SHA protect notification
 test('Fail closed without GitHub dispatch credential; never send untrusted tokens',async()=>{
   await withMocks(async(calls)=>{
     const r=await handleLocDeploymentSignal(build(await idToken()),{
-      LOC_WORKFLOW_KEY:secret,CF_VERSION_METADATA:{id:version}
+      CF_VERSION_METADATA:{id:version}
     });
     assert.equal(r.status,503);
     assert.ok(!calls.some(c=>c.url.endsWith('/dispatches')));
     const bad=await handleLocDeploymentSignal(build('bad.token.parts'),{
-      LOC_WORKFLOW_KEY:secret,LOC_GITHUB_DISPATCH_TOKEN:'test',CF_VERSION_METADATA:{id:version}
+      LOC_WORKFLOW_KEY:secret,CF_VERSION_METADATA:{id:version}
     });
     assert.equal(bad.status,403);
   });
@@ -92,11 +89,12 @@ test('Fail closed without GitHub dispatch credential; never send untrusted token
 test('Valid release notifies LOC repository_dispatch once through GitHub only',async()=>{
   await withMocks(async(calls)=>{
     const r=await handleLocDeploymentSignal(build(await idToken()),{
-      LOC_WORKFLOW_KEY:secret,LOC_GITHUB_DISPATCH_TOKEN:'mock-github-dispatch-auth',
+      LOC_WORKFLOW_KEY:secret,
       CF_VERSION_METADATA:{id:version}
     });
     assert.equal(r.status,202);
     const dispatch=calls.find(c=>c.url.endsWith('/dispatches'));
+    assert.equal(dispatch.opts.headers.authorization,'Bearer '+secret);
     assert.ok(dispatch);
     assert.equal(dispatch.url,'https://api.github.com/repos/EsotericVerse/lunacodex/dispatches');
     assert.equal(JSON.parse(dispatch.opts.body).event_type,'loc-las-published');

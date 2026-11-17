@@ -1,5 +1,6 @@
 // LAS -> LOC notification is authorized by GitHub Actions OIDC.
-// LOC_WORKFLOW_KEY signs the dispatch; GitHub API requires its own repository-scoped credential.
+// LOC_WORKFLOW_KEY is the existing dedicated GitHub repository_dispatch credential.
+// GitHub authenticates the sender; LOC verifies actor and published LAS revision.
 export const LOC_SIGNAL_PATH='/_internal/loc-deploy';
 const URL='https://auth.lo3rwang.cc'+LOC_SIGNAL_PATH;
 const REPO='EsotericVerse/lunarcus';
@@ -8,15 +9,12 @@ const WF=REPO+'/.github/workflows/notify-loc-after-auth.yml@refs/heads/main';
 const ISSUER='https://token.actions.githubusercontent.com';
 const HEX_SHA=/^[a-f0-9]{40}$/;
 const VERSION=/^[a-f0-9-]{36}$/i;
-const KEYS=['schema','repo','target','sha','worker','version','issuedAt','expiresAt'];
 const json=(value,status)=>new Response(JSON.stringify(value),{
   status,headers:{'content-type':'application/json','cache-control':'no-store'}
 });
 const bytes=b64=>Uint8Array.from(atob(b64.replace(/-/g,'+').replace(/_/g,'/')+
   '='.repeat((4-b64.length%4)%4)),ch=>ch.charCodeAt(0));
 const encode=value=>new TextEncoder().encode(value);
-const hex=b=>[...b].map(v=>v.toString(16).padStart(2,'0')).join('');
-const canonical=req=>KEYS.map(k=>String(req[k]??'')).join('\n');
 async function fetchJson(url,init={}){
   const res=await fetch(url,{...init,redirect:'error'});
   if(!res.ok)throw Error('Remote identity or state check HTTP '+res.status);
@@ -50,10 +48,8 @@ export async function verifyWorkflowOidc(jwt,sha){
     throw Error('Unauthorized GitHub workflow identity');
   return claims;
 }
-export function makeLocSignedRequest(sha,version,secret,now=Date.now()){
+export function makeLocNotification(sha,version,now=Date.now()){
   if(!HEX_SHA.test(sha)||!VERSION.test(version))throw Error('Invalid LAS deployment');
-  if(typeof secret!=='string'||secret.length<32)
-    throw Error('LOC_WORKFLOW_KEY unavailable for signing');
   const req={
     schema:'loc.las-published.v1',repo:REPO,target:TARGET,sha,
     worker:'lunarcus',version,
@@ -61,11 +57,6 @@ export function makeLocSignedRequest(sha,version,secret,now=Date.now()){
     expiresAt:new Date(now+300000).toISOString()
   };
   return req;
-}
-export async function signLocRequest(req,secret){
-  const k=await crypto.subtle.importKey('raw',encode(secret),
-    {name:'HMAC',hash:'SHA-256'},false,['sign']);
-  return hex(new Uint8Array(await crypto.subtle.sign('HMAC',k,encode(canonical(req)))));
 }
 export async function handleLocDeploymentSignal(request,env){
   if(request.method!=='POST')return json({error:'method_not_allowed'},405);
@@ -82,26 +73,25 @@ export async function handleLocDeploymentSignal(request,env){
   if(!match)return json({error:'github_oidc_required'},401);
   try{
     await verifyWorkflowOidc(match[1],sha);
-    if(!env.LOC_WORKFLOW_KEY||!env.LOC_GITHUB_DISPATCH_TOKEN)
+    if(!env.LOC_WORKFLOW_KEY)
       return json({error:'release_dispatch_credentials_unavailable'},503);
     const current=await fetchJson('https://api.github.com/repos/'+REPO+'/commits/main',{
       headers:{'accept':'application/vnd.github+json','user-agent':'LAS-LOC-notify'}
     });
     if(current.sha!==sha)return json({error:'stale_main_revision'},409);
     const version=String(env.CF_VERSION_METADATA?.id||'');
-    const req=makeLocSignedRequest(sha,version,env.LOC_WORKFLOW_KEY);
-    const signature=await signLocRequest(req,env.LOC_WORKFLOW_KEY);
+    const req=makeLocNotification(sha,version);
     const response=await fetch('https://api.github.com/repos/'+TARGET+'/dispatches',{
       method:'POST',redirect:'error',
       headers:{
-        'authorization':'Bearer '+env.LOC_GITHUB_DISPATCH_TOKEN,
+        'authorization':'Bearer '+env.LOC_WORKFLOW_KEY,
         'accept':'application/vnd.github+json',
         'x-github-api-version':'2022-11-28',
         'content-type':'application/json',
         'user-agent':'LAS-LOC-notify'
       },
       body:JSON.stringify({event_type:'loc-las-published',
-        client_payload:{request:req,signature}})
+        client_payload:{request:req}})
     });
     if(response.status!==204)
       return json({error:'github_dispatch_failed',httpStatus:response.status},502);
