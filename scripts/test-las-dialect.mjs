@@ -4,7 +4,7 @@ import {Kysely,PostgresDialect} from 'kysely';
 import dialect,{createKyselyDialect,requestScopedPool}
   from '../vendor/loc-dialect/index.mjs';
 import {createAuthPostgresPool}
-  from '../services/workers/lunarcus/pg-driver.mjs';
+  from '../app/las/auth/pg-driver.mjs';
 
 test('LAS contains the exact independent loc:dialect public contract',async()=>{
   const db=dialect('pg','postgresql://localhost/las_test');

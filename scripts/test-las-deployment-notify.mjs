@@ -22,34 +22,34 @@ test('LAS CMS Data Mapping remains LAS-owned and never independently rebuilds LO
 });
 
 test('LAS MCP server deployment is independent; only LOC-facing protocol changes need review',()=>{
-  const internal=planLasDeployment([file('services/workers/las-mcp/index.mjs',
+  const internal=planLasDeployment([file('app/las/mcp/server.mjs',
     '+const retryTimeout=100;')]);
   assert.equal(internal.las.mcp,true);
   assert.equal(internal.loc,'skip');
-  const boundary=planLasDeployment([file('services/workers/las-mcp/index.mjs',
+  const boundary=planLasDeployment([file('app/las/mcp/server.mjs',
     '+LOC_PROXY_ROUTES.set("/api/loc-native","/api/las-native");')]);
   assert.equal(boundary.las.mcp,true);
   assert.equal(boundary.loc,'review');
 });
 
 test('Auth internal implementation changes alone do not rebuild LOC',()=>{
-  const plan=planLasDeployment([file('services/workers/lunarcus/pg-driver.mjs')]);
+  const plan=planLasDeployment([file('app/las/auth/pg-driver.mjs')]);
   assert.equal(plan.las.auth,true);
   assert.equal(plan.loc,'skip');
 });
 test('Auth public OAuth/server protocol delta can notify LOC after successful Auth deployment',()=>{
-  const plan=planLasDeployment([file('services/workers/lunarcus/index.mjs',
+  const plan=planLasDeployment([file('app/las/index.mjs',
     '@@ -1 +1 @@\n-const x="/api/auth/oauth2/token";\n+const x="/api/auth/oauth2/token-v2";')]);
   assert.equal(plan.las.auth,true);
   assert.equal(plan.loc,'notify');
 });
 test('Auth user-facing label or comments alone do not rebuild LOC',()=>{
-  const plan=planLasDeployment([file('services/workers/lunarcus/index.mjs',
+  const plan=planLasDeployment([file('app/las/index.mjs',
     '@@\n-// oauth2 token is unchanged\n+// oauth2 token is unchanged\n+const title="LunArcus";')]);
   assert.equal(plan.loc,'skip');
 });
 test('missing public protocol diff fails closed to review, not a guessed LOC build',()=>{
-  const plan=planLasDeployment([{filename:'services/workers/lunarcus/auth.mjs',patch:null}]);
+  const plan=planLasDeployment([{filename:'app/las/auth/auth.mjs',patch:null}]);
   assert.equal(plan.loc,'review');
 });
 test('Shared package updates do not automatically rebuild LOC',()=>{
@@ -58,7 +58,7 @@ test('Shared package updates do not automatically rebuild LOC',()=>{
 });
 test('Combined Plugins and Auth server protocol changes trigger only intended target',()=>{
   const plan=planLasDeployment([file('plugins/chrome/options.js'),
-    file('services/workers/lunarcus/auth.mjs','+const issuer=LOC_ISSUER;')]);
+    file('app/las/auth/auth.mjs','+const issuer=LOC_ISSUER;')]);
   assert.equal(plan.las.plugins,true);
   assert.equal(plan.las.auth,true);
   assert.equal(plan.loc,'notify');
