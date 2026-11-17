@@ -21,7 +21,7 @@ export async function callLocOperation(body,token,fetchImpl=globalThis.fetch){
   if(!body||!Object.hasOwn(body,'kind')||!SCOPE.test(String(body.scopeid||'')))
     throw invalid('Invalid fixed LOC operation');
   const allowed=new Set(['mcp-authorize','mcp-public-read','mcp-article-stat',
-    'mcp-read','mcp-search']);
+    'mcp-read','mcp-search','mcp-scope-status','mcp-conversation']);
   if(!allowed.has(body.kind))throw invalid('Unsupported LAS mapped LOC operation');
   let response;
   try{
