@@ -401,7 +401,19 @@ const ChatGPTShadowExtract = (() => {
     if (testid === "user-message") return "user";
     const assistant = Boolean(node.querySelector && node.querySelector('[data-testid="assistant-message"]'));
     const user = Boolean(node.querySelector && node.querySelector('[data-testid="user-message"]'));
-    return assistant !== user ? (assistant ? "assistant" : "user") : "";
+    if (assistant !== user) return assistant ? "assistant" : "user";
+    // Current ChatGPT layouts may expose the role as an accessibility label
+    // rather than a test id. This is still positive role evidence, not a
+    // heuristic that every Markdown block is an assistant.
+    const labels = [attr(node, "aria-label")];
+    if (node.querySelectorAll) {
+      for (const label of Array.from(node.querySelectorAll('h5,h6,[class*="sr-only"]')).slice(0, 12))
+        labels.push(textOf(label));
+    }
+    const text = labels.join(" ").toLowerCase();
+    if (/chatgpt said|assistant said|ai response|ai 回覆|chatgpt 說/.test(text)) return "assistant";
+    if (/you said|user message|你說|你说/.test(text)) return "user";
+    return "";
   }
 
   function unitMessageId(unit) {
