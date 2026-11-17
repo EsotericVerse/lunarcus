@@ -1,7 +1,5 @@
 const $=id=>document.getElementById(id);
 const status=$('status'), queue=$('queue'), notice=$('notice');
-// MCP is the fixed LAS gateway; no user-selected upstream provider vault.
-const LAS_MCP_RESOURCE='https://mcp.lo3rwang.cc/';
 // Use the status already fetched for the six-key console: no extra polling.
 let overviewStatus=null;
 function renderOverviewGuidance(result){
