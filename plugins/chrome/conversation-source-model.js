@@ -4,6 +4,14 @@
 (function(root){
   'use strict';
   const sources=Object.freeze({
+    // Keep the existing ChatGPT Shadow extractor: it handles virtualized turns.
+    // Its output projects to the same record fields; no second DOM parser.
+    chatgpt:Object.freeze({
+      model:'ChatGPTConversationTurn',
+      source:'chatgpt.com',
+      delegatedTo:'ChatGPTShadowExtract',
+      identity:['data-message-id','data-chatgpt-selection-message-id']
+    }),
     claude:Object.freeze({
       model:'ClaudeConversationTurn',
       source:'claude.ai',
