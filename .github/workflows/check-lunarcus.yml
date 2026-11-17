@@ -24,6 +24,8 @@ on:
       - 'scripts/test-module-boundaries.mjs'
       - 'scripts/test-las-mcp-worker-http.mjs'
       - 'scripts/test-las-extension-direct-import.mjs'
+      - 'scripts/reconcile-mcp-conversations.mjs'
+      - 'scripts/test-las-conversation-reconcile.mjs'
       - 'scripts/test-las-auth-http.mjs'
       - 'scripts/check-migration-contract.mjs'
       - '.github/workflows/check-lunarcus.yml'
