@@ -7,10 +7,11 @@ const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
 // LOC SaaS validates its live public-Scope registry; LAS never copies it.
 const publicScope=SCOPE_ID;
 const nonNegative=z.int().min(0);
-const action=z.enum(['search','read','check','record']);
+const action=z.enum(['search','read','check','record','record_ordered']);
 const conversationRecord=z.strictObject({
-  role:z.enum(['user','assistant']),kind:z.enum(['original','advice']),
-  sent_at:z.string(),text:z.string(),message_id:z.string()
+  role:z.enum(['user','assistant']),kind:z.enum(['original','advice']).optional(),
+  sent_at:z.string().optional(),text:z.string(),message_id:z.string(),
+  source_order:z.int().min(0).optional(),parent_id:z.string().nullable().optional()
 });
 const none=z.strictObject({});
 export const MCP_TOOL_INPUTS=Object.freeze({
