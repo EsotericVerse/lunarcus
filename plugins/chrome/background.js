@@ -4,8 +4,6 @@ const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
-const MCP_PROVIDER_API='https://loc.lo3rwang.cc/api/mcp-provider-extension';
-const MCP_EXTENSION_RETURN='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/mcp';
 const AUTH_KEYS=['locOAuth','locConfig'];
 const MENU_PAGE='loc-page',MENU_SELECTION='loc-selection',MENU_AREA='loc-area',MENU_RECORD='loc-record',MENU_PAUSE='loc-pause',MENU_RESUME='loc-resume',MENU_STOP='loc-stop',MENU_ROOT='lunarcus';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -234,81 +232,6 @@ function encode64(bytes){
  return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 }
 function oauthError(message){return Error('LunArcus Auth：'+message);}
-function normalizeSsoEmail(value){
- const email=String(value??'').trim().toLowerCase();
- if(email.length>320||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-  throw oauthError('請輸入有效的 SSO Email');
- return email;
-}
-function parseMcpProviderCallback(returned,expectedState){
- let url;
- try{url=new URL(String(returned))}catch{throw oauthError('上游 SSO 回呼無效');}
- if(url.origin+url.pathname!==MCP_EXTENSION_RETURN)
-  throw oauthError('上游 SSO 回呼位址不符');
- if(url.searchParams.get('state')!==String(expectedState||''))
-  throw oauthError('上游 SSO state 不符');
- if(url.searchParams.get('error'))throw oauthError('上游 SSO 授權失敗');
- const provider=url.searchParams.get('provider')||'';
- if(!['clerk','github','neon','supabase'].includes(provider)||url.searchParams.get('connected')!=='1')
-  throw oauthError('上游 SSO 授權失敗');
- return {provider,connected:true};
-}
-async function mcpProviderRequest(method,body=null){
- // Use the existing LOC OAuth access/refresh tokens, never create identities.
- let token=await activeToken();
- const request=async bearer=>{
-  const options={method,cache:'no-store',redirect:'error',headers:{authorization:'Bearer '+bearer,accept:'application/json'}};
-  if(body){options.headers['content-type']='application/json';options.body=JSON.stringify(body)}
-  let response;
-  try{response=await fetch(MCP_PROVIDER_API,options)}catch(error){
-   await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
-   throw oauthError('LOC MCP Provider 無法連線');
-  }
-  // Routine successful status checks are noise in the diagnostics log.
-  // Keep errors and explicit Provider actions for troubleshooting.
-  if(!response.ok||method!=='GET')
-   await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
-  return response;
- };
- let response=await request(token);
- // A revoked access token can precede its local expiry. Refresh once only;
- // a 403 Scope denial or a 429/503 service failure must never cause re-login.
- if(response.status===401){
-  token=await activeToken(true);
-  response=await request(token);
- }
- const value=await response.json().catch(()=>({}));
- if(!response.ok)throw oauthError('LOC MCP Provider HTTP '+response.status+
-  '：'+String(value?.error||'請求失敗').slice(0,180));
- return value;
-}
-async function mcpProviderStatus(){return mcpProviderRequest('GET')}
-async function connectMcpProvider(provider){
- const saved=await chrome.storage.local.get('locSsoEmail');
- const email=normalizeSsoEmail(saved.locSsoEmail);
- const result=await mcpProviderRequest('POST',{action:'connect',provider,email});
- const authorize=new URL(String(result.authorize_url||''));
- const state=String(result.state||authorize.searchParams.get('state')||'');
- if(!state)throw oauthError('LOC MCP Provider 未回傳授權 state');
- const redirect=chrome.identity.getRedirectURL('mcp');
- if(redirect!==MCP_EXTENSION_RETURN)throw oauthError('Extension 上游 SSO 回呼位址不符');
- await logDiagnostic('mcp.authorize.start',{provider,authorization_endpoint:authorize.origin+authorize.pathname});
- let returned;
- try{returned=await chrome.identity.launchWebAuthFlow({url:authorize.href,interactive:true});}
- catch(error){
-  await logDiagnostic('mcp.authorize.error',{provider,message:error?.message||String(error)});
-  throw error;
- }
- await logDiagnostic('mcp.authorize.callback',{provider,returned:Boolean(returned)});
- const connected=parseMcpProviderCallback(returned,state);
- await logDiagnostic('mcp.connected',{provider:connected.provider});
- return connected;
-}
-async function disconnectMcpProvider(provider){
- const result=await mcpProviderRequest('POST',{action:'disconnect',provider});
- await logDiagnostic('mcp.disconnected',{provider});
- return result;
-}
 // Better Auth's OAuth provider exposes RFC 8414 and OIDC discovery at the
 // issuer-path and at the backwards-compatible root aliases. Reuse the same
 // ordered candidates as the existing LOC upstream OAuth client instead of
@@ -777,9 +700,6 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     return result;
    }
    case 'loc-disconnect':return disconnectLoc();
-   case 'mcp-status':return mcpProviderStatus();
-   case 'mcp-connect':return connectMcpProvider(String(message.provider||''));
-   case 'mcp-disconnect':return disconnectMcpProvider(String(message.provider||''));
    case 'loc-flush':{
     try{const result=await flush(true);await updateQueueBadge();await noteAction('手動傳送',true,result.message);return result;}
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}

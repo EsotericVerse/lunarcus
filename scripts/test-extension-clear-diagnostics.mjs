@@ -51,6 +51,7 @@ assert.match(html,/id="clearDiagnostics"/);
 assert.match(options,/\$\('clearDiagnostics'\)\.addEventListener\('click'/);
 assert.match(options,/call\('loc-clear-diagnostics'\)/);
 assert.match(css,/\.diagnostics-actions/);
-assert.match(background,/if\(!response\.ok\|\|method!=='GET'/);
+assert.doesNotMatch(background,/MCP_PROVIDER_API|mcpProviderRequest|mcp-connect/,
+ 'Retired Provider Hub must not reintroduce network diagnostics or authorization');
 assert.match(background,/MAX_DIAGNOSTICS=120/);
 console.log('PASS Extension diagnostics only: cleanup action, trusted sender, unchanged Queue/auth/retry controls and UI');

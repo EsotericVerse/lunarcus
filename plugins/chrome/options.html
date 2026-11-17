@@ -52,7 +52,7 @@
       <div class="hero-content">
         <p class="eyebrow"><span class="eyebrow-line"></span> LUNARCUS CONTROL CONSOLE</p>
         <h1 id="hero-title">讓每一道連線，<br><span>都有自己的光。</span></h1>
-        <p class="hero-description">管理 LOC 身分連線、MCP Provider、擷取佇列與操作紀錄。工作流動，權限保持清楚。</p>
+        <p class="hero-description">管理 LOC 身分連線、LAS MCP、擷取佇列與操作紀錄。工作流動，權限保持清楚。</p>
         <div class="hero-actions">
           <button id="connect" type="button" class="button button-primary">連接 LunArcus Auth <span aria-hidden="true">↗</span></button>
           <button id="disconnect" type="button" class="button button-secondary">解除連線</button>
@@ -130,22 +130,16 @@
 
     <section id="providers" class="section-block console-page" aria-labelledby="providers-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">CONNECTIONS / 03</p><h2 id="providers-title">MCP 服務連線</h2><p>查看已授權的上游服務，必要時進行連接或解除。</p></div>
-        <span class="section-chip">PROVIDER HUB</span>
+        <div><p class="section-kicker">CONNECTIONS / 03</p><h2 id="providers-title">MCP 連線</h2><p>LAS 使用單一 MCP Gateway，不需要指定任何上游 Provider。</p></div>
+        <span class="section-chip">MCP</span>
       </div>
       <div class="panel">
         <div class="panel-topline">
           <span class="panel-symbol" aria-hidden="true">⌘</span>
-          <div><h3>上游 Provider</h3><p>登入提示僅用於上游服務的 OAuth 授權，不會改動 LOC 身分。</p></div>
+          <div><h3>LunArcus MCP</h3><p>工具及資料契約由 Gateway 提供。身分授權沿用現有 OAuth，不建立另一份上游服務授權。</p></div>
         </div>
-        <div class="input-row">
-          <label for="ssoEmail">上游服務登入 Email</label>
-          <input id="ssoEmail" type="email" autocomplete="email" placeholder="you@example.com" spellcheck="false">
-        </div>
-        <p class="field-hint">首次連接時使用。Provider Token 由 Gateway 保存，Extension 不儲存上游 Token。</p>
-        <div id="mcpProviders" class="provider-grid" role="status" aria-live="polite">
-          <div class="empty-state">正在讀取 Provider 連線狀態…</div>
-        </div>
+        <p><a href="https://mcp.lo3rwang.cc/" target="_blank" rel="noopener noreferrer">mcp.lo3rwang.cc</a></p>
+        <p class="field-hint">此頁不需要 Provider 選擇、登入 Email、Provider Vault 或額外 Token。</p>
       </div>
     </section>
 
@@ -212,7 +206,7 @@
         </div>
         <div class="panel panel-guide">
           <div class="panel-topline"><span class="panel-symbol" aria-hidden="true">✦</span><div><h3>LunArcus 設定</h3><p>這裡只管理擴充功能在本機使用的偏好。</p></div></div>
-          <div class="guide-note"><span aria-hidden="true">i</span>登入與 Provider 授權由 LunArcus Auth／MCP Gateway 控制，此頁不核發新權限。</div>
+          <div class="guide-note"><span aria-hidden="true">i</span>登入授權由 LunArcus Auth 處理；MCP 使用既有 OAuth 身分，此頁不核發新權限。</div>
           <p class="field-hint">完成偏好調整後，可以使用下方六鍵直接切換到擷取或 Queue 頁面。</p>
         </div>
       </div>
