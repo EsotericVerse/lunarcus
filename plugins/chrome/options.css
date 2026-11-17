@@ -417,7 +417,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
 }
 .extension-floating-dock .remote-dock-link { min-height: 60px; }
-.button,
+.button { min-height: 44px; }
 @media (min-width: 700px) {
   .capture-grid,
   .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -663,3 +663,19 @@ a:focus-visible, button:focus-visible, input:focus-visible {
     min-height:0;
   }
 }
+
+/* Pre-send original-sequence review; static DOM, no hover-triggered animations. */
+.organize-actions { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin:14px 0 18px; }
+.organize-actions [role="status"] { font-size:12px; color:var(--muted); }
+.organize-groups { display:grid; grid-template-columns:minmax(0,1fr); gap:13px; }
+.organize-group { min-width:0; padding:17px; border:1px solid var(--edge); border-radius:12px; background:rgba(10,17,33,.5); }
+.organize-group h3 { margin:0 0 4px; font-size:15px; overflow-wrap:anywhere; }
+.organize-group > .button { margin-top:13px; }
+.organize-details { margin-top:14px; }
+.organize-details summary { font-size:12px; color:#bdc9ed; cursor:pointer; padding:10px 0; }
+.organize-details summary:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+.organize-timeline { max-height:48vh; overflow:auto; margin:0; padding:7px 8px 7px 31px; background:rgba(5,11,24,.4); border:1px solid var(--edge); border-radius:10px; }
+.organize-timeline li { padding:9px 4px; margin:0; border-bottom:1px solid var(--edge); }
+.organize-timeline li:last-child { border-bottom:0; }
+.organize-turn-heading { font-size:12px; font-weight:750; color:#e4ebff; }
+.organize-turn-text { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); margin:7px 0 0; }
