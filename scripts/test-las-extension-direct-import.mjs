@@ -146,3 +146,17 @@ test('Extension MCP uses LAS gateway without a user-selectable upstream Provider
   assert.equal(bundled.resource,'https://mcp.lo3rwang.cc');
   assert.equal(bundled.import_url,LOC_IMPORT,'LOC data import remains independent');
 });
+
+test('conversation fragments cannot enter unordered short-import append',async()=>{
+  const {sandbox}=makeRuntime();
+  await assert.rejects(
+    vm.runInContext("toEvents([{source_key:'https://chatgpt.com/c/abc',url:'https://chatgpt.com/c/abc',key:'turn-1',content:'[user]\\nquestion'}],'lo3rwang')",sandbox),
+    /對話來源已暫停無序 append/
+  );
+  for(const host of ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com']){
+    assert.match(background,new RegExp(host.replaceAll('.','\\.')));
+  }
+  assert.match(background,/if\\(isConversationSource\\(tab\\.url\\)\\)/);
+  assert.match(background,/pending\\.filter\\(row=>!isUnorderedConversationCapture\\(row\\)\\)/);
+  assert.match(background,/legacyConversationCount/);
+});
