@@ -16,7 +16,8 @@ const node=({role,id,text,selector,busy=false})=>({
   getAttribute:key=>key==='data-message-id'?id:null,
   querySelector:q=>busy&&q==='[aria-busy="true"]'?{}:
     q.split(',').includes(selector)?{text}:null,
-  closest:()=>null
+  closest:()=>null,
+  text
 });
 const callbacks={visible:()=>true,readText:el=>el.text,fingerprint:content=>content};
 test('LOC #1765 source value-type pattern: all declared conversation fields are modeled',()=>{
