@@ -69,7 +69,7 @@
       <article id="authCard" class="metric-card">
         <div class="metric-top"><span class="metric-label">LOC 身分連線</span><span id="authStateBadge" class="state-badge state-waiting"><span class="state-light" aria-hidden="true"></span>尚未連接</span></div>
         <p id="status" class="metric-status" role="status" aria-live="polite">正在讀取身分狀態…</p>
-        <p class="metric-foot">使用既有 OAuth，無需新增註冊。</p>
+        <p class="metric-foot">身分驗證由 LOC Auth 處理。</p>
       </article>
       <article class="metric-card">
         <div class="metric-top"><span class="metric-label">待送擷取</span><span class="metric-icon" aria-hidden="true">↗</span></div>
@@ -136,7 +136,7 @@
         <div class="panel panel-guide">
           <div class="panel-topline"><span class="panel-symbol" aria-hidden="true">✧</span><div><h3>如何開始擷取</h3><p>操作入口維持原本的瀏覽器右鍵選單。</p></div></div>
           <ol class="guide-steps">
-            <li><span>01</span><div><strong>選取要保存的網頁內容</strong><p>前往你想保存的內容</p></div></li>
+            <li><span>01</span><div><strong>選取要保存的網頁內容</strong><p>前往要保存的網頁</p></div></li>
             <li><span>02</span><div><strong>開啟右鍵選單</strong><p>選擇「LunArcus」</p></div></li>
             <li><span>03</span><div><strong>交由 Queue 送出</strong><p>可從下方追蹤狀態與重試</p></div></li>
           </ol>
@@ -182,11 +182,6 @@
             <input id="scope" type="text" value="lo3rwang" pattern="[a-z][a-z0-9]{0,14}" maxlength="15" autocomplete="off" spellcheck="false">
             <p class="field-hint">擷取加入 Queue 時即固定目的地，不代表申請新的資料權限。</p>
           </div>
-          <label class="toggle-row" for="includeAI">
-            <span class="toggle-copy"><strong>一併保存 AI 回覆</strong><small>關閉時僅擷取使用者文字</small></span>
-            <input id="includeAI" type="checkbox" class="toggle-input">
-            <span class="toggle-track" aria-hidden="true"></span>
-          </label>
         </div>
       </div>
     </section>
