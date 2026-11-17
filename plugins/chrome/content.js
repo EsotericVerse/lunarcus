@@ -304,45 +304,20 @@
     }
     return hits;
   }
-  // Dedicated AI conversation mapping. Never archive the Gemini/Claude sidebar,
-  // composer, or entire web application as if it were one conversation turn.
+  // LOC #1765 pattern: declared source paths, one bounded projection runner.
+  // Never infer an entire web app/sidebar as a single conversation turn.
   function modelConversationTurns(scope,provider,includeAssistant=false,mode='capture'){
     const identity=sourceModel?.conversationUrl(location.href);
-    if(identity?.provider!==provider)return [];
-    const selector=provider==='gemini'
-      ?'user-query,model-response'
-      :'[data-testid="user-message"],.font-claude-response';
-    const nodes=[...(scope.querySelectorAll?.(selector)||[])];
-    const out=[];
-    let user=0,assistant=0;
-    for(const node of nodes){
-      if(!visible(node)||node.closest?.('nav,aside,form,[role="navigation"]'))continue;
-      const role=provider==='gemini'
-        ?(node.matches('user-query')?'user':'assistant')
-        :(node.matches('[data-testid="user-message"]')?'user':'assistant');
-      if(role==='assistant'&&!includeAssistant)continue;
-      if(role==='assistant'&&(node.matches('[aria-busy="true"]')||
-        node.querySelector?.('[aria-busy="true"]')))continue;
-      // Read only content-bearing descendants for Gemini. Its custom elements
-      // also contain action bars and feedback controls.
-      const body=provider==='gemini'
-        ?node.querySelector?.(role==='user'
-          ?'.query-text,[data-testid="user-query"],.query-content'
-          :'.markdown,.response-content,.model-response-text')
-        :node;
-      if(!body)continue; // Unknown markup: do not guess.
-      const text=cleanText(body);
-      if(!text||text.length<2)continue;
-      const messageId=node.getAttribute?.('data-message-id')||
-        node.getAttribute?.('data-testid')||String(out.length);
-      out.push({key:provider+':'+messageId+':'+fingerprint(text),
-        source_key:identity.url,url:identity.url,title:document.title,
-        content:'['+role+']\\n'+text});
-      if(role==='user')user++;else assistant++;
-    }
-    if(includeAssistant&&mode!=='record'&&user>0&&assistant===0)
-      throw Error('已勾選保存 AI 回覆，但未能可靠辨識 '+provider+' 回覆；本次不寫入 Queue');
-    return out;
+    const registry=globalThis.LasConversationSourceModel;
+    const profile=registry?.profileFor(provider,location.hostname.toLowerCase());
+    if(identity?.provider!==provider||!profile)return [];
+    const rows=registry.project(profile,scope,{
+      includeAssistant,record:mode==='record',visible,readText:cleanText,fingerprint
+    });
+    return rows.map(row=>({
+      key:row.key,source_key:identity.url,url:identity.url,
+      title:document.title,content:'['+row.role+']\n'+row.content
+    }));
   }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
     const doc=scope||document.body;
