@@ -87,8 +87,8 @@
       if(!rows.length)
         return {directQueued:true,detected:0,user:0,assistant:0,queuedCaptures:0,
           partial:true,message:'目前沒有已載入的可辨識訊息；頁面未捲動，Queue 未變動。'};
-      const user=rows.filter(row=>row.content.startsWith('[user]\\n')).length;
-      const assistant=rows.filter(row=>row.content.startsWith('[assistant]\\n')).length;
+      const user=rows.filter(row=>row.content.startsWith('[user]\n')).length;
+      const assistant=rows.filter(row=>row.content.startsWith('[assistant]\n')).length;
       const result=await queuePublish(rows);
       if(result.error)throw Error('目前已載入的對話入列失敗：'+result.error);
       const queuedCaptures=Number(result.insertedCaptures||0);
