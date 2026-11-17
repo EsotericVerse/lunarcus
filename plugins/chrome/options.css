@@ -679,3 +679,10 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .organize-timeline li:last-child { border-bottom:0; }
 .organize-turn-heading { font-size:12px; font-weight:750; color:#e4ebff; }
 .organize-turn-text { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); margin:7px 0 0; }
+
+/* Read full captured turns only when requested, without a page-wide relayout. */
+.organize-turn-expand { margin-top:8px; font-size:11px; padding:5px 9px; }
+.organize-turn-full { max-height:46vh; overflow:auto; white-space:pre-wrap;
+ overflow-wrap:anywhere; border:1px solid var(--edge); border-radius:8px;
+ padding:12px; font:12px/1.65 system-ui,sans-serif; color:var(--text);
+ background:rgba(4,10,25,.65); }
