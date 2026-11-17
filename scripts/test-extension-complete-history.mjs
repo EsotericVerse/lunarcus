@@ -116,8 +116,9 @@ test('finds an external chat viewport even without the former first-turn selecto
       assert.equal(keepAlive,true);
     });
     assert.equal(reply.error,undefined,String(reply.error));
-    assert.equal(reply.detected,80);
-    assert.equal(reply.queuedCaptures,80);
+    assert.equal(reply.detected,80,'external viewport still scans all messages');
+    assert.equal(reply.queuedCaptures,0,'repeat captures must not duplicate Queue receipts');
+    assert.equal(inserted.length,0,'previously archived turns are not enqueued twice');
     assert.equal(scroller.scrollTop,9000,'restore original viewport');
   }finally{
     main.querySelector=originalQuery;
