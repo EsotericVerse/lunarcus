@@ -141,8 +141,32 @@ async function toEvents(items,scopeid='lo3rwang'){
  const rows=[];
  for(const item of items){
   if(!item||typeof item.content!=='string'||!item.content.trim())continue;
-  if(isConversationSource(item.source_key||item.url))
-   throw Error('對話來源已暫停無序 append：不會將訊息亂序加入文章；舊 Queue 保留');
+  if(isConversationSource(item.source_key||item.url)){
+   const url=normalizedUrl(item.url||item.source_key);
+   const source_key=normalizedUrl(item.source_key||item.url);
+   if(url!==source_key||!isConversationSource(url))
+    throw Error('對話來源識別不一致；Queue 未變動');
+   if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
+      !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
+      !item.text.trim()||item.text.length>140000||
+      !['source-ordinal'].includes(item.order_evidence))
+    throw Error('來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序');
+   const message_id=String(item.message_id||
+     'source-ordinal:'+item.source_order);
+   if(!message_id||message_id.length>256||
+      /[\\u0000-\\u001f\\u007f]/.test(message_id))
+    throw Error('無效的來源訊息識別');
+   const parent_id=item.parent_id==null?null:String(item.parent_id);
+   if(parent_id&& (parent_id.length>256||/[\\u0000-\\u001f\\u007f]/.test(parent_id)))
+    throw Error('無效的原始對話父訊息識別');
+   const id=await stableUuid(scopeid+'\\u0000'+source_key+'\\u0000'+message_id);
+   const group_id=await stableUuid(scopeid+'\\u0000'+source_key);
+   rows.push({id,group_id,scopeid,kind:'ordered_conversation',
+      source_key,url,title:String(item.title||'對話').slice(0,350),
+      message_id,source_order:item.source_order,parent_id,role:item.role,
+      text:item.text,captured_at:new Date().toISOString()});
+   continue;
+  }
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
   if(url!==source_key)continue;
