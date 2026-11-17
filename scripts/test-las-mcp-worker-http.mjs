@@ -82,3 +82,89 @@ test('LAS MCP Worker only opens supported preflight routes to trusted origins',a
     method:'OPTIONS',headers:{Origin:'https://evil.example'}}));
   assert.equal(denied.status,403);
 });
+
+
+import {readUpstreamSseReply} from '../app/las/mcp/upstream/upstream-sse.mjs';
+import {streamMcpSseResponse,handleStatelessMcpPost}
+  from '../app/las/mcp/stateless-transport.mjs';
+import {readBoundedJson,BodyTooLargeError} from '../app/las/mcp/stream-json.mjs';
+
+function chunks(...parts){
+  const encoder=new TextEncoder();
+  return new ReadableStream({
+    start(controller){
+      for(const part of parts)controller.enqueue(encoder.encode(part));
+      controller.close();
+    }
+  });
+}
+const acceptRpc=(message,id)=>message?.jsonrpc==='2.0'&&message.id===id?message:null;
+
+test('Upstream SSE accepts split UTF-8 and multiline data; ignores notifications and mismatched IDs',async()=>{
+  const stream=chunks(
+    ': keepalive\n\n',
+    'event: message\n',
+    'data: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n',
+    'data: {"jsonrpc":"2.0","id":999,"result":{}}\n\n',
+    'data: {"jsonrpc":"2.0","id":7,\n',
+    'data: "result":{"text":"測',
+    '試"}}\n\n'
+  );
+  const reply=await readUpstreamSseReply(stream,7,acceptRpc);
+  assert.deepEqual(reply,{jsonrpc:'2.0',id:7,result:{text:'測試'}});
+});
+
+test('Upstream SSE rejects missing reply ID and enforces bounded response bytes',async()=>{
+  await assert.rejects(readUpstreamSseReply(
+    chunks('data: {"jsonrpc":"2.0","id":8,"result":{}}\n\n'),7,acceptRpc),
+    /missing its request ID/);
+  await assert.rejects(readUpstreamSseReply(
+    chunks('data: '+ 'x'.repeat(200)+'\n\n'),7,acceptRpc,40),
+    /exceeds size limit/);
+});
+
+test('Upstream SSE stops reading after matched response and cancels pending stream',async()=>{
+  let canceled=false;
+  const encoder=new TextEncoder();
+  const body=new ReadableStream({
+    start(controller){
+      controller.enqueue(encoder.encode('data: {"jsonrpc":"2.0","id":7,"result":{"ok":true}}\n\n'));
+    },
+    cancel(){canceled=true;}
+  });
+  const reply=await readUpstreamSseReply(body,7,acceptRpc);
+  assert.equal(reply.result.ok,true);
+  await Promise.resolve();
+  assert.equal(canceled,true);
+});
+
+test('POST SSE emits a request-scoped result and closes without a session or extra connection',async()=>{
+  const res=streamMcpSseResponse(async()=>Response.json({
+    jsonrpc:'2.0',id:9,result:{tools:[]}
+  }),9);
+  assert.equal(res.status,200);
+  assert.match(res.headers.get('content-type'),/text\/event-stream/);
+  const body=await res.text();
+  assert.match(body,/: loc-mcp stream opened/);
+  assert.match(body,/data: \{"jsonrpc":"2.0","id":9,"result":\{"tools":\[\]\}\}/);
+});
+
+test('Stateless MCP rejects batched operations before dispatching any tool',async()=>{
+  let dispatched=0;
+  const req=new Request(HOST+'/',{method:'POST',body:JSON.stringify([
+    {jsonrpc:'2.0',id:1,method:'ping'},
+    {jsonrpc:'2.0',id:2,method:'ping'}
+  ])});
+  const res=await handleStatelessMcpPost(req,async()=>{
+    dispatched++;
+    return Response.json({ok:true});
+  });
+  assert.equal(res.status,200);
+  assert.equal((await res.json()).error.code,-32600);
+  assert.equal(dispatched,0);
+});
+
+test('Bounded JSON reader rejects oversized payloads and releases the stream',async()=>{
+  await assert.rejects(readBoundedJson(chunks('{"value":"'+ 'a'.repeat(128)+'"}'),16),
+    error=>error instanceof BodyTooLargeError);
+});
