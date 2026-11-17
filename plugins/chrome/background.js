@@ -154,10 +154,10 @@ async function toEvents(items,scopeid='lo3rwang'){
    const message_id=String(item.message_id||
      'source-ordinal:'+item.source_order);
    if(!message_id||message_id.length>256||
-      /[\\u0000-\\u001f\\u007f]/.test(message_id))
+      [...message_id].some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127))
     throw Error('無效的來源訊息識別');
    const parent_id=item.parent_id==null?null:String(item.parent_id);
-   if(parent_id&& (parent_id.length>256||/[\\u0000-\\u001f\\u007f]/.test(parent_id)))
+   if(parent_id&& (parent_id.length>256||[...parent_id].some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127)))
     throw Error('無效的原始對話父訊息識別');
    const id=await stableUuid(scopeid+'\\u0000'+source_key+'\\u0000'+message_id);
    const group_id=await stableUuid(scopeid+'\\u0000'+source_key);
