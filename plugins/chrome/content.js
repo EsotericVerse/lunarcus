@@ -304,6 +304,46 @@
     }
     return hits;
   }
+  // Dedicated AI conversation mapping. Never archive the Gemini/Claude sidebar,
+  // composer, or entire web application as if it were one conversation turn.
+  function modelConversationTurns(scope,provider,includeAssistant=false,mode='capture'){
+    const identity=sourceModel?.conversationUrl(location.href);
+    if(identity?.provider!==provider)return [];
+    const selector=provider==='gemini'
+      ?'user-query,model-response'
+      :'[data-testid="user-message"],.font-claude-response';
+    const nodes=[...(scope.querySelectorAll?.(selector)||[])];
+    const out=[];
+    let user=0,assistant=0;
+    for(const node of nodes){
+      if(!visible(node)||node.closest?.('nav,aside,form,[role="navigation"]'))continue;
+      const role=provider==='gemini'
+        ?(node.matches('user-query')?'user':'assistant')
+        :(node.matches('[data-testid="user-message"]')?'user':'assistant');
+      if(role==='assistant'&&!includeAssistant)continue;
+      if(role==='assistant'&&(node.matches('[aria-busy="true"]')||
+        node.querySelector?.('[aria-busy="true"]')))continue;
+      // Read only content-bearing descendants for Gemini. Its custom elements
+      // also contain action bars and feedback controls.
+      const body=provider==='gemini'
+        ?node.querySelector?.(role==='user'
+          ?'.query-text,[data-testid="user-query"],.query-content'
+          :'.markdown,.response-content,.model-response-text')
+        :node;
+      if(!body)continue; // Unknown markup: do not guess.
+      const text=cleanText(body);
+      if(!text||text.length<2)continue;
+      const messageId=node.getAttribute?.('data-message-id')||
+        node.getAttribute?.('data-testid')||String(out.length);
+      out.push({key:provider+':'+messageId+':'+fingerprint(text),
+        source_key:identity.url,url:identity.url,title:document.title,
+        content:'['+role+']\\n'+text});
+      if(role==='user')user++;else assistant++;
+    }
+    if(includeAssistant&&mode!=='record'&&user>0&&assistant===0)
+      throw Error('已勾選保存 AI 回覆，但未能可靠辨識 '+provider+' 回覆；本次不寫入 Queue');
+    return out;
+  }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
     const doc=scope||document.body;
     const hostname=location.hostname.toLowerCase();
@@ -314,16 +354,16 @@
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
       return shadowConversationTurns(region,includeAssistant,mode);
     }
-    if(hostname==='claude.ai'){
-      // Claude retains its own role-based extraction path.
+    if(hostname==='claude.ai'||hostname==='gemini.google.com'){
       const region=mode==='record'||doc===document.body?
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
-      return conversationTurns(region,includeAssistant);
+      return modelConversationTurns(region,hostname==='claude.ai'?'claude':'gemini',
+        includeAssistant,mode);
     }
     // Readability is invoked only for a full-page single capture; avoid destroying
     // the live DOM or re-parsing every MutationObserver notification during recording.
     if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
-      !socialHost()&& !/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      !socialHost()&& !/(?:chatgpt\.com|claude\.ai|chat\.openai\.com|gemini\.google\.com)$/.test(hostname)){
       try{
         const parsed=new Readability(document.cloneNode(true)).parse();
         if(parsed?.textContent?.trim()?.length>100){
@@ -550,7 +590,8 @@
       return;
     }
     if(msg.type==='page.record'&&
-      (CHAT_HOST.test(location.hostname.toLowerCase())||location.hostname==='claude.ai')){
+      (CHAT_HOST.test(location.hostname.toLowerCase())||
+       location.hostname==='claude.ai'||location.hostname==='gemini.google.com')){
       // Chat capture targets its main conversation immediately; users should
       // never have to pick a second area after selecting Start Recording.
       stop();
