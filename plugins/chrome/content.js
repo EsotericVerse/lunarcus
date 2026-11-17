@@ -70,153 +70,33 @@
         title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
       }));
   }
-  // A full-history capture must scroll the conversation's own viewport.
-  // ChatGPT only keeps a small set of turns mounted in the DOM at a time.
-  // One querySelectorAll snapshot is NOT a complete conversation archive.
-  function chatHistoryScroller(main){
-    // ChatGPT can render the conversation viewport outside <main>, or change
-    // message attributes while preserving the same scrollable conversation.
-    const first=main.querySelector('[data-chatgpt-search-unit-key],'+
-      '[data-message-author-role],[data-testid^="conversation-turn-"],'+
-      '[data-message-id],[data-testid="user-message"],'+
-      '[data-testid="assistant-message"]');
-    const checked=new Set();
-    const hasOverflow=el=>el&&Number.isFinite(el.scrollHeight)&&
-      Number.isFinite(el.clientHeight)&&el.clientHeight>=100&&
-      el.scrollHeight>el.clientHeight+40;
-    const scrollable=el=>{
-      if(!el||checked.has(el))return null;
-      checked.add(el);
-      return hasOverflow(el)&&/auto|scroll|overlay/.test(getComputedStyle(el).overflowY)?el:null;
-    };
-    // Prefer the actual conversation ancestry over any sidebar scrollbars.
-    for(const seed of [first,main]){
-      for(let el=seed;el;el=el.parentElement){
-        const found=scrollable(el);
-        if(found)return found;
-      }
-    }
-    // Some ChatGPT layouts mount their viewport as a sibling of <main>.
-    // Search the whole document, but only accept elements related to the
-    // conversation: ancestors, descendants or a container of a message.
-    const candidates=document.querySelectorAll(
-      '[data-scroll-root],[data-testid*="scroll"],'+
-      '[class*="overflow"],[class*="scrollbar"],[class*="scroll"],#thread');
-    for(const el of candidates){
-      if(el!==main&&!el.contains?.(main)&&!main.contains?.(el)&&
-         !(first&&el.contains?.(first)))continue;
-      const found=scrollable(el);
-      if(found)return found;
-    }
-    // The document itself may scroll, with overflowY reported as visible.
-    const page=document.scrollingElement;
-    if(hasOverflow(page))return page;
-    return null;
-  }
-  function setChatScroll(element,top){
-    if(typeof element.scrollTo==='function'){
-      try{element.scrollTo({top,behavior:'instant'});return;}catch{}
-    }
-    element.scrollTop=top;
-  }
-  const pauseChatScroll=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  // Respect the user's reading position. ChatGPT virtualizes older turns,
+  // so a DOM snapshot is deliberately partial; never drive scrollTop here.
+  // Passive recording observes newly mounted turns as the user scrolls.
   async function captureChatHistory(includeAssistant){
-    if(state.historyCapture)throw Error('這篇對話已在進行全頁擷取');
+    if(state.historyCapture)throw Error('對話擷取正在入列');
     if(state.mode==='record'||state.mode==='paused')
-      throw Error('請先停止目前錄製，再執行整篇歷史擷取');
+      throw Error('正在錄製中：請依平常方式閱讀，已載入訊息會增量入列；不會自動捲動');
     const href=normalizeUrl(location.href);
-    const deadline=Date.now()+180000; // Bound virtualized-history scans; never silently claim completeness.
     const main=document.querySelector('main')||document.body;
-    const scroller=chatHistoryScroller(main);
-    if(!scroller)throw Error('找不到對話的捲動容器；不能把目前載入的幾則訊息當成完整對話');
-    const startTop=scroller.scrollTop;
-    const step=Math.max(180,Math.floor(scroller.clientHeight*0.65));
-    const seen=new Set(),buffer=[];
-    let detected=0,user=0,assistant=0,queuedCaptures=0,upSteps=0,downSteps=0;
     state.historyCapture=true;
-    const ensureChat=()=>{
-      if(normalizeUrl(location.href)!==href)
-        throw Error('擷取期間已切換對話，已停止，避免不同來源混入同一篇');
-    };
-    const collect=()=>{
-      ensureChat();
-      const rows=shadowConversationTurns(main,includeAssistant,'record');
-      for(const item of rows){
-        const identity=item.source_key+':'+item.key+':'+fingerprint(item.content);
-        if(seen.has(identity))continue;
-        seen.add(identity);
-        buffer.push(item);
-        detected++;
-        if(item.content.startsWith('[user]\n'))user++;
-        if(item.content.startsWith('[assistant]\n'))assistant++;
-      }
-      return rows.map(row=>row.key).join('|');
-    };
-    const writeBuffered=async()=>{
-      if(!buffer.length)return;
-      const items=buffer.splice(0,buffer.length);
-      const result=await queuePublish(items);
-      if(result.error)throw Error('擷取資料入列失敗，已入列 '+queuedCaptures+' 則：'+result.error);
-      queuedCaptures+=result.insertedCaptures||0;
-    };
     try{
-      // Seek the real beginning in overlapping increments, allowing older
-      // turns to be loaded. Repeated top-edge probes handle lazy backfill.
-      let still=0,lastSig='';
-      for(let n=0;n<3500;n++){
-        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
-        ensureChat();
-        const before=scroller.scrollTop,height=scroller.scrollHeight;
-        setChatScroll(scroller,Math.max(0,before-step));
-        await pauseChatScroll(before<=1?280:95);
-        const sig=shadowConversationTurns(main,includeAssistant,'record')
-          .map(x=>x.key).slice(0,3).join('|');
-        upSteps++;
-        if(scroller.scrollTop<=1&&before<=1&&scroller.scrollHeight===height&&sig===lastSig)
-          still++;
-        else still=0;
-        lastSig=sig;
-        if(still>=4)break;
-        if(n===3499)throw Error('歷史對話超過捲動掃描上限；未宣稱完整，請分段擷取');
-      }
-      // Walk from beginning to end. Overlap each viewport so virtualized
-      // turns are collected before ChatGPT unmounts them.
-      let stillAtEnd=0,lastAtEnd='';
-      for(let n=0;n<5000;n++){
-        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
-        const sig=collect();
-        if(buffer.length>=50&&(!includeAssistant||assistant>0))await writeBuffered();
-        const before=scroller.scrollTop,height=scroller.scrollHeight;
-        const bottom=Math.max(0,height-scroller.clientHeight);
-        const atEnd=before>=bottom-2;
-        if(atEnd){
-          if(sig===lastAtEnd&&scroller.scrollHeight===height)stillAtEnd++;
-          else stillAtEnd=0;
-          lastAtEnd=sig;
-          if(stillAtEnd>=4)break;
-          await pauseChatScroll(280);
-        }else{
-          stillAtEnd=0;
-          setChatScroll(scroller,Math.min(bottom,before+step));
-          await pauseChatScroll(95);
-        }
-        downSteps++;
-        if(n===4999)throw Error('對話長度超過單次掃描上限；已保留入列資料，不能宣稱全文完成');
-      }
-      if(includeAssistant&&assistant===0)
-        throw Error('已掃描對話，但沒有辨識到任何 AI 回覆；本次不寫入 Queue');
-      await writeBuffered();
-      const partial=includeAssistant&&globalThis.ChatGPTShadowExtract.isStreaming(document);
-      return {directQueued:true,detected,user,assistant,queuedCaptures,partial,
-        message:'已從對話頂端掃描至底端：辨識 '+detected+
-          ' 則（使用者 '+user+'／AI '+assistant+'）；'+
-          '本次新增 Queue '+queuedCaptures+' 則。'+
-          (partial?'最後一則仍在生成，暫未保存。':'')+
-          '僅涵蓋頁面可載入的對話。',
-        upSteps,downSteps};
+      const rows=shadowConversationTurns(main,includeAssistant,'capture');
+      if(normalizeUrl(location.href)!==href)
+        throw Error('擷取期間已切換對話，未寫入 Queue');
+      if(!rows.length)
+        return {directQueued:true,detected:0,user:0,assistant:0,queuedCaptures:0,
+          partial:true,message:'目前沒有已載入的可辨識訊息；頁面未捲動，Queue 未變動。'};
+      const user=rows.filter(row=>row.content.startsWith('[user]\n')).length;
+      const assistant=rows.filter(row=>row.content.startsWith('[assistant]\n')).length;
+      const result=await queuePublish(rows);
+      if(result.error)throw Error('目前已載入的對話入列失敗：'+result.error);
+      const queuedCaptures=Number(result.insertedCaptures||0);
+      return {directQueued:true,detected:rows.length,user,assistant,queuedCaptures,
+        partial:true,message:'已擷取目前載入 '+rows.length+' 則（使用者 '+user+
+          '／AI '+assistant+'），本次新增 Queue '+queuedCaptures+
+          ' 則。未自動捲動；這不是完整歷史。需要更多訊息請啟動錄製並正常閱讀、捲動，擷取會跟隨已載入內容。'};
     }finally{
-      setChatScroll(scroller,Math.min(startTop,
-        Math.max(0,scroller.scrollHeight-scroller.clientHeight)));
       state.historyCapture=false;
     }
   }
@@ -512,7 +392,7 @@
     event.preventDefault();event.stopImmediatePropagation();
     const target=event.target;
     const recording=state.mode==='pick-record';
-    const chat=/^(?:chatgpt\.com|chat\.openai\.com|claude\.ai)$/.test(location.hostname);
+    const chat=/^(?:chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com)$/.test(location.hostname);
     const main=recording&&chat&&(target.closest?.('main')||document.querySelector?.('main'));
     const root=main||(state.mode==='pick-record'?
       (target.closest('[role="feed"],main,section')||target.closest('article,[role="article"]')?.parentElement||target):

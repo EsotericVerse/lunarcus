@@ -78,20 +78,23 @@ const context=vm.createContext({
 vm.runInContext(vendor,context,{filename:'ChatGPTShadowExtract.js'});
 vm.runInContext(content,context,{filename:'content.js'});
 
-test('virtualized 9-mounted-turn DOM is archived as 80 distinct turns',async()=>{
+test('capture uses the currently mounted 9 turns and never scrolls the reader',async()=>{
   assert.equal(typeof listener,'function');
+  const initialTop=scroller.scrollTop;
   const reply=await new Promise(resolve=>{
     const keepAlive=listener({type:'page.capture',selection:'',includeAssistant:true},null,resolve);
     assert.equal(keepAlive,true);
   });
   assert.equal(reply.error,undefined,String(reply.error));
-  assert.equal(reply.detected,80);
-  assert.equal(reply.user,40);
-  assert.equal(reply.assistant,40);
-  assert.equal(reply.queuedCaptures,80);
-  assert.equal(inserted.length,80);
-  assert.equal(new Set(inserted.map(item=>item.key)).size,80);
-  assert.equal(scroller.scrollTop,9000,'restore original scroll position');
+  assert.equal(reply.detected,9);
+  assert.equal(reply.user,4);
+  assert.equal(reply.assistant,5);
+  assert.equal(reply.partial,true);
+  assert.equal(reply.queuedCaptures,9);
+  assert.equal(inserted.length,9);
+  assert.equal(new Set(inserted.map(item=>item.key)).size,9);
+  assert.equal(scroller.scrollTop,initialTop,'reading position must remain unchanged');
+  assert.match(reply.message,/不是完整歷史/);
 });
 test('nested GPT conversation URLs retain the saved chat identifier',()=>{
   assert.equal(
@@ -99,32 +102,21 @@ test('nested GPT conversation URLs retain the saved chat identifier',()=>{
       'https://chatgpt.com/g/g-example/c/6af8ff99-6b54-83ee-8ee5-06f99616d940'),
     '6af8ff99-6b54-83ee-8ee5-06f99616d940');
 });
-test('finds an external chat viewport even without the former first-turn selector',async()=>{
-  const originalQuery=main.querySelector;
-  const originalCandidates=doc.querySelectorAll;
-  const originalPage=doc.scrollingElement;
-  try{
-    main.querySelector=()=>null;
-    // Reproduce a ChatGPT layout with a scroll root above/outside main;
-    // the original logic only inspected main and document.scrollingElement.
-    doc.querySelectorAll=selector=>selector.includes('overflow')?[scroller]:[];
-    doc.scrollingElement={scrollHeight:1000,clientHeight:1000,scrollTop:0};
-    scroller.scrollTop=9000;cacheTop=NaN;
-    inserted=[];queued=0;
-    const reply=await new Promise(resolve=>{
-      const keepAlive=listener({type:'page.capture',selection:'',includeAssistant:true},null,resolve);
-      assert.equal(keepAlive,true);
-    });
-    assert.equal(reply.error,undefined,String(reply.error));
-    assert.equal(reply.detected,80,'external viewport still scans all messages');
-    assert.equal(reply.queuedCaptures,0,'repeat captures must not duplicate Queue receipts');
-    assert.equal(inserted.length,0,'previously archived turns are not enqueued twice');
-    assert.equal(scroller.scrollTop,9000,'restore original viewport');
-  }finally{
-    main.querySelector=originalQuery;
-    doc.querySelectorAll=originalCandidates;
-    doc.scrollingElement=originalPage;
-  }
+test('capture does not probe external scrollbars or change scroll position',async()=>{
+  const initialTop=scroller.scrollTop;
+  inserted=[];queued=0;
+  const reply=await new Promise(resolve=>{
+    const keepAlive=listener({type:'page.capture',selection:'',includeAssistant:true},null,resolve);
+    assert.equal(keepAlive,true);
+  });
+  assert.equal(reply.error,undefined,String(reply.error));
+  assert.equal(reply.detected,9,'a snapshot must not claim 80 virtualized turns');
+  assert.equal(reply.queuedCaptures,0,'repeat snapshot does not requeue messages');
+  assert.equal(scroller.scrollTop,initialTop);
+});
+test('full-history auto-scroll loop is absent',()=>{
+  assert.doesNotMatch(content,/setChatScroll|chatHistoryScroller|upSteps|downSteps/);
+  assert.match(content,/未自動捲動/);
 });
 test('background accepts direct Queue acknowledgement rather than requiring one DOM snapshot',()=>{
   assert.ok(background.includes('reply?.directQueued===true'));

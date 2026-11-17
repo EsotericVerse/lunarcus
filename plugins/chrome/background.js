@@ -121,12 +121,28 @@ async function stableUuid(input){
  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-5'+hex.slice(13,16)+'-'+
   ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
 }
+// Conversation fragments must never be appended to a Galaxy article out of order.
+// The former model has no persisted turn-order/reply graph: fail closed.
+// Existing pending Queue is retained and may contain legacy fragments; flush
+// also blocks them until a verified structured migration is available.
+function isConversationSource(value){
+ try{
+  const host=new URL(String(value||'')).hostname.toLowerCase();
+  return ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com'].includes(host);
+ }catch{return false;}
+}
+function isUnorderedConversationCapture(row){
+ return isConversationSource(row?.source_key||row?.url)&&
+  (String(row?.kind||'capture')==='capture');
+}
 async function toEvents(items,scopeid='lo3rwang'){
  if(!SCOPE.test(scopeid))throw Error('不支援的銀河 Scope');
  if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
  const rows=[];
  for(const item of items){
   if(!item||typeof item.content!=='string'||!item.content.trim())continue;
+  if(isConversationSource(item.source_key||item.url))
+   throw Error('對話來源已暫停無序 append：不會將訊息亂序加入文章；舊 Queue 保留');
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
   if(url!==source_key)continue;
@@ -459,8 +475,13 @@ async function sendViaAuth(scopeid,batch,token,config){
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
-  const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
-  if(!rows.length)return {message:'Queue 已清空',sent:0};
+  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
+  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
+  const rows=pending.filter(row=>!isUnorderedConversationCapture(row));
+  // Preserve legacy conversations without preventing unrelated posts from sending.
+  if(!rows.length)return {message:legacyConversationCount
+   ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
+   :'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
   if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
@@ -537,6 +558,8 @@ async function currentTab(){
  return tab;
 }
 async function capture(tab,selection='',includeAssistant=false){
+ if(isConversationSource(tab.url))
+  throw Error('對話內容擷取已暫停：目前 Queue 只支援無序 append，尚不能保存前後文關聯。頁面不會自動捲動，既有資料保留。');
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
  if(reply?.error)throw Error(String(reply.error));
@@ -560,6 +583,8 @@ async function recordedTab(){
 }
 async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  const tab=providedTab||await currentTab();
+ if(isConversationSource(tab.url))
+  throw Error('對話錄製／選取暫停：在可靠的對話模型重建前，不再把訊息亂序追加到文章。閱讀頁面不會被控制。');
  // One active recorder. Stop the prior tab before moving the recorder.
  const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
  if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
