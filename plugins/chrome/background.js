@@ -121,6 +121,20 @@ async function stableUuid(input){
  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-5'+hex.slice(13,16)+'-'+
   ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
 }
+// Conversation fragments must never be appended to a Galaxy article out of order.
+// The former model has no persisted turn-order/reply graph: fail closed.
+// Existing pending Queue is retained and may contain legacy fragments; flush
+// also blocks them until a verified structured migration is available.
+function isConversationSource(value){
+ try{
+  const host=new URL(String(value||'')).hostname.toLowerCase();
+  return ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com'].includes(host);
+ }catch{return false;}
+}
+function isUnorderedConversationCapture(row){
+ return isConversationSource(row?.source_key||row?.url)&&
+  (String(row?.kind||'capture')==='capture');
+}
 async function toEvents(items,scopeid='lo3rwang'){
  if(!SCOPE.test(scopeid))throw Error('不支援的銀河 Scope');
  if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
@@ -459,7 +473,9 @@ async function sendViaAuth(scopeid,batch,token,config){
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
-  const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
+  const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''));
+  if(rows.some(isUnorderedConversationCapture))
+   throw Error('Queue 含舊版無序對話碎片，已阻止自動 append；Queue 原始資料保留，請勿清除');
   if(!rows.length)return {message:'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
