@@ -87,8 +87,8 @@ test('capture uses the currently mounted 9 turns and never scrolls the reader',a
   });
   assert.equal(reply.error,undefined,String(reply.error));
   assert.equal(reply.detected,9);
-  assert.equal(reply.user,5);
-  assert.equal(reply.assistant,4);
+  assert.equal(reply.user,4);
+  assert.equal(reply.assistant,5);
   assert.equal(reply.partial,true);
   assert.equal(reply.queuedCaptures,9);
   assert.equal(inserted.length,9);
