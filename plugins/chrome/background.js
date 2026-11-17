@@ -144,7 +144,7 @@ async function toEvents(items,scopeid='lo3rwang'){
   if(isConversationSource(item.source_key||item.url)){
    const url=normalizedUrl(item.url||item.source_key);
    const source_key=normalizedUrl(item.source_key||item.url);
-   if(url!==source_key||!isConversationSource(url))
+   if(url!==source_key||!isConversationSource(url)||new URL(url).protocol!=='https:')
     throw Error('對話來源識別不一致；Queue 未變動');
    if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
       !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
@@ -566,8 +566,7 @@ async function flush(force=false){
     groups.get(key).push(row);
    }
    for(const group of groups.values()){
-    for(let offset=0;offset<group.length;offset+=30){
-     const part=group.slice(offset,offset+30);
+    for(const part of packet(group)){
      const scopeid=part[0].scopeid||'lo3rwang';
      try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
      catch(error){
