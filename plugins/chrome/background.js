@@ -548,7 +548,7 @@ async function flush(force=false){
 async function inject(tabId){
  await chrome.scripting.executeScript({target:{tabId},files:[
   'vendor/Readability.js','vendor/ChatGPTShadowExtract.js',
-   'capture-source-model.js','conversation-source-model.js','content.js'
+   'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
  ]});
 }
 async function currentTab(){
