@@ -77,21 +77,27 @@ test('unknown or unverified change list is never an automatic deployment',()=>{
   assert.equal(planLasDeployment([{filename:'../unsafe',patch:'+'}]).loc,'review');
 });
 
-test('Cloudflare success gate, main SHA and an optional protected LOC hook are preserved',()=>{
-  for(const contract of ['check_run:', 'types: [completed]',
+test('Only a published LAS Worker can trigger signed LOC GitHub workflow notification',()=>{
+  for(const contract of [
+    'check_run:', 'types: [completed]',
     "github.event.check_run.name == 'Workers Builds: lunarcus'",
     "github.event.check_run.app.slug == 'cloudflare-workers-and-pages'",
     "github.event.check_run.conclusion == 'success'",
-    'scripts/resolve-las-deployment-impact.mjs',
-    "steps.impact.outputs.decision == 'notify'",
-    'secrets.LOC_PAGES_DEPLOY_HOOK',
-    'https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/',
-    '--request POST', 'workflow_dispatch:', 'options: [auto, notify, skip]'])
-    assert.ok(workflow.includes(contract),'Missing deployment contract: '+contract);
+    'steps.impact.outputs.decision == \'notify\'',
+    'id-token: write', 'scripts/send-las-loc-notification.mjs',
+    'workflow_dispatch:', 'options: [auto, notify, skip]'
+  ]) assert.ok(workflow.includes(contract),'Missing deployment contract: '+contract);
+  assert.ok(!workflow.includes('LOC_PAGES_DEPLOY_HOOK'));
+  assert.ok(!workflow.includes('secrets.LOC_WORKFLOW_KEY'));
+  assert.ok(!workflow.includes('CLOUDFLARE_API_TOKEN'));
   const resolver=readFileSync(new URL('./resolve-las-deployment-impact.mjs',import.meta.url),'utf8');
   assert.ok(resolver.includes('/git/ref/heads/main'));
   assert.ok(resolver.includes("sha!==mainSha"));
   assert.ok(resolver.includes('planLasDeployment(files)'));
-  assert.ok(!workflow.includes('repository_dispatch'));
-  assert.ok(!workflow.includes('CLOUDFLARE_API_TOKEN'));
+  assert.ok(resolver.includes('las_sha='));
+  assert.ok(resolver.includes("event==='workflow_dispatch'&&mode==='notify'"));
+  const sender=readFileSync(new URL('./send-las-loc-notification.mjs',import.meta.url),'utf8');
+  assert.ok(sender.includes('ACTIONS_ID_TOKEN_REQUEST_TOKEN'));
+  assert.ok(sender.includes("auth.lo3rwang.cc/_internal/loc-deploy"));
+  assert.ok(!sender.includes('LOC_WORKFLOW_KEY'));
 });

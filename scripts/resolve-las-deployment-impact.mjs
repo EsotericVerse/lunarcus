@@ -35,6 +35,15 @@ if(eligible){
   }
   plan=planLasDeployment(files);
 }
+// Manual dispatch must not bypass the published LAS Worker success gate.
+if(eligible&&event==='workflow_dispatch'&&mode==='notify'){
+  const checked=await get('/repos/'+repo+'/commits/'+mainSha+'/check-runs?per_page=100');
+  const published=(checked.check_runs||[]).some(run=>
+    run.name==='Workers Builds: lunarcus'&&
+    run.app?.slug==='cloudflare-workers-and-pages'&&
+    run.status==='completed'&&run.conclusion==='success');
+  if(!published)throw Error('LAS main is not verified as successfully published');
+}
 const decision=eligible?chooseLocAction(plan,mode):'skip';
 const summary={sha:currentSha,mode,decision,las:plan.las,reasons:plan.reasons};
 console.log('LAS deployment decision: '+JSON.stringify(summary));
@@ -44,4 +53,4 @@ if(process.env.GITHUB_STEP_SUMMARY){
     'LAS: Auth '+plan.las.auth+', MCP '+plan.las.mcp+
     ', Plugins '+plan.las.plugins+'\n');
 }
-if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,'decision='+decision+'\n');
+if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,'decision='+decision+'\nlas_sha='+currentSha+'\n');
