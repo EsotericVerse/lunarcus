@@ -5,7 +5,7 @@ description: "LAS MCP Streamable HTTP、SSE、JSON-RPC、protocol version 與連
 
 # mcp-transport — LAS 專用能力
 
-LAS 目前實作應先讀 `app/las/mcp/{stateless-transport,stream-json,upstream-sse,upstream-oauth}.mjs` 和 `services/workers/las-mcp/index.mjs`。不要因新版 MCP 規格直接刪既有客戶端需要的相容路徑。
+LAS 目前實作應先讀 `app/las/mcp/{stateless-transport,stream-json,upstream-sse,upstream-oauth}.mjs` 和 `app/las/mcp/server.mjs`。不要因新版 MCP 規格直接刪既有客戶端需要的相容路徑。
 
 - 解析 initialize negotiation、JSON-RPC 2.0 的 `id`、batch/error、Content-Type、Accept、HTTP status、Origin 與授權 header。
 - Streamable HTTP 的回應可以是 JSON 或單次請求的 SSE stream；**不要**把 SSE 簡化成一般 JSON，也不要把持久化 Stream 與 Auth Session 混成一個。

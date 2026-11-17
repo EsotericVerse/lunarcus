@@ -5,9 +5,9 @@ description: "LAS 既有單一 lunarcus Cloudflare Worker，Auth/MCP 雙網域�
 
 # LAS Cloudflare Workers — 單一部署
 
-**正式只有既有 `lunarcus` Worker。** Root `wrangler.jsonc` 同時宣告 `auth.lo3rwang.cc`、`mcp.lo3rwang.cc` 兩個 custom domains；`services/workers/lunarcus/index.mjs` 按 hostname 分流，MCP handler 是同個 bundle 裡的 `mcp.mjs`。**不可重新建立獨立 `las-mcp` Worker 或讓 LOC Pages 重新接管 MCP 網域。**
+**正式只有既有 `lunarcus` Worker。** Root `wrangler.jsonc` 同時宣告 `auth.lo3rwang.cc`、`mcp.lo3rwang.cc` 兩個 custom domains；`app/las/index.mjs` 按 hostname 分流，MCP handler 是同個 bundle 裡的 `mcp.mjs`。**不可重新建立獨立 `las-mcp` Worker 或讓 LOC Pages 重新接管 MCP 網域。**
 
-1. 查 GitHub source／main SHA、Workers Builds 的 Production／Preview watch paths、最終部署 version、兩個 custom domains 所屬 Worker。Changes to `services/workers/lunarcus/**` 或 `app/las/mcp/**` 會影響同一 Worker；Plugins、Skills、純 CMS Mapping 不應因此觸發正式發布。
+1. 查 GitHub source／main SHA、Workers Builds 的 Production／Preview watch paths、最終部署 version、兩個 custom domains 所屬 Worker。Changes to `app/las/auth/**` 或 `app/las/mcp/**` 會影響同一 Worker；Plugins、Skills、純 CMS Mapping 不應因此觸發正式發布。
 2. 查環境變數及 Bindings 的**名稱／類型**，不讀 Secret 值。既有的 `LOC_*` 兼容名稱有實際用途，不因搬遷而刪除或重新命名。
 3. `npm run auth:dry-run` 和 `npm run mcp:dry-run` 都只是**同一 Worker** 的 dry-run；正式由 Workers Builds 對 `lunarcus` 執行，不另外從 LAS GitHub 使用 Cloudflare API Token 部署第二個 Worker。
 4. 每次更新都要驗證 Auth health、MCP resource metadata、401 OAuth challenge 與分流隔離，再按需要驗 SSO callback、MCP SSE、LOC business API；部署成功不是功能驗收。
