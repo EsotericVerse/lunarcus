@@ -23,8 +23,8 @@ for(const name of expected){
   const content=readFileSync(path,'utf8');
   // Frontmatter may include license/metadata after the required fields.
   // Validate the bounded YAML header without requiring a two-field-only skill.
-  const header=/^---\\r?\\n([\\s\\S]*?)\\r?\\n---(?:\\r?\\n|$)/.exec(content)?.[1]||'';
-  const match=/^name: ([a-z0-9-]+)\\r?\\ndescription: "?([^\\r\\n]+)"?(?:\\r?\\n|$)/.exec(header);
+  const header=(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)?.[1]||'')+'\n';
+  const match=/^name: ([a-z0-9-]+)\r?\ndescription: "?([^\r\n]+)"?(?:\r?\n|$)/.exec(header);
   assert.ok(match,'Invalid skill frontmatter: '+name);
   assert.equal(match[1],name,'Skill metadata must match directory: '+name);
   assert.ok(match[2].length>=8,'Skill description too short: '+name);
