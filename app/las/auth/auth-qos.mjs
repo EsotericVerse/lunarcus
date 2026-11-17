@@ -88,7 +88,18 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
   // every nested Auth endpoint in one Karaul policy (Better Auth's '*'
   // matches only one path segment; '**' covers nested OAuth client routes). The native limiter still owns
   // storage, route evaluation and 429 responses.
-  return {'/jwks':false,'/**':budget};
+  // Routine identity/session reads are not login attempts. They can be
+  // requested repeatedly by the owner's browser, LOC or MCP without the
+  // per-IP 120/min ceiling turning healthy navigation into HTTP 429.
+  // Better Auth still validates the cookie/token; only admission counting
+  // is skipped on these read paths.
+  return {
+    '/jwks':false,
+    '/get-session':false,
+    '/oauth2/userinfo':false,
+    '/oauth2/introspect':false,
+    '/**':budget
+  };
 }
 
 export const authKaraulRatePolicy=Object.freeze({
