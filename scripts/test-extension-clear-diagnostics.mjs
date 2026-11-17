@@ -8,7 +8,7 @@ const options=readFileSync(new URL('options.js',root),'utf8');
 const html=readFileSync(new URL('options.html',root),'utf8');
 const css=readFileSync(new URL('options.css',root),'utf8');
 
-const caseBody=/case 'loc-clear-diagnostics':\{([\s\S]*?)\n   \}\n   case 'loc-diagnostics':/.exec(background)?.[1];
+const caseBody=/case 'loc-clear-diagnostics':\{([\s\S]*?)\n   \}\n   case 'conversation.review':/.exec(background)?.[1];
 assert.ok(caseBody,'dedicated Extension diagnostic cleanup action exists');
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 const clear=new AsyncFunction('sender','chrome','DIAGNOSTIC_KEY',caseBody);
