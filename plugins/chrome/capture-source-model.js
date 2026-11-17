@@ -5,13 +5,32 @@
   const HOSTS=Object.freeze({
     instagram:new Set(['instagram.com','www.instagram.com','m.instagram.com']),
     threads:new Set(['threads.com','www.threads.com','threads.net','www.threads.net']),
-    facebook:new Set(['facebook.com','www.facebook.com','m.facebook.com','web.facebook.com'])
+    facebook:new Set(['facebook.com','www.facebook.com','m.facebook.com','web.facebook.com']),
+    chatgpt:new Set(['chatgpt.com','chat.openai.com']),
+    claude:new Set(['claude.ai']),
+    gemini:new Set(['gemini.google.com'])
   });
+  const SOCIAL=new Set(['facebook','instagram','threads']);
   function providerOf(host){
-    for(const [provider,hosts] of Object.entries(HOSTS))if(hosts.has(host))return provider;
+    for(const [provider,hosts] of Object.entries(HOSTS))if(hosts.has(String(host||'').toLowerCase()))return provider;
     return null;
   }
-  function isSocialHost(host){return providerOf(String(host||'').toLowerCase())!==null;}
+  function isSocialHost(host){return SOCIAL.has(providerOf(host));}
+  function conversationUrl(raw){
+    let u;
+    try{u=new URL(raw);}catch{return null;}
+    if(u.protocol!=='https:'||u.username||u.password)return null;
+    const provider=providerOf(u.hostname);
+    let identity=null;
+    if(provider==='claude'){
+      const match=/^\/chat\/([a-f0-9-]{32,40})\/?$/i.exec(u.pathname);
+      if(match)identity='https://claude.ai/chat/'+match[1].toLowerCase();
+    }else if(provider==='gemini'){
+      const match=/^\/app\/([A-Za-z0-9_-]{6,128})\/?$/.exec(u.pathname);
+      if(match)identity='https://gemini.google.com/app/'+match[1];
+    }
+    return identity?Object.freeze({provider,url:identity}):null;
+  }
   function permalink(raw,base){
     let u;
     try{u=new URL(raw,base);}catch{return null;}
@@ -69,5 +88,5 @@
     if(card===root.document?.body)return permalink(pageUrl);
     return null;
   }
-  root.LasCaptureSourceModel=Object.freeze({providerOf,isSocialHost,permalink,sourceForCard});
+  root.LasCaptureSourceModel=Object.freeze({providerOf,isSocialHost,conversationUrl,permalink,sourceForCard});
 })(globalThis);
