@@ -14,4 +14,4 @@ description: "LAS 通訊協定的 contract/integration/regression 測試，包�
 | MCP | `npm run check:mcp` | HTTP/JSON/SSE 契約 | 正式 token/Provider/LOC 整合 |
 | Cloudflare bundle | `npm run auth:dry-run`／`mcp:dry-run` | 可打包 Worker | 正式路由與真實 Session |
 
-每次 PR 要有一項針對**原問題會失敗**的測試。合併後核 main SHA、實際 Worker 部署版本及必要的使用者路徑；不在無授權情況下動 Cloudflare、資料庫或其他 repo。
+修正可重現的 Protocol／傳輸故障時，使用能對照原失敗請求的聚焦回歸測試；純文字／工作指引修正則核對原意、範圍與相反解讀，不假造 HTTP 故障測試。合併後依變更內容核對 main SHA、實際 Worker 版本及必要客戶端路徑；不以測試數量代替通訊是否恢復。
