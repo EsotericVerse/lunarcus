@@ -5,7 +5,7 @@ description: "LAS OAuth2/OIDC 伺服器與 Chrome 公開客戶端；PKCE、metad
 
 # oauth-oidc — LAS 專用能力
 
-先畫出 LAS 的**三個不同識別**：Cloudflare Access 上游 SSO Client；LAS 自己的 `lunarcus` OAuth public client；Chrome `manifest.key` 對應的 Chromium Extension ID。不能拿其中一個名稱修改另一個。
+先畫出 LAS 的**兩個不同識別**：LAS 自己的 `lunarcus` OAuth public client；Chrome `manifest.key` 對應的 Chromium Extension ID。不能拿其中一個名稱修改另一個。（Cloudflare Access 上游 SSO Client 已於 2026-11-17 移除，不再是第三個識別——不要假設它還存在或重建它。）
 
 ## 實務檢查
 - `public/plugins/chrome/oauth/client.json`、`config.json`、`plugins/chrome/oauth-config.json`、`extension-client.mjs` 和 `background.js` 必須一致。

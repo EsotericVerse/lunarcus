@@ -7,7 +7,7 @@ description: "LAS MCP/OAuth/OIDC/HTTP/CORS/SSO security boundaries 與 token、�
 
 只處理 LAS 的入口與傳輸安全。
 
-- OIDC：比對簽章／issuer／audience／nonce／state／PKCE、固定 redirect_uri，限制回傳錯誤資訊。Cloudflare Access 的 ID Token 不是 LOC 的寫入 grant。
+- OIDC：比對簽章／issuer／audience／nonce／state／PKCE、固定 redirect_uri，限制回傳錯誤資訊。Google OAuth 登入成功只代表 LAS Session，不是 LOC 的寫入 grant。
 - MCP：Origin 驗證、JSON-RPC 錯誤、trusted resource、OAuth token binding、scope、tool input restrictions、GET/POST/SSE 版本行為。
 - Plugin：Chrome Manifest 權限、content script 隔離、host permissions、OAuth token browser storage、錯誤診斷遮罩。
 - Tunnel：無 arbitrary URL、database switch、SQL execution、混淆跨主體的認證與授權。

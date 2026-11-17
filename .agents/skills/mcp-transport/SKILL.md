@@ -5,7 +5,7 @@ description: "LAS MCP Streamable HTTP、SSE、JSON-RPC、protocol version 與連
 
 # mcp-transport — LAS 專用能力
 
-LAS 目前實作應先讀 `app/las/mcp/{stateless-transport,stream-json}.mjs` 和 `app/las/mcp/server.mjs`。不要因新版 MCP 規格直接刪既有客戶端需要的相容路徑。LAS 沒有上游 MCP provider relay；身分提供者只有 Cloudflare SSO（`auth.lo3rwang.cc`）。2026-11-17 已移除一套未接線、也未經授權新增的 `upstream/`（Clerk/GitHub/Neon/Supabase OAuth relay）子目錄，不要再重建同類程式。
+LAS 目前實作應先讀 `app/las/mcp/{stateless-transport,stream-json}.mjs` 和 `app/las/mcp/server.mjs`。不要因新版 MCP 規格直接刪既有客戶端需要的相容路徑。LAS 沒有上游 MCP provider relay；身分提供者只有 LAS 自己的 Auth（`auth.lo3rwang.cc`，Google OAuth 登入、自己簽發與驗證 JWKS，不是 Cloudflare 的服務）。2026-11-17 已移除一套未接線、也未經授權新增的 `upstream/`（Clerk/GitHub/Neon/Supabase OAuth relay）子目錄，也移除了原本多繞一手的 Cloudflare Access SSO 登入路徑，不要再重建同類程式。
 
 - 解析 initialize negotiation、JSON-RPC 2.0 的 `id`、batch/error、Content-Type、Accept、HTTP status、Origin 與授權 header。
 - Streamable HTTP 的回應可以是 JSON 或單次請求的 SSE stream；**不要**把 SSE 簡化成一般 JSON，也不要把持久化 Stream 與 Auth Session 混成一個。
