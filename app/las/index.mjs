@@ -1,7 +1,7 @@
-import mcpWorker from './mcp.mjs';
+import mcpWorker from './mcp/server.mjs';
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
-import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth/auth.mjs';
 import {authorizationCodeRequest} from 'better-auth';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
