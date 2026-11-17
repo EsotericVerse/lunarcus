@@ -5,12 +5,12 @@
  * Never infer LOC deployment from a generic LAS commit, a shared package
  * version, Chrome Plugin, or a LAS-owned CMS mapping.
  */
-const AUTH_RUNTIME=/^(?:services\/workers\/lunarcus\/|vendor\/loc-dialect\/)/;
+const AUTH_RUNTIME=/^(?:app\/las\/auth\/|vendor\/loc-dialect\/)/;
 const AUTH_CONFIG=/^wrangler\.jsonc$/;
-const MCP_RUNTIME=/^(?:services\/workers\/las-mcp\/|app\/las\/(?:mcp|tunnel)\/)/;
+const MCP_RUNTIME=/^app\/las\/(?:mcp|tunnel)\//;
 const PLUGINS=/^(?:plugins\/|public\/plugins\/)/;
-const AUTH_PUBLIC=/^services\/workers\/lunarcus\/(?:index|auth|extension-client)\.mjs$/;
-const MCP_PUBLIC=/^(?:services\/workers\/las-mcp\/index\.mjs|app\/las\/mcp\/(?:router|tool-contracts|business-actions)\.mjs)$/;
+const AUTH_PUBLIC=/^(?:app\/las\/index\.mjs|app\/las\/auth\/(?:auth|extension-client)\.mjs)$/;
+const MCP_PUBLIC=/^app\/las\/mcp\/(?:server|router|tool-contracts|business-actions)\.mjs$/;
 const AUTH_CONTRACT=/(?:\/api\/auth\/|\/\.well-known\/|LOC_ISSUER|LOC_WEB|oauth2|openid|oidc|issuer|redirect_uri|callbackURL|allowedOrigins?|session|cookie|scope|authorization|tokenEndpoint|client_id)/i;
 const MCP_LOC_CONTRACT=/(?:\/api\/las-native|\/api\/loc-native|LOC_PROXY_ROUTES|locProxy|mcp-(?:authorize|read|search|public-read|article-stat)|api\.manage)/i;
 
@@ -36,11 +36,11 @@ export function planLasDeployment(changes) {
     }
     const patch=typeof file==='string'?undefined:file?.patch;
     if(PLUGINS.test(path)){las.plugins=true;continue;}
-    if(AUTH_RUNTIME.test(path)||AUTH_CONFIG.test(path))las.auth=true;
+    if((AUTH_RUNTIME.test(path)&&path.endsWith('.mjs'))||AUTH_CONFIG.test(path)||path==='app/las/index.mjs'||path.startsWith('vendor/loc-dialect/'))las.auth=true;
     // LAS-owned CMS Data Mapping is a data contract, not a deployed server.
     // Do not schedule either MCP or LOC solely because its model changed.
     if(path.startsWith('app/las/tunnel/'))continue;
-    if(MCP_RUNTIME.test(path))las.mcp=true;
+    if(MCP_RUNTIME.test(path)&&path.endsWith('.mjs'))las.mcp=true;
     if(AUTH_PUBLIC.test(path)){
       const lines=changedCode(patch);
       if(lines===null){review=true;reasons.push('Auth public contract needs diff review: '+path);}
@@ -53,8 +53,8 @@ export function planLasDeployment(changes) {
       const lines=changedCode(patch);
       if(lines===null){review=true;reasons.push('MCP server contract needs diff review: '+path);}
       else if(lines.some(line=>MCP_LOC_CONTRACT.test(line))){
-        // MCP production hostname has not been cut over to LAS: do NOT
-        // automatically redeploy LOC from an unpublished MCP staging Worker.
+        // MCP production is already on the LAS Worker; LOC-facing changes
+        // still require explicit review before a LOC deployment.
         review=true;reasons.push('MCP-to-LOC protocol edge changed: '+path);
       }
       continue;

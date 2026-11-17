@@ -5,7 +5,7 @@ description: "LAS 既有 lunarcus Worker 上的 MCP OAuth Resource、Tools、QoS
 
 # LAS MCP Gateway — 服務端唯一來源
 
-`services/workers/lunarcus/index.mjs` 在 `mcp.lo3rwang.cc` 路由進 `services/workers/lunarcus/mcp.mjs`，再進 `app/las/mcp/router.mjs`。**Auth 與 MCP 是同一個 `lunarcus` Worker 的不同 hostname，沒有第二個 MCP Worker，也不回 LOC Pages 執行 Gateway。**
+`app/las/index.mjs` 在 `mcp.lo3rwang.cc` 路由進 `app/las/mcp/server.mjs`，再進 `app/las/mcp/router.mjs`。**Auth 與 MCP 是同一個 `lunarcus` Worker 的不同 hostname，沒有第二個 MCP Worker，也不回 LOC Pages 執行 Gateway。**
 
 - LAS 擁有 tools/list／tools/call、metadata、JSON-RPC、Streamable HTTP／SSE、限流和上游 Provider OAuth／Policy／Vault；查清當前實際開放的 route，不能憑原始碼假定對外 API 已存在。
 - Bearer Token 必須驗證 issuer、audience、有效期、Scope／subject；登入成功不自動得到 LOC 寫入權。LOC 以獨立 `api.manage`／Scope 政策做業務檢查。

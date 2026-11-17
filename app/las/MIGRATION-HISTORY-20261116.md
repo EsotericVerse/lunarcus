@@ -1,3 +1,5 @@
+> **Historical handoff snapshot — 2026-11-16.** This file preserves the original engineering chronology and may contain **superseded** deployment, IPA ownership and SSO/MCP status statements. For current truth, inspect main source, AGENTS.md, app/las/README.md, app/las/mcp/README.md and current Cloudflare/GitHub configuration. Do not treat historical “pending” items as live blockers without re-verification.
+
 # Luna Protocol 三模組工程交接（2026-11-16）
 
 本文件作為對話長度到達上限後的**工程延續基準**。以 GitHub 各 Repo 當下最新 `main` 和實際通過的 CI 為準，不要用舊對話還原或覆蓋其他 Agent 的變更。

@@ -4,7 +4,7 @@ import {webcrypto} from 'node:crypto';
 import {
   verifyWorkflowOidc,makeLocNotification,
   handleLocDeploymentSignal,LOC_SIGNAL_PATH
-} from '../services/workers/lunarcus/loc-notification.mjs';
+} from '../app/las/auth/loc-notification.mjs';
 const crypto=webcrypto;
 const sha='a'.repeat(40),version='a40c157e-a001-4a12-9f34-014264b9feea';
 const secret='only-for-tests-no-real-auth-key-1234567890';
