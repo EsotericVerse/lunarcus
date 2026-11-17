@@ -124,3 +124,25 @@ test('LunArcus clean install uses the new public OAuth client ID',async()=>{
   assert.doesNotMatch(background,/loc-galaxy-link|upgradedImportConfig/);
   assert.ok(requests.every(item=>item.url!=='https://mcp.lo3rwang.cc/api/loc-native'));
 });
+
+
+test('Extension MCP uses LAS gateway without a user-selectable upstream Provider Hub',()=>{
+  const options=readFileSync(new URL('options.html',extension),'utf8');
+  const code=readFileSync(new URL('options.js',extension),'utf8');
+  assert.match(options,/https:\/\/mcp\.lo3rwang\.cc\//);
+  assert.match(options,/id="providers"/,'Preserve the existing six-page navigation');
+  for(const removed of [
+    'mcpProviders','ssoEmail','locSsoEmail','mcp-connect','mcp-disconnect',
+    'mcp-status','MCP_PROVIDER_API','MCP_EXTENSION_RETURN',
+    '/api/mcp-provider-extension','normalizeSsoEmail','connectMcpProvider',
+    'disconnectMcpProvider','mcpProviderRequest'
+  ]){
+    assert.ok(!background.includes(removed),'Obsolete Provider runtime: '+removed);
+    assert.ok(!code.includes(removed),'Obsolete Provider settings: '+removed);
+  }
+  assert.ok(!options.includes('id="mcpProviders"'));
+  assert.ok(!options.includes('id="ssoEmail"'));
+  assert.ok(!options.includes('mcp-connect'));
+  assert.equal(bundled.resource,'https://mcp.lo3rwang.cc');
+  assert.equal(bundled.import_url,LOC_IMPORT,'LOC data import remains independent');
+});
