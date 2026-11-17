@@ -156,7 +156,7 @@ test('conversation fragments cannot enter unordered short-import append',async()
   for(const host of ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com']){
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
-  assert.match(background,/if\\(isConversationSource\\(tab\\.url\\)\\)/);
-  assert.match(background,/pending\\.filter\\(row=>!isUnorderedConversationCapture\\(row\\)\\)/);
+  assert.ok(background.includes('if(isConversationSource(tab.url))'));
+  assert.ok(background.includes('pending.filter(row=>!isUnorderedConversationCapture(row))'));
   assert.match(background,/legacyConversationCount/);
 });
