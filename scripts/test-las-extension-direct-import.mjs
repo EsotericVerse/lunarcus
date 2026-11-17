@@ -140,7 +140,7 @@ test('Extension MCP uses LAS gateway without a user-selectable upstream Provider
   const code=readFileSync(new URL('options.js',extension),'utf8');
   assert.ok(!options.includes('id="providers"'),'Inert MCP-only panel is removed');
   assert.ok(!options.includes('href="#providers"'),'No dead navigation links');
-  assert.ok(!options.includes('id="includeAI"'),'Inactive AI preference is not shown');
+  assert.ok(options.includes('id="includeAI"'),'AI replies are a user-controlled preference');
   for(const removed of [
     'mcpProviders','ssoEmail','locSsoEmail','mcp-connect','mcp-disconnect',
     'mcp-status','MCP_PROVIDER_API','MCP_EXTENSION_RETURN',
@@ -166,7 +166,7 @@ test('conversation fragments without source order never enter the Queue',async()
   for(const host of ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com']){
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
-  assert.ok(background.includes('const chat=isConversationSource(tab.url)'));
+  assert.ok(background.includes('includeAssistant:includeAssistant===true'));
   assert.ok(background.includes("function partitionQueueForFlush(pending)"));
  assert.ok(background.includes("row.reviewed===true&&!blocked.has("));
   assert.match(background,/legacyConversationCount/);
@@ -184,12 +184,12 @@ test('options views contain only live actions and no obsolete Provider pages',()
   assert.ok(pages.includes(id+':'),'Unregistered view '+id);
  }
  for(const token of ['providers:', 'provider-grid','provider-actions','mcpProviders',
-   'Provider Vault','id="includeAI"','id="providers"','href="#providers"']){
+   'Provider Vault','id="providers"','href="#providers"']){
   assert.ok(!options.includes(token),'Stale options markup: '+token);
   assert.ok(!pages.includes(token),'Stale route: '+token);
   assert.ok(!styles.includes(token),'Stale CSS: '+token);
  }
- assert.ok(!js.includes("$('includeAI')"));
+ assert.ok(js.includes("$('includeAI').addEventListener('change'"));
  assert.ok(options.includes('id="scope"'));
  assert.ok(options.includes('id="flush"'));
  assert.ok(options.includes('id="connect"'));
@@ -323,4 +323,36 @@ test('full local turn preview is trusted extension settings only and never injec
  assert.ok(background.includes("case 'conversation.turn':"));
  assert.ok(background.includes("sender?.id!==chrome.runtime.id"));
  assert.ok(background.includes("row.kind!=='ordered_conversation'"));
+});
+
+test('include AI replies checkbox stays functional for both capture and passive recording',async()=>{
+ const {sandbox}=makeRuntime();
+ const options=readFileSync(new URL('options.html',extension),'utf8');
+ const code=readFileSync(new URL('options.js',extension),'utf8');
+ assert.match(options,/id="includeAI" type="checkbox"/);
+ assert.match(options,/一併保存 AI 回覆/);
+ assert.ok(code.includes("chrome.storage.local.get(['locTargetScope','locIncludeAssistant'])"));
+ assert.ok(code.includes("chrome.storage.local.set({locIncludeAssistant:next})"));
+ // Exercise the actual Extension functions rather than only checking strings.
+ vm.runInContext(`
+  inject=async()=>{};
+  queueCount=async()=>0;
+  chrome.tabs={
+    sendMessage:async(id,msg)=>{
+      globalThis.lastCaptureMessage=msg;
+      return msg.type==='page.capture'
+        ?{directQueued:true,detected:1,user:1,assistant:0,queuedCaptures:0,
+          message:'captured'}
+        :{ok:true,mode:'record'};
+    }
+  };`,sandbox);
+ const tab={id:22,url:'https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940'};
+ for(const enabled of [false,true]){
+   sandbox.inputTab=tab;
+   sandbox.inputAI=enabled;
+   await vm.runInContext("capture(inputTab,'',inputAI)",sandbox);
+   assert.equal(sandbox.lastCaptureMessage.includeAssistant,enabled);
+   await vm.runInContext("selectOrRecord('page.record',inputAI,inputTab)",sandbox);
+   assert.equal(sandbox.lastCaptureMessage.includeAssistant,enabled);
+ }
 });
