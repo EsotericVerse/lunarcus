@@ -2,7 +2,7 @@
 import {upstreamProvider,trustedProviderUrl,providerToolName,providerArguments}
   from './upstream-providers.mjs';
 import {upstreamConnection} from './upstream-oauth.mjs';
-import {readBoundedJson} from './stream-json.mjs';
+import {readBoundedJson} from '../stream-json.mjs';
 import {readUpstreamSseReply} from './upstream-sse.mjs';
 import {z} from 'zod';
 const VERSION='2025-11-25';

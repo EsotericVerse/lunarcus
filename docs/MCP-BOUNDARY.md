@@ -12,7 +12,7 @@ The active independently bundling LAS runtime is now `app/las/mcp/`. The modules
 | `native-kysely.mjs` | Imports LOC connection profile and dialect factory; may be replaced only with existing Kysely's `PostgresDialect` for the dedicated **Gateway** connection |
 | `tool-contracts.mjs` | Imports LOC Scope route index |
 | `business-actions.mjs`, `private-galaxy.mjs`, `article-distribution.mjs` | LOC-side authorization and data semantics |
-| `upstream-*.mjs`, `stateless-transport.mjs`, `stream-json.mjs` | Candidate LunArcus-owned MCP transport/provider modules after dependency validation |
+| `upstream/upstream-*.mjs`, `stateless-transport.mjs`, `stream-json.mjs` | Candidate LunArcus-owned MCP transport/provider modules after dependency validation |
 
 ## Data Mapping versus LOC data ownership
 
