@@ -26,8 +26,9 @@ test('LOC #1765 source value-type pattern: all declared conversation fields are 
     assert.ok(block,'Missing virtual ZModel '+profile.model);
     const declared=block[1].trim().split(/\r?\n/).map(line=>line.trim().split(/\s+/)[0]);
     assert.deepEqual(declared,fields);
-    assert.equal(registry.profileFor(profile.model==='ClaudeConversationTurn'?'claude':'gemini',profile.source).model,
-      profile.model);
+    const name=profile.model==='ChatGPTConversationTurn'?'chatgpt':
+      profile.model==='ClaudeConversationTurn'?'claude':'gemini';
+    assert.equal(registry.profileFor(name,profile.source).model,profile.model);
   }
   assert.equal(registry.profileFor('gemini','evil.gemini.google.com'),null);
   assert.equal(registry.profileFor('claude','gemini.google.com'),null);
