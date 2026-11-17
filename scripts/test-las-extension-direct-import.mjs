@@ -167,7 +167,7 @@ test('conversation fragments without source order never enter the Queue',async()
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
   assert.ok(background.includes('const chat=isConversationSource(tab.url)'));
-  assert.ok(background.includes("const ordered=pending.filter(row=>row.kind==='ordered_conversation')"));
+  assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
   assert.match(background,/legacyConversationCount/);
 });
 
