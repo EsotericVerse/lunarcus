@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import worker from '../app/las/index.mjs';
 import {checkLocAuthEnvironment} from '../app/las/auth/auth.mjs';
+import {authKaraulRatePolicy} from '../app/las/auth/auth-qos.mjs';
 import {RAINBOW_TABLES} from '../app/las/auth/rainbow-tables.mjs';
 import {extensionClientDiscovery} from '../app/las/auth/extension-client.mjs';
 import {rainbowSchema} from '../app/las/auth/rainbow-zmodel.mjs';
@@ -13,6 +14,21 @@ const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const WEB='https://loc.lo3rwang.cc';
 
 const request=(path,init={})=>worker.fetch(new Request(BASE+path,init),{});
+
+test('Routine Session and OAuth resource reads have no shared-IP admission quota',()=>{
+  const rules=authKaraulRatePolicy.customRules;
+  for(const path of ['/jwks','/get-session','/oauth2/userinfo','/oauth2/introspect'])
+    assert.equal(rules[path],false,'Read endpoint must not self-throttle: '+path);
+  const budget=rules['/**'];
+  const native={window:60,max:120};
+  const limited=path=>budget(new Request(BASE+'/api/auth'+path,{headers:{
+    'cf-connecting-ip':'192.0.2.5'
+  }}),native);
+  assert.deepEqual(limited('/oauth2/token'),{window:60,max:40});
+  assert.deepEqual(limited('/oauth2/authorize'),{window:60,max:60});
+  assert.deepEqual(limited('/oauth2/register'),{window:60,max:5});
+  assert.deepEqual(limited('/sign-in/social'),native);
+});
 
 test('LunArcus Auth health metadata needs no database, secrets or session',async()=>{
   const response=await request('/health');
