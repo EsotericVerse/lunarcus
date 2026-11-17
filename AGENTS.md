@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `las:auth` | Better Auth、OAuth/OIDC、Cloudflare Access SSO、LAS Session | `app/las/auth/`、`app/las/index.mjs` |
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
-| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP、Provider | `app/las/mcp/`、`app/las/mcp/server.mjs` |
+| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `app/las/mcp/`、`app/las/mcp/server.mjs` |
 | `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `app/las/tunnel/` |
 
 產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，與 Cloudflare Access SSO Client ID 是三件獨立的事。
