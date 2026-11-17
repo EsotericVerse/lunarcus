@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeRows} from './reconcile-mcp-conversations.mjs';
+import {analyzeRows,previewReadable} from './reconcile-mcp-conversations.mjs';
 const id='6af8ff99-6b54-83ee-8ee5-06f99616d940';
 const url='https://chatgpt.com/c/'+id;
 const header=(id,url,role,text)=>`[[LOC-Append-Event:${id}:a${'b'.repeat(63)}]]
@@ -58,4 +58,46 @@ test('generic conversation requires explicit ordinal sequence rather than captur
  assert.deepEqual(analyzeRows([single],[generic])[0].ordered_event_ids,[uuid(1),uuid(2)]);
  const withoutSeq={...generic,messages:generic.messages.map(({sequence,...rest})=>rest)};
  assert.equal(analyzeRows([single],[withoutSeq])[0].reason,'no-unique-original-sequence');
+});
+
+test('readable preview restores conversational order without user reassembly',()=>{
+ const {report,readableRows}=previewReadable([row],[exported]);
+ assert.equal(report[0].status,'verified-order-preview');
+ assert.equal(report[0].complete_capture,true);
+ assert.equal(readableRows.length,1);
+ const rendered=readableRows[0].markdown;
+ const position=['first question','first answer','second question','second answer']
+   .map(token=>rendered.indexOf(token));
+ assert.ok(position.every(p=>p>=0));
+ assert.deepEqual([...position].sort((a,b)=>a-b),position);
+ assert.match(rendered,/順序依據：原始對話訊息父子關係／明確訊息序號/);
+ assert.equal(readableRows[0].capture_complete,true);
+});
+test('source-only replies are included and marked as restored, never falsely attributed to Extension',()=>{
+ const partial={...row,content:header(uuid(1),url,'user','first question')};
+ const {report,readableRows}=previewReadable([partial],[exported]);
+ assert.equal(report[0].source_messages_missing_from_capture,3);
+ assert.equal(report[0].complete_capture,false);
+ assert.equal(readableRows.length,1);
+ assert.match(readableRows[0].markdown,/來源：原始匯出補回（Extension 未擷取）/);
+ assert.match(readableRows[0].markdown,/second answer/);
+ assert.equal(readableRows[0].capture_complete,false);
+});
+test('same UUID under a different platform cannot be matched by source ID alone',()=>{
+ const claude='https://claude.ai/chat/'+id;
+ const malicious={...row,url:claude,
+  content:header(uuid(1),claude,'user','first question')};
+ assert.equal(analyzeRows([malicious],[exported])[0].reason,
+  'original-conversation-export-not-provided');
+});
+test('ambiguous duplicated source exports block reconstruction',()=>{
+ const r=analyzeRows([row],[exported,structuredClone(exported)])[0];
+ assert.equal(r.reason,'multiple-original-conversation-exports');
+ assert.equal(r.status,'not-reconstructed');
+});
+test('never emit readable reconstructed content when the event match is unverified',()=>{
+ const bad={...row,content:header(uuid(1),url,'user','something else')};
+ const result=previewReadable([bad],[exported]);
+ assert.equal(result.readableRows.length,0);
+ assert.equal(result.report[0].status,'not-reconstructed');
 });
