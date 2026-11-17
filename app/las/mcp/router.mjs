@@ -5,6 +5,9 @@ import {readMemory,privateGalaxyLink,articleDistribution,mcpDatabaseConfiguratio
 import {checkMcpGatewayQos} from './gateway-qos.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
+import {providerStoreReady} from './upstream/upstream-vault.mjs';
+import {providerStatuses,requestTool,approvalReceipt} from './upstream/upstream-policy.mjs';
+import {listUpstreamTools} from './upstream/upstream-tools.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
@@ -77,7 +80,23 @@ const TOOLS=[
   {name:'article_distribution',description:'Get monthly published LOC article-count statistics for a calendar year or rolling 12 months. No SQL or article text; chart-ready numbers.',
     inputSchema:mcpToolJsonSchema('article_distribution'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_list',description:'Read the approved upstream MCP provider catalog and whether the credential store is configured (read only). No connection or grants are created.',
+    inputSchema:mcpToolJsonSchema('provider_list'),
+    annotations:{readOnlyHint:true,destructiveHint:false}}
 ];
+// Provider operations are not advertised unless an encrypted, persistent
+// credential store is actually configured. SSO alone never activates them.
+const PROVIDER_TOOLS=[
+  {name:'provider_tools',description:'List tools advertised by a connected, authorized upstream MCP provider.',
+    inputSchema:mcpToolJsonSchema('provider_tools'),annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_call',description:'Request a named upstream tool under the existing per-tool deny/ask/auto policy; never grants authorization.',
+    inputSchema:mcpToolJsonSchema('provider_call')},
+  {name:'provider_receipt',description:'Read a provider approval execution receipt (read only).',
+    inputSchema:mcpToolJsonSchema('provider_receipt'),annotations:{readOnlyHint:true,destructiveHint:false}}
+];
+export function advertisedTools(env={}){
+  return providerStoreReady(env)?[...TOOLS,...PROVIDER_TOOLS]:TOOLS;
+}
 function toolResponse(id,value){
  const warning=typeof value?.warning==='string'?value.warning:'';
  return result(id,{content:[{type:'text',text:(warning?warning+'\n':'')+JSON.stringify(value)}],
@@ -144,10 +163,10 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerifie
         instructions:'Public Galaxy reads use the scoped ZenStack Galaxy ZModel with Kysely visibility filters. Private Galaxy reads use that scoped model after permission checks, while writes retain Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
     }
     case 'ping':return result(payload.id,{});
-    case 'tools/list':return result(payload.id,{tools:TOOLS});
+    case 'tools/list':return result(payload.id,{tools:advertisedTools(env)});
     case 'tools/call':{
       const name=payload.params?.name;
-      if(!TOOLS.some(tool=>tool.name===name))return rpcError(payload.id,-32602,'Unknown tool');
+      if(!advertisedTools(env).some(tool=>tool.name===name))return rpcError(payload.id,-32602,'Unknown tool');
       const args=parseMcpToolArgs(name,payload.params?.arguments??{});
       if(args===null)return rpcError(payload.id,-32602,'Invalid MCP tool arguments');
       if(name==='galaxy_link'&&args.action==='search'&&
@@ -166,8 +185,18 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerifie
         resource:config.resource,galaxyPublicReadEnabled:true,
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
         nativeDatabase:mcpDatabaseConfiguration(env),
-        availableTools:TOOLS.map(tool=>tool.name)});
+        availableTools:advertisedTools(env).map(tool=>tool.name)});
       try{
+        if(name==='provider_list')return toolResponse(payload.id,
+          await providerStatuses(env,identity.subject));
+        if(name==='provider_tools')return toolResponse(payload.id,{
+          provider:args.provider,
+          tools:await listUpstreamTools(env,identity.subject,args.provider)
+        });
+        if(name==='provider_call')return toolResponse(payload.id,
+          await requestTool(env,identity.subject,args.provider,args.tool,args.args||{}));
+        if(name==='provider_receipt')return toolResponse(payload.id,
+          await approvalReceipt(env,identity.subject,args.approval_id));
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
         const value=name==='article_distribution'?
           await articleDistribution(args,{...env,lasOAuthToken:bearer}):
