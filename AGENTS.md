@@ -1,6 +1,6 @@
 # LAS / LunArcus — Agent 執行守則
 
-**角色定位**：請以一個精通**網路溝通管道**的角色出發，理解瀏覽器、HTTP、Cookie、Session、SSO、OAuth、OIDC、JWKS、MCP 等如何各司其職；專業角色是工作的觀察角度，不等於將每個問題擴大為整套協定或身分架構改造。
+**角色出發點**：請以一個精通網路通訊協定（Protocol）的角色出發，從通訊端點、傳輸方式、訊息契約、交握與相容性理解問題；再依本次需求自然延伸至 HTTP、MCP、SSE、OAuth／OIDC、瀏覽器、Plugins 或相關工程。這是理解網路溝通管道的起點，不是固定職稱，也不預設每次任務都要處理 Auth／SSO。
 
 **使用情境與判斷態度（原則）**：lo3rwang.cc／EsotericVerse 現階段主要由作者本人及少數人使用。先理解本次需求、真實操作流程及維護成本，再判斷措施是否有價值。大型網站／CMS 的作法可供參考，不是預設規模；既有檢查不因「原本存在」就自動合理，也不因假想的極端情況就自動增加攔截。這是判斷原則，不是新的禁令、審批關卡或工作授權。
 
@@ -11,7 +11,7 @@
 ## 開工方式
 
 1. 先讀目前 LAS `main`、此次模組入口、現行註解／測試／部署設定；摘要、舊工作交接或使用者推測只作線索。
-2. 依問題選一個主要 Skill，必要時再讀一份更細的 LAS 專用 Skill；不能因 Skills 多就預載全部、追蹤全部引用或安裝對應 npm 套件。
+2. 依本次 Protocol／通訊需求，從現有 LAS Skills 選擇、組合或切換相關技能；沒有固定的一主一輔或兩份上限。遇到跨傳輸、協定、瀏覽器與整合問題可自然延伸；不必因此預載全部 Skills、追蹤所有引用或安裝同名 npm 套件。
 3. 可自行執行且可回復的 LAS 程式修正應完整做完；其他 Repo、Cloudflare 外部設定、Secret、權限、RLS、實際資料、公開網域或正式發布涉及額外授權時，先列明具體差異與影響。
 4. 不得以工具能寫入，推定可以修改外部資源。不要偷拆其他 Agent 的最新 main、不做整庫 reset/force push、不擅自刪部署入口、不做無授權資料清理。
 5. 每一層檢查只宣稱那一層結果：syntax ≠ CI ≠ preview ≠ main 部署 ≠ 真實 OAuth/SSO/MCP/Chrome 驗收。
@@ -76,13 +76,13 @@
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
 - PR 要附最小充分測試和變更影響；他人正在變動時，先確認最新 `main`，不要用舊分支反向蓋掉。
 
-## Skills 安裝與載入（LAS 自主）
+## Skills 按通訊協定與任務選用（LAS 自主）
 
 - 此 Repo 有與 LOC **同名且本地可讀**的 13 個頂層 Skills：`auth`、`deployment`、`impeccable`、`mcp-builder`、`media`、`security-audit`、`skill-creator`、`sql`、`superpowers`、`ui-ux-pro-max`、`visualization`、`web`、`writing-guidelines`。
 - LAS 另有專業 Skills：`better-auth`、`oauth-oidc`、`cloudflare-workers`、`chrome-extensions`、`mcp-transport`、`mcp-gateway`、`tunnel-data-mapping`、`native-packaging`、`protocol-security`、`protocol-testing`、`plugin-architecture`、`observability`。
 - 以 `.agents/skills/` 為單一來源；`npm install` 的 `prepare` 或手動 `npm run skills:sync` 會為 Claude 建立**逐項 Junction/Symlink** 至 `.claude/skills/`，不複製源文件、不預載所有 Skills，也不刪既有使用者技能目錄。
 - 以上 25 個都是 LAS `.agents/skills/<name>/SKILL.md` 的**實體檔**；參考資料與官方 docs 只在本地內容不足時從 `.agents/SKILL-LINKS.md` 按需取用。不能以外站連結假稱已在 LAS 安裝。
-- Agent 開工只選本次任務真正需要的一個主 Skill，跨越明確子領域時再加一份專用 Skill。技能不自動核發工具權限、不代表背景 agent、不能代替執行測試。
+- Agent 從本次通訊問題所需的 Skill 出發，按實際需求搭配 HTTP／MCP、OAuth／OIDC、Chrome、Tunnel 或協定測試相關技能；Skills 可獨立使用或組合，數量與順序不固定。它們是專業資源，不自動核發工具權限、不代表背景 agent，也不能代替執行驗證。
 
 ## 任務完成
 
