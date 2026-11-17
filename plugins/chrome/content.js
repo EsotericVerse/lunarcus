@@ -22,22 +22,14 @@
     const rect=el.getBoundingClientRect();
     return rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight;
   };
-  const socialPostUrl = url =>
-    /instagram\.com\/(?:p|reel|tv)\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(String(url||''));
+  const sourceModel=globalThis.LasCaptureSourceModel;
+  const socialHost=()=>Boolean(sourceModel?.isSocialHost(location.hostname));
+  const socialPostUrl=url=>Boolean(sourceModel?.permalink(url,location.href));
   const links = el => [...el.querySelectorAll('a[href]')]
     .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.getAttribute('href'))}))
     .filter(x=>x.url);
   const stableSource = el => {
-    const match=[...el.querySelectorAll('a[href]')].find(a=>{
-      const u=normalizeUrl(a.href);
-      return u&&socialPostUrl(u);
-    });
-    if(match)return normalizeUrl(match.href);
-    if(socialPostUrl(location.href))return normalizeUrl(location.href);
-    // Never merge unrelated social-feed posts into the profile/feed URL
-    // when a stable individual post permalink is not present.
-    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(location.hostname.toLowerCase()))
-      return null;
+    if(socialHost())return sourceModel.sourceForCard(el,location.href)?.url||null;
     return normalizeUrl(location.href);
   };
   // ChatGPT and Claude change markup independently. Identify a message turn by
@@ -328,7 +320,7 @@
     // Readability is invoked only for a full-page single capture; avoid destroying
     // the live DOM or re-parsing every MutationObserver notification during recording.
     if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
-      !/(?:instagram\.com|threads\.(?:net|com)|chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      !socialHost()&& !/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
       try{
         const parsed=new Readability(document.cloneNode(true)).parse();
         if(parsed?.textContent?.trim()?.length>100){
@@ -347,7 +339,7 @@
     // Threads may render cards as generic DIVs rather than <article>.
     // Follow only already-rendered permanent links; never invent a source
     // or treat the whole infinite feed as a single post.
-    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(hostname)){
+    if(socialHost()){
       for(const a of [...doc.querySelectorAll('a[href]')].slice(0,500)){
         if(!socialPostUrl(normalizeUrl(a.href)))continue;
         const parent=a.closest('article,[role="article"],[data-testid="post-container"]')||
@@ -358,10 +350,12 @@
     }
     const unique=[...new Set(articles)];
     const cards=(unique.length?unique:(mode==='record'?[]:[doc])).slice(0,50);
-    return cards.map((el,index)=>{
+    const emittedSources=new Set();
+    return cards.map(el=>{
       const source=stableSource(el);
       const text=cleanText(el);
-      if(!source||!text)return null;
+      if(!source||!text||emittedSources.has(source))return null;
+      emittedSources.add(source);
       const hrefs=links(el).map(x=>x.text+' <'+x.url+'>').join('\n');
       const media=[...el.querySelectorAll('img[src],video[src],video[poster],source[src]')]
         .filter(visible).slice(0,24).map(node=>
