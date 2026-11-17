@@ -2,9 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensureFirstPartyOAuthClient,isFirstPartyOAuthConsent
-} from '../services/workers/lunarcus/first-party-client.mjs';
+} from '../app/las/auth/first-party-client.mjs';
 import {firstPartyOAuthClient,extensionClientDiscovery}
-  from '../services/workers/lunarcus/extension-client.mjs';
+  from '../app/las/auth/extension-client.mjs';
 
 const canonical=firstPartyOAuthClient();
 const signed=clientId=>({

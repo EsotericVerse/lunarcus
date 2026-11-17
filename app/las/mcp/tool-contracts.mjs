@@ -2,7 +2,7 @@
 // No separate hand-maintained JSON schemas, parallel validators, or SQL access.
 import {z} from 'zod';
 import {ProviderIdSchema,ProviderToolSchema,ProviderArgumentsSchema}
-  from './upstream-providers.mjs';
+  from './upstream/upstream-providers.mjs';
 
 const SCOPE_ID=z.string().regex(/^[a-z][a-z0-9]{0,14}$/);
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);

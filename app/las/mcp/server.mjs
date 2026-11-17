@@ -1,7 +1,7 @@
 // LAS MCP Gateway: protocol + identity boundary, no LOC SQL or Galaxy
 // business model bundled into this Cloudflare Worker.
 import {handleMcp,preflight,protectedResourceMetadata}
-  from '../../../app/las/mcp/router.mjs';
+  from './router.mjs';
 
 const LOC='https://loc.lo3rwang.cc';
 const MCP_HOST='mcp.lo3rwang.cc';

@@ -5,7 +5,7 @@ description: "LAS Better Auth 1.7.18、OAuth Provider、SSO Plugin、ZenStack/Po
 
 # better-auth — LAS 專用能力
 
-先確認 `package.json` 中 Better Auth、`@better-auth/oauth-provider`、`@better-auth/sso`、`@zenstackhq/better-auth` 的**實際鎖定版本**。LAS 目前由 `services/workers/lunarcus/auth.mjs` 建立 Auth，`extension-client.mjs` 提供既有第一方 Client Discovery。
+先確認 `package.json` 中 Better Auth、`@better-auth/oauth-provider`、`@better-auth/sso`、`@zenstackhq/better-auth` 的**實際鎖定版本**。LAS 目前由 `app/las/auth/auth.mjs` 建立 Auth，`extension-client.mjs` 提供既有第一方 Client Discovery。
 
 ## 工作判準
 1. 保留 **Better Auth Plugin** 的 Session／Auth／OAuth 狀態管理，不自己複寫 token、PKCE、OAuth state 或密碼流程。

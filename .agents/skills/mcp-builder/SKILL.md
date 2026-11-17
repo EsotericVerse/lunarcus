@@ -9,7 +9,7 @@ MCP 協定、受保護資源 metadata、JSON-RPC tools、Streamable HTTP／SSE�
 
 ## 真正的 Worker 結構
 - 唯一正式 Worker：`lunarcus`，root `wrangler.jsonc`，同時接管 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc`。
-- 單一 Worker 入口 `services/workers/lunarcus/index.mjs` 按 hostname 分流；MCP 處理檔 `services/workers/lunarcus/mcp.mjs` 是**內部模組**而非第二個 Worker。
+- 單一 Worker 入口 `app/las/index.mjs` 按 hostname 分流；MCP 處理檔 `app/las/mcp/server.mjs` 是**內部模組**而非第二個 Worker。
 - MCP 工具、權限協定與模型：`app/las/mcp/`；跨系統資料欄位映射：`app/las/tunnel/`。不要另建 `las-mcp` Worker 或重啟已淘汰的獨立 Wrangler deployment。
 
 ## 開發與驗收

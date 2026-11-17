@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import worker from '../services/workers/lunarcus/index.mjs';
-import {checkLocAuthEnvironment} from '../services/workers/lunarcus/auth.mjs';
-import {RAINBOW_TABLES} from '../services/workers/lunarcus/rainbow-tables.mjs';
-import {extensionClientDiscovery} from '../services/workers/lunarcus/extension-client.mjs';
-import {rainbowSchema} from '../services/workers/lunarcus/rainbow-zmodel.mjs';
+import worker from '../app/las/index.mjs';
+import {checkLocAuthEnvironment} from '../app/las/auth/auth.mjs';
+import {RAINBOW_TABLES} from '../app/las/auth/rainbow-tables.mjs';
+import {extensionClientDiscovery} from '../app/las/auth/extension-client.mjs';
+import {rainbowSchema} from '../app/las/auth/rainbow-zmodel.mjs';
 
 const BASE='https://auth.lo3rwang.cc';
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
@@ -135,7 +135,7 @@ test('OAuth consent UI requests JSON and handles approve/deny redirects',async()
   // Better Auth returns a 302 redirect without Accept: application/json.
   // fetch() would follow it instead of receiving {redirect:true,url}, leaving
   // the consent screen on a generic "Consent failed" status.
-  const src=readFileSync(new URL('../services/workers/lunarcus/index.mjs',import.meta.url),'utf8');
+  const src=readFileSync(new URL('../app/las/index.mjs',import.meta.url),'utf8');
   const match=src.match(/^const CONSENT_JS=("(?:\\.|[^"\\])*");/m);
   assert.ok(match,'Consent page must have a testable, self-contained script');
   const script=JSON.parse(match[1]);
@@ -175,7 +175,7 @@ test('OAuth consent UI requests JSON and handles approve/deny redirects',async()
 });
 
 test('OAuth consent UI reports HTTP failures without redirecting',async()=>{
-  const src=readFileSync(new URL('../services/workers/lunarcus/index.mjs',import.meta.url),'utf8');
+  const src=readFileSync(new URL('../app/las/index.mjs',import.meta.url),'utf8');
   const script=JSON.parse(src.match(/^const CONSENT_JS=("(?:\\.|[^"\\])*");/m)[1]);
   const elements=new Map();
   const byId=id=>{
