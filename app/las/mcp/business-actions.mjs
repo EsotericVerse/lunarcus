@@ -19,20 +19,20 @@ export async function businessAction(name,args,token,env={},fetchImpl=globalThis
       throw invalid('Only a LOC Scope identifier is accepted');
     payload={kind:'mcp-scope-status',scopeid:scope};
   }else if(name==='galaxy_link'){
-    if(!['check','record'].includes(a.action))
+    if(!['check','record','record_ordered'].includes(a.action))
       throw invalid('Unsupported Galaxy Link action');
     if(a.source!==undefined)throw invalid('Galaxy Link source is fixed to mcp');
     if(typeof a.conversation_id!=='string'||!a.conversation_id||
       typeof a.updated_at!=='string'||!Number.isFinite(Date.parse(a.updated_at)))
       throw invalid('Valid conversation_id and updated_at required');
-    if(a.action==='record'){
+    if(['record','record_ordered'].includes(a.action)){
       if(PR.test(String(a.title||'')))throw invalid('PR records must use GitHub');
       if(!Array.isArray(a.records)||!a.records.length||a.records.length>100)
         throw invalid('Source records required');
     }
     payload={kind:'mcp-conversation',scopeid:scope,action:a.action,
       conversation_id:a.conversation_id,updated_at:a.updated_at,
-      ...(a.action==='record'?{created_at:a.created_at,
+      ...(['record','record_ordered'].includes(a.action)?{created_at:a.created_at,
         title:a.title||'',records:a.records}:{}),
     };
   }else{
