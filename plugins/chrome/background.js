@@ -120,7 +120,7 @@ async function approveReviewedConversation(key,expectedIds){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
   const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-  let pending=group.messages.length,changed=0,invalid=false;
+  let changed=0;
   for(const entry of group.messages){
    const req=store.get(entry.id);
    req.onsuccess=()=>{
@@ -128,10 +128,9 @@ async function approveReviewedConversation(key,expectedIds){
     if(!item||item.kind!=='ordered_conversation'||
        (item.scopeid||'lo3rwang')+'|'+item.source_key!==key||
        item.source_order!==entry.source_order||item.message_id!==entry.message_id){
-      invalid=true;tx.abort();return;
+      tx.abort();return;
     }
     if(item.reviewed!==true){item.reviewed=true;store.put(item);changed++;}
-    if(--pending===0&&!invalid){} 
    };
   }
   tx.oncomplete=()=>{db.close();resolve({approved:changed,ready:true});};
@@ -608,9 +607,14 @@ async function flush(force=false){
   const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
    row.kind!=='ordered_conversation');
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
-  if(!rows.length&&!ordered.length)return {message:legacyConversationCount
-   ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
-   :'Queue 已清空',sent:0};
+  if(!rows.length&&!ordered.length){
+   const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true).length;
+   return {message:unreviewed
+    ?'有 '+unreviewed+' 則對話尚未完成訊息重整，請先在第六鍵「訊息重整」確認'
+    :legacyConversationCount
+      ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
+      :'Queue 已清空',sent:0};
+  }
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
   if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
