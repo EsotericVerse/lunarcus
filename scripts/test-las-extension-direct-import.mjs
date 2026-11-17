@@ -167,7 +167,8 @@ test('conversation fragments without source order never enter the Queue',async()
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
   assert.ok(background.includes('const chat=isConversationSource(tab.url)'));
-  assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
+  assert.ok(background.includes("function partitionQueueForFlush(pending)"));
+ assert.ok(background.includes("row.reviewed===true&&!blocked.has("));
   assert.match(background,/legacyConversationCount/);
 });
 
@@ -278,7 +279,8 @@ test('pre-send organizer restores source order, but blocks duplicate ordinals an
  const duplicate=vm.runInContext('reviewGroups(organizeRows)',
   Object.assign(sandbox,{organizeRows:[items[0],{...items[1],source_order:100}]}));
  assert.equal(duplicate.conversations[0].valid,false);
- assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
+ assert.ok(background.includes("function partitionQueueForFlush(pending)"));
+ assert.ok(background.includes("row.reviewed===true&&!blocked.has("));
  assert.ok(background.includes("sender?.id!==chrome.runtime.id"));
 });
 
