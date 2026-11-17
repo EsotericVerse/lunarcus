@@ -37,7 +37,9 @@
     if(u.protocol!=='https:'||u.username||u.password)return null;
     const provider=providerOf(u.hostname.toLowerCase());
     if(!provider)return null;
-    const parts=u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    let parts;
+    try{parts=u.pathname.split('/').filter(Boolean).map(decodeURIComponent);}
+    catch{return null;}
     let path=null,query='';
     if(provider==='instagram'){
       if(parts.length===2&&['p','reel','tv'].includes(parts[0])&&/^[A-Za-z0-9_-]{4,80}$/.test(parts[1]))
