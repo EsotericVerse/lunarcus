@@ -1,4 +1,4 @@
-# lo3r@loc / lo3r@lrs / lo3r@las — three-module architecture
+# LAS module ownership — colocated with app/las
 
 The **canonical collision-resistant module identifiers** are `lo3r@loc`, `lo3r@lrs`, `lo3r@las`. The short forms `loc`, `lrs`, `las` remain convenient local aliases but are not globally unique. The `@` is part of the logical identifier, **not** a GitHub repository rename, DNS hostname, JavaScript variable name, or npm package name; if publishing npm modules later, the registry-compliant equivalent is `@lo3r/loc`, `@lo3r/lrs`, `@lo3r/las` and requires an explicit packaging decision. This document records **module ownership**, not a request to rename domains, OAuth identities, database Scopes, Git branches or packages. All modules can be deployed independently and integrated by explicit versioned interfaces.
 
@@ -28,7 +28,7 @@ The person and brand aliases `Lucas Oscar Wang`, `lo3rwang`, `lo3r`, and `Luciph
 - `mcp.lo3rwang.cc` = LAS MCP hostname (same production `lunarcus` Worker)
 - `isr.lo3rwang.cc` = existing separate ISR Worker
 
-The existing Auth Worker script was renamed separately from `auth` to `lunarcus` by the owner; do not recreate the old `auth` script or alter its `auth.lo3rwang.cc` custom domain, OAuth Client ID, Extension ID, Cloudflare secret bindings or existing Scopes as part of module naming. `packages/` currently remains in its original repository and **has not been transferred**.
+The current repository layout keeps `app/las/index.mjs` as the single Worker entrypoint, `app/las/auth/` for authentication, `app/las/mcp/` for MCP transport, and `app/las/tunnel/` for fixed cross-system contracts. Cloudflare Workers Builds must watch these actual paths before merging a source move. The existing Auth Worker script was renamed separately from `auth` to `lunarcus` by the owner; do not recreate the old `auth` script or alter its `auth.lo3rwang.cc` custom domain, OAuth Client ID, Extension ID, Cloudflare secret bindings or existing Scopes as part of module naming. `packages/` currently remains in its original repository and **has not been transferred**.
 
 ## Implementation status
 

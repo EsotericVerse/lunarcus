@@ -4,7 +4,7 @@ import {existsSync,readFileSync} from 'node:fs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 test('global module identities and owner-defined module taxonomy',()=>{
-  const doc=read('docs/MODULE-ARCHITECTURE.md');
+  const doc=read('app/las/README.md');
   for(const key of ['lo3r@loc','lo3r@lrs','lo3r@las',
     'loc:galaxy','loc:time','loc:locus','loc:site','loc:dialect',
     'lrs:rune','lrs:boardgame','lrs:card','lrs:daily',
@@ -41,7 +41,7 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
     'Do not recreate a second MCP deployment target');
 });
 test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
-  const doc=read('docs/MODULE-ARCHITECTURE.md');
+  const doc=read('app/las/README.md');
   assert.ok(doc.includes('EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml'));
   for(const path of [
     '.github/workflows/ios-device-build.yml',
@@ -53,7 +53,7 @@ test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
     'LOC-owned native source must not be duplicated in LAS: '+path);
 });
 test('ISR is not a hidden required Auth dependency',()=>{
-  const doc=read('docs/ISR-HANDOFF.md');
+  const doc=read('.agents/skills/deployment/SKILL.md');
   assert.ok(doc.includes('loc-isr'));
   assert.ok(doc.includes('off by default'));
   assert.ok(!existsSync(new URL('../services/workers/las-isr/wrangler.jsonc',import.meta.url)),

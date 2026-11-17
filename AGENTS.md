@@ -10,6 +10,10 @@
 4. 不得以工具能寫入，推定可以修改外部資源。不要偷拆其他 Agent 的最新 main、不做整庫 reset/force push、不擅自刪部署入口、不做無授權資料清理。
 5. 每一層檢查只宣稱那一層結果：syntax ≠ CI ≠ preview ≠ main 部署 ≠ 真實 OAuth/SSO/MCP/Chrome 驗收。
 
+## 文件與程式碼同位
+
+模組說明就近放在各模組的 `README.md`，不使用根目錄 `docs/`；部署註記歸 `.github/workflows/README.md`，ISR 計畫歸 `.agents/skills/deployment/SKILL.md`，歷史交接歸 `app/las/MIGRATION-HISTORY-20261116.md`（非現行依據）。僅修改文件不應額外觸發 Worker Build；必要修改 Cloudflare Watch Paths／Exclude 時應明確取得授權。
+
 ## 模組歸屬（Auth／Plugins／MCP／Tunnel）
 
 | LAS 模組 | 主要職責 | 現行程式／入口 |

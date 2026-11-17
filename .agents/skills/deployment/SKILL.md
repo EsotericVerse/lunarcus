@@ -18,3 +18,7 @@ description: "LAS 單一 lunarcus Worker、Auth/MCP 合併部署與成功後選�
 - 不為 Plugins／Skill／docs 修改觸發不必要的 Worker、LOC 或 LRS 編譯；不複製昂貴素材。
 - 外部 Secret、Access、Binding、路由、Workers Builds 設定需列明差異、影響、復原方式與本次授權，不能自行改動。
 - ISR 仍是關閉狀態、留在 `loc-isr`，未驗證前不合併進 Auth bundle，也不影響目前部署。
+
+## ISR (separate, not a deployed LAS source directory)
+
+The LAS ISR ownership plan is deferred and **off by default**. On 2026-11-16 the existing Cloudflare Worker was `loc-isr` at `isr.lo3rwang.cc` (`nodejs_compat`, compatibility date `2026-10-24`, bindings `ASSETS` and `WORKER_SELF_REFERENCE`). Its live OpenNext/Next.js script was a compiled artifact; the trusted original source was not available in the inspected LOC Git tree. Never infer source from a minified deployment or place the large Next bundle in the `lunarcus` Auth/MCP Worker. No Auth/SSO/LOC publication operation may require ISR. If original source is recovered later, do a separately approved and reversible deployment-ownership handoff without recreating keys, assets, or domains.
