@@ -3,7 +3,6 @@
 const CONSOLE_PAGES=Object.freeze({
   overview:'總覽',
   daily:'每日符文',
-  providers:'MCP 連線',
   capture:'擷取',
   activity:'Queue',
   settings:'設定'
