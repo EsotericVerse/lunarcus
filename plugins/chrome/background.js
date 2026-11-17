@@ -496,14 +496,56 @@ async function sendViaAuth(scopeid,batch,token,config){
  validateArticleReceipts(receipt.articles,batch.records);
  return receipt;
 }
+// Ordered turns use the fixed LAS Gateway, never the short-import append route.
+async function sendOrderedConversation(scopeid,records,token,config){
+ if(!SCOPE.test(scopeid)||!records.length||records.length>100)
+  throw contractError('有序對話批次不合法');
+ const source=records[0].source_key;
+ if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
+   (r.scopeid||'lo3rwang')!==scopeid))
+  throw contractError('有序對話批次來源不一致');
+ const endpoint=new URL(config.resource||'');
+ if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
+  throw contractError('LAS MCP Gateway 位址錯誤');
+ const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
+   records.map(r=>r.id).sort().join('|'));
+ const payload={jsonrpc:'2.0',id,method:'tools/call',params:{
+   name:'galaxy_link',arguments:{
+     action:'record_ordered',scopeid,conversation_id:source,
+     title:records[0].title,updated_at:new Date().toISOString(),
+     records:records.map(r=>({
+       message_id:r.message_id,source_order:r.source_order,
+       parent_id:r.parent_id||null,role:r.role,text:r.text
+     }))
+   }
+ }};
+ const response=await fetch(endpoint.href,{method:'POST',redirect:'error',
+   cache:'no-store',headers:{authorization:'Bearer '+token,
+     'content-type':'application/json',accept:'application/json'},
+   body:JSON.stringify(payload)});
+ if(!response.ok){
+   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status);
+   error.httpStatus=response.status;throw error;
+ }
+ const body=await response.json().catch(()=>null);
+ const receipt=body?.result?.structuredContent;
+ if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
+    !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
+    !Number.isSafeInteger(receipt?.count)||receipt.count<0||
+    !Number.isSafeInteger(receipt?.messages)||receipt.messages<1)
+  throw contractError('LOC 有序對話未確認寫入，Queue 原始資料保留');
+ return receipt;
+}
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
-  const rows=pending.filter(row=>!isUnorderedConversationCapture(row));
-  // Preserve legacy conversations without preventing unrelated posts from sending.
-  if(!rows.length)return {message:legacyConversationCount
+  const ordered=pending.filter(row=>row.kind==='ordered_conversation');
+  const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
+   row.kind!=='ordered_conversation');
+  // Legacy fragments remain quarantined. Ordered turns use a separate writer.
+  if(!rows.length&&!ordered.length)return {message:legacyConversationCount
    ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
    :'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
@@ -517,6 +559,27 @@ async function flush(force=false){
   if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
   let count=0;
   try{
+   const groups=new Map();
+   for(const row of ordered){
+    const key=(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(row);
+   }
+   for(const group of groups.values()){
+    for(let offset=0;offset<group.length;offset+=30){
+     const part=group.slice(offset,offset+30);
+     const scopeid=part[0].scopeid||'lo3rwang';
+     try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
+     catch(error){
+      if(error.httpStatus!==401)throw error;
+      token=await activeToken(true);
+      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+     }
+     await removeEvents(part);
+     await updateQueueBadge().catch(()=>{});
+     count+=part.length;
+    }
+   }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
