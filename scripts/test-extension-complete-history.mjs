@@ -93,6 +93,39 @@ test('virtualized 9-mounted-turn DOM is archived as 80 distinct turns',async()=>
   assert.equal(new Set(inserted.map(item=>item.key)).size,80);
   assert.equal(scroller.scrollTop,9000,'restore original scroll position');
 });
+test('nested GPT conversation URLs retain the saved chat identifier',()=>{
+  assert.equal(
+    context.ChatGPTShadowExtract.conversationIdFromUrl(
+      'https://chatgpt.com/g/g-example/c/6af8ff99-6b54-83ee-8ee5-06f99616d940'),
+    '6af8ff99-6b54-83ee-8ee5-06f99616d940');
+});
+test('finds an external chat viewport even without the former first-turn selector',async()=>{
+  const originalQuery=main.querySelector;
+  const originalCandidates=doc.querySelectorAll;
+  const originalPage=doc.scrollingElement;
+  try{
+    main.querySelector=()=>null;
+    // Reproduce a ChatGPT layout with a scroll root above/outside main;
+    // the original logic only inspected main and document.scrollingElement.
+    doc.querySelectorAll=selector=>selector.includes('overflow')?[scroller]:[];
+    doc.scrollingElement={scrollHeight:1000,clientHeight:1000,scrollTop:0};
+    scroller.scrollTop=9000;cacheTop=NaN;
+    inserted=[];queued=0;
+    const reply=await new Promise(resolve=>{
+      const keepAlive=listener({type:'page.capture',selection:'',includeAssistant:true},null,resolve);
+      assert.equal(keepAlive,true);
+    });
+    assert.equal(reply.error,undefined,String(reply.error));
+    assert.equal(reply.detected,80,'external viewport still scans all messages');
+    assert.equal(reply.queuedCaptures,0,'repeat captures must not duplicate Queue receipts');
+    assert.equal(inserted.length,0,'previously archived turns are not enqueued twice');
+    assert.equal(scroller.scrollTop,9000,'restore original viewport');
+  }finally{
+    main.querySelector=originalQuery;
+    doc.querySelectorAll=originalCandidates;
+    doc.scrollingElement=originalPage;
+  }
+});
 test('background accepts direct Queue acknowledgement rather than requiring one DOM snapshot',()=>{
   assert.ok(background.includes('reply?.directQueued===true'));
   assert.ok(background.includes('insertedCaptures:reply.queuedCaptures||0'));

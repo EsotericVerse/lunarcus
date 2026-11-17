@@ -82,25 +82,44 @@
   // ChatGPT only keeps a small set of turns mounted in the DOM at a time.
   // One querySelectorAll snapshot is NOT a complete conversation archive.
   function chatHistoryScroller(main){
-    const first=main.querySelector('[data-chatgpt-search-unit-key],[data-message-author-role]');
-    for(let el=first;el&&el!==document.body;el=el.parentElement){
-      if(!Number.isFinite(el.scrollHeight)||!Number.isFinite(el.clientHeight)||
-        el.scrollHeight<=el.clientHeight+40||el.clientHeight<100)continue;
-      const overflow=getComputedStyle(el).overflowY;
-      if(/auto|scroll/.test(overflow))return el;
+    // ChatGPT can render the conversation viewport outside <main>, or change
+    // message attributes while preserving the same scrollable conversation.
+    const first=main.querySelector('[data-chatgpt-search-unit-key],'+
+      '[data-message-author-role],[data-testid^="conversation-turn-"],'+
+      '[data-message-id],[data-testid="user-message"],'+
+      '[data-testid="assistant-message"]');
+    const checked=new Set();
+    const hasOverflow=el=>el&&Number.isFinite(el.scrollHeight)&&
+      Number.isFinite(el.clientHeight)&&el.clientHeight>=100&&
+      el.scrollHeight>el.clientHeight+40;
+    const scrollable=el=>{
+      if(!el||checked.has(el))return null;
+      checked.add(el);
+      return hasOverflow(el)&&/auto|scroll|overlay/.test(getComputedStyle(el).overflowY)?el:null;
+    };
+    // Prefer the actual conversation ancestry over any sidebar scrollbars.
+    for(const seed of [first,main]){
+      for(let el=seed;el;el=el.parentElement){
+        const found=scrollable(el);
+        if(found)return found;
+      }
     }
-    // Some layouts put the scrolling viewport on an inner div that is not an
-    // ancestor of the currently mounted turn.
-    const candidates=[main,...main.querySelectorAll('[class*="overflow"],[data-testid]')];
+    // Some ChatGPT layouts mount their viewport as a sibling of <main>.
+    // Search the whole document, but only accept elements related to the
+    // conversation: ancestors, descendants or a container of a message.
+    const candidates=document.querySelectorAll(
+      '[data-scroll-root],[data-testid*="scroll"],'+
+      '[class*="overflow"],[class*="scrollbar"],[class*="scroll"],#thread');
     for(const el of candidates){
-      if(!Number.isFinite(el.scrollHeight)||!Number.isFinite(el.clientHeight)||
-        el.scrollHeight<=el.clientHeight+40||el.clientHeight<100)continue;
-      if(!/auto|scroll/.test(getComputedStyle(el).overflowY))continue;
-      if(first&&!el.contains(first))continue;
-      return el;
+      if(el!==main&&!el.contains?.(main)&&!main.contains?.(el)&&
+         !(first&&el.contains?.(first)))continue;
+      const found=scrollable(el);
+      if(found)return found;
     }
+    // The document itself may scroll, with overflowY reported as visible.
     const page=document.scrollingElement;
-    return page&&page.scrollHeight>page.clientHeight+40?page:null;
+    if(hasOverflow(page))return page;
+    return null;
   }
   function setChatScroll(element,top){
     if(typeof element.scrollTo==='function'){
