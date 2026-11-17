@@ -10,7 +10,6 @@ const sha='a'.repeat(40),version='a40c157e-a001-4a12-9f34-014264b9feea';
 const secret='only-for-tests-no-real-auth-key-1234567890';
 const audience='https://auth.lo3rwang.cc'+LOC_SIGNAL_PATH;
 const origFetch=globalThis.fetch;
-const origCrypto=globalThis.crypto;
 function b64(bytes){return Buffer.from(bytes).toString('base64url')}
 async function tokenPair(){
   const keys=await crypto.subtle.generateKey({
@@ -38,7 +37,6 @@ async function idToken(overrides={}){
 }
 async function withMocks(testBody){
   const calls=[];
-  globalThis.crypto=crypto;
   globalThis.fetch=async(url,opts={})=>{
     calls.push({url:String(url),opts});
     if(String(url).endsWith('/.well-known/jwks'))
@@ -50,7 +48,7 @@ async function withMocks(testBody){
     throw Error('Unexpected network request');
   };
   try{await testBody(calls)}finally{
-    globalThis.fetch=origFetch;globalThis.crypto=origCrypto;
+    globalThis.fetch=origFetch;
   }
 }
 function build(jwt){return new Request(audience,{
