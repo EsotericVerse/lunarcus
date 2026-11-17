@@ -59,3 +59,20 @@ test('ISR is not a hidden required Auth dependency',()=>{
   assert.ok(!existsSync(new URL('../services/workers/las-isr/wrangler.jsonc',import.meta.url)),
     'Do not claim source migration is finished when ISR source is unavailable');
 });
+
+test('documentation is colocated with owned LAS source rather than a root docs directory',()=>{
+  assert.ok(!existsSync(new URL('../docs/',import.meta.url)),
+    'Do not recreate a centralized docs/ directory');
+  for(const path of [
+    'app/las/README.md',
+    'app/las/auth/README.md',
+    'app/las/mcp/README.md',
+    'app/las/tunnel/README.md',
+    '.github/workflows/README.md',
+    'app/las/MIGRATION-HISTORY-20261116.md'
+  ])assert.ok(existsSync(new URL('../'+path,import.meta.url)),
+    'Missing colocated module or deployment guidance: '+path);
+  const history=read('app/las/MIGRATION-HISTORY-20261116.md');
+  assert.ok(history.includes('Historical handoff snapshot'),
+    'Dated migration notes must not be treated as current deployment state');
+});
