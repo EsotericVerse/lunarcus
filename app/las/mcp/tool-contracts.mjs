@@ -1,8 +1,6 @@
 // One Zod 4 source of truth for MCP JSON Schema advertising and requests.
 // No separate hand-maintained JSON schemas, parallel validators, or SQL access.
 import {z} from 'zod';
-import {ProviderIdSchema,ProviderToolSchema,ProviderArgumentsSchema}
-  from './upstream/upstream-providers.mjs';
 
 const SCOPE_ID=z.string().regex(/^[a-z][a-z0-9]{0,14}$/);
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
@@ -41,15 +39,6 @@ export const MCP_TOOL_INPUTS=Object.freeze({
   article_distribution:z.strictObject({
     period:z.enum(['calendar_year','rolling_12_months']).optional(),
     year:z.int().min(2020).max(2100).optional()
-  }),
-  provider_list:none,
-  provider_tools:z.strictObject({provider:ProviderIdSchema}),
-  provider_call:z.strictObject({
-    provider:ProviderIdSchema,tool:ProviderToolSchema,
-    args:ProviderArgumentsSchema.optional()
-  }),
-  provider_receipt:z.strictObject({
-    approval_id:z.string().min(25).max(64).regex(/^[A-Za-z0-9_-]+$/)
   })
 });
 

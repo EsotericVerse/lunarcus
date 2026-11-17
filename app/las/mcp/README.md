@@ -12,8 +12,9 @@ The canonical server URL is **`https://mcp.lo3rwang.cc/`** (no required `/mcp` s
 | `tool-contracts.mjs` | MCP operation definitions and validated tool argument schemas |
 | `stateless-transport.mjs`, `stream-json.mjs` | Streamable HTTP and bounded JSON transport |
 | `business-actions.mjs`, `gateway-qos.mjs` | Tool execution and admission/quality-of-service checks |
-| `upstream/upstream-*.mjs` | Provider discovery, OAuth, policy, tool invocation, SSE responses and vault adapters |
 | `loc-mapping.mjs` | Compatibility re-export from `../tunnel/loc-mapping.mjs` |
+
+No upstream MCP provider relay (Clerk/GitHub/Neon/Supabase OAuth, tool policy, pending-approval vault) is in scope. LAS has exactly one identity provider (Cloudflare SSO via `auth.lo3rwang.cc`); it is not a hub for other MCP servers' credentials. An unwired `upstream/` subtree implementing that relay was removed 2026-11-17 — it was never referenced by `router.mjs` and was built without the owner's direction.
 
 ## Trust boundaries
 
