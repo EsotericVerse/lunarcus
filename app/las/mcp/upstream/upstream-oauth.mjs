@@ -3,7 +3,7 @@
 import {UPSTREAM_PROVIDERS,upstreamProvider,trustedProviderUrl,
   LOC_MCP_CALLBACK,LOC_MCP_CLIENT_DOCUMENT} from './upstream-providers.mjs';
 import {LOC_MCP_EXTENSION_RETURN,normalizeSsoEmail}
-  from './extension-sso.mjs';
+  from '../extension-sso.mjs';
 import {randomValue,hashValue,providerKey,pendingPrefix,vaultList,
   vaultGet,vaultPut,vaultDelete} from './upstream-vault.mjs';
 
