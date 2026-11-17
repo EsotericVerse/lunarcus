@@ -35,7 +35,7 @@
         user:['.query-text','[data-testid="user-query"]','.query-content'],
         assistant:['.markdown','.response-content','.model-response-text']
       }),
-      identity:['data-message-id','data-testid']
+      identity:['data-message-id','data-turn-id','data-message-uuid']
     })
   });
   function profileFor(provider,hostname){

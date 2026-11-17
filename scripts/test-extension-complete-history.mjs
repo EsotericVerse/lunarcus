@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const folder=new URL('../plugins/chrome/',import.meta.url);
+const temporal=readFileSync(new URL('source-temporal-order.js',folder),'utf8');
 const vendor=readFileSync(new URL('vendor/ChatGPTShadowExtract.js',folder),'utf8');
 const content=readFileSync(new URL('content.js',folder),'utf8');
 const background=readFileSync(new URL('background.js',folder),'utf8');
@@ -75,6 +76,7 @@ const context=vm.createContext({
     }
   }}
 });
+vm.runInContext(temporal,context,{filename:'source-temporal-order.js'});
 vm.runInContext(vendor,context,{filename:'ChatGPTShadowExtract.js'});
 vm.runInContext(content,context,{filename:'content.js'});
 
@@ -92,6 +94,10 @@ test('capture uses the currently mounted 9 turns and never scrolls the reader',a
   assert.equal(reply.partial,true);
   assert.equal(reply.queuedCaptures,9);
   assert.equal(inserted.length,9);
+  assert.deepEqual(inserted.map(x=>x.source_order),[71,72,73,74,75,76,77,78,79]);
+  assert.ok(inserted.every(x=>x.order_evidence==='source-unit-ordinal'));
+  assert.ok(inserted.every(x=>x.message_id?.startsWith('real-message-')));
+
   assert.equal(new Set(inserted.map(item=>item.key)).size,9);
   assert.equal(scroller.scrollTop,initialTop,'reading position must remain unchanged');
   assert.match(reply.message,/不是完整歷史/);

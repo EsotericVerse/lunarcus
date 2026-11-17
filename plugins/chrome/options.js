@@ -186,6 +186,20 @@ async function renderOrganizer(){
    item.append(organizerElement('div','organize-turn-heading',
       '#'+turn.source_order+' · '+(turn.role==='user'?'使用者':'AI 回覆')),
      organizerElement('p','organize-turn-text',turn.preview));
+   const expand=organizerElement('button','button button-ghost organize-turn-expand','閱讀完整訊息');
+   expand.type='button';
+   expand.addEventListener('click',async()=>{
+    expand.disabled=true;
+    try{
+     const message=await call('conversation.turn',{id:turn.id});
+     const full=organizerElement('pre','organize-turn-full',message.text);
+     item.querySelector('.organize-turn-full')?.remove();
+     item.append(full);
+     expand.textContent='重新讀取完整訊息';
+    }catch(error){$('organizeNotice').textContent=String(error?.message||error);}
+    finally{expand.disabled=false;}
+   });
+   item.append(expand);
    list.append(item);
   }
   details.append(list);section.append(details);
