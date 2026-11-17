@@ -287,7 +287,6 @@ const ChatGPTShadowExtract = (() => {
     const nodes = root.querySelectorAll(ROLE_SELECTOR + "," + UNIT_SELECTOR + "," + FALLBACK_SELECTOR);
     const messages = [];
     const seenIds = new Set();
-    const seenContainers = new Set();
     Array.from(nodes).forEach((el) => {
       const isUnit = unitIndex.has(el);
       const isLegacy = legacyIndex.has(el);
@@ -302,7 +301,8 @@ const ChatGPTShadowExtract = (() => {
         role = String(el.getAttribute("data-message-author-role") || "").toLowerCase();
         // A wrapper containing a different-role unit still owns its message:
         // never discard a legacy user merely because an assistant is nested.
-        if (el.closest && el.closest(UNIT_SELECTOR)) return;
+        const parentUnit = el.closest && el.closest(UNIT_SELECTOR);
+        if (parentUnit && unitRole(parentUnit) === role) return;
         const nested = el.querySelectorAll ? el.querySelectorAll(UNIT_SELECTOR) : [];
         if (Array.from(nested).some((child) => unitRole(child) === role)) return;
         content = extractMessageText(el);
@@ -324,9 +324,6 @@ const ChatGPTShadowExtract = (() => {
           attr(child, "data-message-id") || attr(child, MESSAGE_ID_ATTR);
         index = messages.length;
       }
-      const owner = (el.closest && el.closest('[data-testid^="conversation-turn-"]')) || el;
-      if (seenContainers.has(owner)) return;
-      seenContainers.add(owner);
       if (role !== "user" && role !== "assistant") return;
       if (!content || isPlaceholderMessage(id, content)) return;
       if (id) {
@@ -444,7 +441,16 @@ const ChatGPTShadowExtract = (() => {
 
   function isNestedUnit(unit) {
     const parent = unit.parentElement;
-    return Boolean(parent && typeof parent.closest === "function" && parent.closest(UNIT_SELECTOR));
+    const owner = parent && typeof parent.closest === "function" &&
+      parent.closest(UNIT_SELECTOR);
+    if (!owner) return false;
+    const ownRole = unitRole(unit), outerRole = unitRole(owner);
+    // A nested AI reply may live inside a user search-unit wrapper. It is not
+    // a duplicate of that user message, even when both share a turn container.
+    if (ownRole && outerRole && ownRole !== outerRole) return false;
+    const ownId = unitMessageId(unit), outerId = unitMessageId(owner);
+    if (ownId && outerId && ownId !== outerId) return false;
+    return true;
   }
 
   function extractUnitMessages(root) {
