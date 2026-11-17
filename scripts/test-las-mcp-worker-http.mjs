@@ -168,3 +168,19 @@ test('Bounded JSON reader rejects oversized payloads and releases the stream',as
   await assert.rejects(readBoundedJson(chunks('{"value":"'+ 'a'.repeat(128)+'"}'),16),
     error=>error instanceof BodyTooLargeError);
 });
+
+
+test('Retired LOC provider routes are not forwarded or reintroduced by LAS',async()=>{
+  const originalFetch=globalThis.fetch;
+  let forwarded=0;
+  globalThis.fetch=async()=>{forwarded++;throw Error('Unexpected retired provider proxy');};
+  try{
+    for(const path of ['/api/mcp-provider','/api/mcp-provider-callback',
+      '/api/mcp-provider-extension']){
+      const res=await worker.fetch(new Request(HOST+path,{method:'POST',
+        headers:{Origin:EXT,'Content-Type':'application/json'},body:'{}'}));
+      assert.equal(res.status,404,path+' must not be forwarded to retired LOC route');
+    }
+    assert.equal(forwarded,0);
+  }finally{globalThis.fetch=originalFetch;}
+});
