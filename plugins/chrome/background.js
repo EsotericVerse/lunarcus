@@ -111,8 +111,10 @@ function captureSourceMatches(pageUrl,sourceUrl){
  if(page.protocol!=='https:'||source.protocol!=='https:')return false;
  const THREADS=new Set(['threads.net','www.threads.net','threads.com','www.threads.com']);
  const INSTAGRAM=new Set(['instagram.com','www.instagram.com','m.instagram.com']);
+ const CHATGPT=new Set(['chatgpt.com','chat.openai.com']);
  return (THREADS.has(page.hostname)&&THREADS.has(source.hostname))||
-   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname));
+   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname))||
+   (CHATGPT.has(page.hostname)&&CHATGPT.has(source.hostname));
 }
 async function stableUuid(input){
  const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(input)));
