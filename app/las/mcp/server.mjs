@@ -22,11 +22,10 @@ function withCors(request,response){
   headers.set('access-control-allow-headers','Authorization,Content-Type');
   return new Response(response.body,{status:response.status,headers});
 }
+// LOC owns the fixed business API only. Its retired provider endpoints
+// must not be proxied as a second, nonfunctional MCP control plane.
 const LOC_PROXY_ROUTES=new Map([
-  ['/api/loc-native','/api/las-native'],
-  ['/api/mcp-provider','/api/mcp-provider'],
-  ['/api/mcp-provider-callback','/api/mcp-provider-callback'],
-  ['/api/mcp-provider-extension','/api/mcp-provider-extension']
+  ['/api/loc-native','/api/las-native']
 ]);
 
 async function locProxy(request,target,env){
