@@ -21,7 +21,10 @@ for(const name of expected){
   const path=join(skillsRoot,name,'SKILL.md');
   assert.ok(existsSync(path),'Missing LAS-local skill: '+name);
   const content=readFileSync(path,'utf8');
-  const match=content.match(/^---\r?\nname: ([a-z0-9-]+)\r?\ndescription: "?([^\r\n]+)"?\r?\n---\r?\n/);
+  // Frontmatter may include license/metadata after the required fields.
+  // Validate the bounded YAML header without requiring a two-field-only skill.
+  const header=/^---\\r?\\n([\\s\\S]*?)\\r?\\n---(?:\\r?\\n|$)/.exec(content)?.[1]||'';
+  const match=/^name: ([a-z0-9-]+)\\r?\\ndescription: "?([^\\r\\n]+)"?(?:\\r?\\n|$)/.exec(header);
   assert.ok(match,'Invalid skill frontmatter: '+name);
   assert.equal(match[1],name,'Skill metadata must match directory: '+name);
   assert.ok(match[2].length>=8,'Skill description too short: '+name);
