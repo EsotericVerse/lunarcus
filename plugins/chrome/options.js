@@ -1,85 +1,7 @@
 const $=id=>document.getElementById(id);
 const status=$('status'), queue=$('queue'), notice=$('notice');
-const mcpProviders=$('mcpProviders');
-const MCP_LABELS={neon:'Neon MCP',supabase:'Supabase MCP'};
-function formatLocalActionTime(timestamp){
- const time=new Date(timestamp);
- if(!Number.isFinite(time.getTime()))return '—';
- const pad=value=>String(value).padStart(2,'0');
- return time.getFullYear()+'-'+pad(time.getMonth()+1)+'-'+pad(time.getDate())+
-  ' '+pad(time.getHours())+':'+pad(time.getMinutes())+':'+pad(time.getSeconds());
-}
-function call(action,extra={}){return chrome.runtime.sendMessage({action,...extra});}
-let lastProviderStatus=null;
-function setAuthIndicator(connected){
- const badge=$('authStateBadge');
- badge.classList.toggle('state-connected',connected);
- badge.classList.toggle('state-waiting',!connected);
- badge.replaceChildren(badge.querySelector('.state-light'),
-  document.createTextNode(connected?'已連接':'尚未連接'));
-}
-function renderMcpProviders(result){
- lastProviderStatus=result;
- mcpProviders.replaceChildren();
- if(result?.error||result?.ready!==true){
-  const empty=document.createElement('div');
-  empty.className='empty-state';
-  empty.textContent=result?.error||'Gateway Provider Vault 尚未啟用。';
-  mcpProviders.append(empty);
-  return;
- }
- for(const id of Object.keys(MCP_LABELS)){
-  const item=(result.providers||[]).find(row=>row.id===id)||{id,connected:false};
-  const card=document.createElement('article');card.className='provider-card';
-  const top=document.createElement('div');top.className='provider-card-top';
-  const glyph=document.createElement('div');
-  glyph.className='provider-mark provider-mark--'+id;
-  glyph.setAttribute('aria-hidden','true');glyph.textContent=id==='neon'?'N':'S';
-  const info=document.createElement('div');info.className='provider-info';
-  const title=document.createElement('strong');title.textContent=MCP_LABELS[id];
-  const state=document.createElement('span');
-  state.className='provider-state'+(item.connected?' is-linked':'');
-  state.textContent=item.connected?'已連接 · Gateway 可重用授權':'尚未連接';
-  info.append(title,state);top.append(glyph,info);
-  const actions=document.createElement('div');actions.className='provider-actions';
-  const button=document.createElement('button');button.type='button';
-  button.textContent=item.connected?'重新授權':'授權一次';
-  button.disabled=!$('ssoEmail').value.trim();
-  button.addEventListener('click',async()=>{
-   const email=$('ssoEmail').value.trim();
-   if(!email){notice.textContent='請先輸入上游服務登入 Email';return;}
-   await chrome.storage.local.set({locSsoEmail:email});
-   button.disabled=true;notice.textContent='正在連接 '+MCP_LABELS[id]+'…';
-   try{
-    const connected=await call('mcp-connect',{provider:id});
-    notice.textContent=connected.error||'已連接 '+MCP_LABELS[id]+'；後續由 Gateway 重用授權。';
-    await refreshMcp();
-   }catch(error){notice.textContent=String(error?.message||error)}
-   finally{button.disabled=!$('ssoEmail').value.trim();}
-  });
-  actions.append(button);
-  if(item.connected){
-   const disconnect=document.createElement('button');
-   disconnect.type='button';disconnect.dataset.action='disconnect';
-   disconnect.textContent='解除';
-   disconnect.addEventListener('click',async()=>{
-    disconnect.disabled=true;notice.textContent='正在解除 '+MCP_LABELS[id]+'…';
-    try{
-     await call('mcp-disconnect',{provider:id});
-     notice.textContent='已解除 '+MCP_LABELS[id];
-     await refreshMcp();
-    }catch(error){notice.textContent=String(error?.message||error)}
-    finally{disconnect.disabled=false;}
-   });
-   actions.append(disconnect);
-  }
-  card.append(top,actions);mcpProviders.append(card);
- }
-}
-async function refreshMcp(){
- try{renderMcpProviders(await call('mcp-status'))}
- catch(error){mcpProviders.textContent=String(error?.message||error)}
-}
+// MCP is the fixed LAS gateway; no user-selected upstream provider vault.
+const LAS_MCP_RESOURCE='https://mcp.lo3rwang.cc/';
 // Use the status already fetched for the six-key console: no extra polling.
 let overviewStatus=null;
 function renderOverviewGuidance(result){
@@ -122,7 +44,7 @@ function renderOverviewGuidance(result){
 async function show(){
  const [result,saved]=await Promise.all([
   call('loc-status'),
-  chrome.storage.local.get(['locTargetScope','locIncludeAssistant','locSsoEmail'])
+  chrome.storage.local.get(['locTargetScope','locIncludeAssistant'])
  ]);
  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'尚未連接 LunArcus Auth');
  setAuthIndicator(Boolean(result.connected));
@@ -140,8 +62,7 @@ async function show(){
   '目前沒有操作紀錄。';
  $('scope').value=saved.locTargetScope||'lo3rwang';
  $('includeAI').checked=saved.locIncludeAssistant===true;
- $('ssoEmail').value=saved.locSsoEmail||'';
- if(window.location.hash==='#providers')await refreshMcp();
+
 }
 $('connect').addEventListener('click',async()=>{
  status.textContent='正在進行 LOC 授權…';
@@ -152,7 +73,7 @@ $('connect').addEventListener('click',async()=>{
    setAuthIndicator(Boolean(result.connected));
    renderOverviewGuidance({...overviewStatus,connected:Boolean(result.connected),error:null});
   }
-  if(window.location.hash==='#providers')await refreshMcp();
+
  }catch(error){status.textContent=String(error?.message||error);}
 });
 $('disconnect').addEventListener('click',async()=>{
@@ -168,13 +89,6 @@ $('disconnect').addEventListener('click',async()=>{
 });
 $('refresh').addEventListener('click',()=>{
  void show().catch(error=>status.textContent=String(error?.message||error));
-});
-$('ssoEmail').addEventListener('input',()=>{
- if(lastProviderStatus)renderMcpProviders(lastProviderStatus);
-});
-$('ssoEmail').addEventListener('change',async()=>{
- await chrome.storage.local.set({locSsoEmail:$('ssoEmail').value.trim()});
- if(window.location.hash==='#providers')await refreshMcp();
 });
 $('scope').addEventListener('change',async()=>{
  const input=$('scope');
@@ -220,8 +134,5 @@ chrome.storage.onChanged?.addListener((changes,area)=>{
  if(area==='local'&&changes.locLastAction?.newValue){
   void show().catch(error=>status.textContent=String(error?.message||error));
  }
-});
-window.addEventListener('hashchange',()=>{
- if(window.location.hash==='#providers')void refreshMcp();
 });
 show().catch(error=>status.textContent=String(error?.message||error));
