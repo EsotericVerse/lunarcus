@@ -11,6 +11,7 @@ const MCP_RUNTIME=/^app\/las\/(?:mcp|tunnel)\//;
 const PLUGINS=/^(?:plugins\/|public\/plugins\/)/;
 const AUTH_PUBLIC=/^(?:app\/las\/index\.mjs|app\/las\/auth\/(?:auth|extension-client)\.mjs)$/;
 const MCP_PUBLIC=/^app\/las\/mcp\/(?:server|router|tool-contracts|business-actions)\.mjs$/;
+const LOC_TUNNEL_CONTRACT='app/las/tunnel/loc-mapping.mjs';
 const AUTH_CONTRACT=/(?:\/api\/auth\/|\/\.well-known\/|LOC_ISSUER|LOC_WEB|oauth2|openid|oidc|issuer|redirect_uri|callbackURL|allowedOrigins?|session|cookie|scope|authorization|tokenEndpoint|client_id)/i;
 const MCP_LOC_CONTRACT=/(?:\/api\/las-native|\/api\/loc-native|LOC_PROXY_ROUTES|locProxy|mcp-(?:authorize|read|search|public-read|article-stat)|api\.manage)/i;
 
@@ -37,9 +38,19 @@ export function planLasDeployment(changes) {
     const patch=typeof file==='string'?undefined:file?.patch;
     if(PLUGINS.test(path)){las.plugins=true;continue;}
     if((AUTH_RUNTIME.test(path)&&path.endsWith('.mjs'))||AUTH_CONFIG.test(path)||path==='app/las/index.mjs'||path.startsWith('vendor/loc-dialect/'))las.auth=true;
-    // LAS-owned CMS Data Mapping is a data contract, not a deployed server.
-    // Do not schedule either MCP or LOC solely because its model changed.
-    if(path.startsWith('app/las/tunnel/'))continue;
+    // LAS-owned CMS Data Mapping can change without rebuilding LOC.
+    // The fixed LOC business bridge is different: review interface edits,
+    // but never automatically trigger LOC for a routine Tunnel change.
+    if(path.startsWith('app/las/tunnel/')){
+      if(path===LOC_TUNNEL_CONTRACT){
+        const lines=changedCode(patch);
+        if(lines===null||lines.length>0){
+          review=true;
+          reasons.push('LOC Tunnel contract requires review: '+path);
+        }
+      }
+      continue;
+    }
     if(MCP_RUNTIME.test(path)&&path.endsWith('.mjs'))las.mcp=true;
     if(AUTH_PUBLIC.test(path)){
       const lines=changedCode(patch);
