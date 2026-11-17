@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
-    "@better-auth/sso": "1.7.18",
     "@streamparser/json": "0.0.26",
     "@zenstackhq/better-auth": "3.10.1",
     "@zenstackhq/orm": "3.10.1",

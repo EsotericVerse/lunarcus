@@ -1,7 +1,6 @@
 import {betterAuth} from 'better-auth';
 import {APIError,createAuthMiddleware,getAuthoritativeSessionFromCtx} from 'better-auth/api';
 import {admin,jwt} from 'better-auth/plugins';
-import {sso} from '@better-auth/sso';
 import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
@@ -15,9 +14,11 @@ import {authKaraulRatePolicy} from './auth-qos.mjs';
 import {extensionClientDiscovery} from './extension-client.mjs';
 import {ensureFirstPartyOAuthClient,isFirstPartyOAuthConsent} from './first-party-client.mjs';
 
-// LOC Auth is the issuer. Cloudflare Access is the delegated upstream OIDC
-// provider; it does not own LOC Sessions or LOC OAuth tokens.
-// LOC Auth does not own LOC Web content or business roles.
+// LOC Auth is the issuer. Google is the sole sign-in path; Cloudflare Access
+// SSO was removed 2026-11-17 — it only re-authenticated the same Google
+// account one extra OAuth hop away, with its own secret pair, and was the
+// leg that broke on the last domain change. LOC Auth does not own LOC Web
+// content or business roles.
 // Neon supplies PostgreSQL storage, NOT Neon Auth. Neither website rendering
 // nor business permissions are implemented here.
 export const LOC_ISSUER='https://auth.lo3rwang.cc';
@@ -32,10 +33,10 @@ const authActions={user:['get','list','ban'],session:['list','revoke','delete']}
 const authAc=createAccessControl(authActions);
 const authRoles={
   admin:authAc.newRole(authActions),
-  // Identities that came in through Cloudflare SSO rather than Google. A tier
-  // of its own so its permissions can diverge later; for now it has the same
-  // empty permission set as a plain user, and widening it is a one-line change
-  // here, not a schema change.
+  // Legacy tier for identities that came in through the now-removed
+  // Cloudflare Access SSO path rather than Google. Kept only so an existing
+  // stored user row with this role still resolves; no new account is ever
+  // assigned it. Same empty permission set as a plain user.
   scope:authAc.newRole({user:[],session:[]}),
   user:authAc.newRole({user:[],session:[]})
 };
@@ -65,87 +66,36 @@ const AuthEnvironmentSchema=z.object({
   connectionString:z.url().refine(value=>
     ['postgresql:','postgres:'].includes(new URL(value).protocol)),
   secret:z.string().min(32),
-  cloudflareIssuer:z.url().refine(value=>new URL(value).protocol==='https:'),
-  cloudflareClientId:z.string().min(1),
-  cloudflareClientSecret:z.string().min(1),
   namespace:z.literal('public')
 });
 
-// Google stays configured alongside Cloudflare Access only while the single
-// existing LOC identity is still bound to its Google account. It is optional:
-// once the Cloudflare account is attached, removing the two Google variables
-// disables that button without a code change or a 503.
+// Google is the sole sign-in path. It is still validated, not hardcoded,
+// because the owner account is bound to it and losing these two variables
+// must fail loudly rather than silently disable login.
 export function googleSocialConfig(env={}){
   const clientId=String(env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID||'').trim();
   const clientSecret=String(env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET||'').trim();
   return clientId&&clientSecret?{clientId,clientSecret}:null;
 }
 
-// Cloudflare Access SaaS OIDC has one canonical set of Worker bindings.
-// Never silently fall back to stale Cloudflare/Build API credentials.
-// Explicit token authentication avoids Better Auth's implicit Basic fallback
-// when Cloudflare Access discovery omits token_endpoint_auth_methods_supported.
-export const CLOUDFLARE_SSO_TOKEN_AUTH='client_secret_post';
-
-export function cloudflareSsoConfig(env={}){
-  return {
-    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||'').trim().replace(/\/+$/,''),
-    clientId:String(env.LOC_CLOUDFLARE_SSO_CLIENT_ID||'').trim(),
-    clientSecret:String(env.LOC_CLOUDFLARE_SSO_CLIENT_SECRET||'').trim()
-  };
-}
-
-// Dedicated upstream SSO connection. LOC remains the independent downstream
-// OAuth/OIDC issuer; this provider config does not register an OAuth client.
-function cloudflareSsoProvider(cloudflare){
-  const {issuer,clientId,clientSecret}=cloudflare;
-  return {
-    providerId:'cloudflare-access',
-    domain:OWNER_EMAIL.split('@')[1],
-    oidcConfig:{
-      issuer,
-      discoveryEndpoint:issuer+'/.well-known/openid-configuration',
-      authorizationEndpoint:issuer+'/authorization',
-      tokenEndpoint:issuer+'/token',
-      jwksEndpoint:issuer+'/jwks',
-      userInfoEndpoint:issuer+'/userinfo',
-      clientId,
-      clientSecret,
-      tokenEndpointAuthentication:CLOUDFLARE_SSO_TOKEN_AUTH,
-      pkce:true,
-      scopes:['openid','email','profile'],
-      mapping:{email:'email',emailVerified:'email_verified',name:'name'}
-    }
-  };
-}
-
 export function checkLocAuthEnvironment(env){
-  const cloudflare=cloudflareSsoConfig(env);
   const data={
     connectionString:env?.LAS_DATABASE_URL,
     secret:env?.LOC_CONTROL_ENCRYPTION_KEY,
-    cloudflareIssuer:cloudflare.issuer,
-    cloudflareClientId:cloudflare.clientId,
-    cloudflareClientSecret:cloudflare.clientSecret,
     namespace:'public'
   };
   if(data.namespace!=='public')
     throw new Error('LAS tables must use the public PostgreSQL schema');
   const verified=AuthEnvironmentSchema.safeParse(data);
   if(!verified.success)
-    throw new Error('LAS requires PostgreSQL and OAuth credentials (secret >= 32 characters)');
-  // The Access SaaS OIDC issuer path must end in the same Client ID.
-  // Fail closed rather than issuing codes against a stale/mixed application.
-  const issuer=new URL(cloudflare.issuer);
-  if(issuer.pathname.split('/').filter(Boolean).at(-1)!==cloudflare.clientId ||
-     !issuer.pathname.startsWith('/cdn-cgi/access/sso/oidc/'))
-    throw new Error('LOC Auth Cloudflare SSO issuer/client ID mismatch');
+    throw new Error('LAS requires PostgreSQL and a control secret (>= 32 characters)');
+  if(!googleSocialConfig(env))
+    throw new Error('LOC Auth requires Google OAuth credentials (the sole sign-in path)');
   return true;
 }
 
 export function createLocAuth(env){
   checkLocAuthEnvironment(env);
-  const cloudflare=cloudflareSsoConfig(env);
   // Built-in Kysely PostgreSQL adapter, backed by native pg.Client/TCP.
   // Match LOC Web's request-scoped transport: each acquisition opens and
   // releases its own TLS connection, never sharing a socket across requests.
@@ -177,21 +127,13 @@ export function createLocAuth(env){
     baseURL:LOC_ISSUER,
     basePath:'/api/auth',
     secret:env.LOC_CONTROL_ENCRYPTION_KEY,
-    // The SSO plugin checks the upstream discovery document, and every
-    // endpoint named inside it, against this list before the first redirect
-    // (validateDiscoveryUrl / normalizeAndValidateUrl), so the delegated
-    // provider's own origin has to be here or sign-in fails with
-    // "Untrusted OIDC discovery URL". It is derived from the configured
-    // issuer rather than hardcoded, so replacing the Cloudflare application
-    // only means changing that variable.
     // Trust only the bundled first-party Chrome Extension for OAuth code exchange.
     // The Worker CORS allowlist already contains this exact origin; Better Auth
     // independently checks POST /oauth2/token against trustedOrigins.
     trustedOrigins:[
       LOC_ISSUER,
       LOC_WEB,
-      'chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna',
-      new URL(cloudflare.issuer).origin
+      'chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna'
     ],
     // Official Better Auth middleware: high-risk Admin API requests bypass the
     // 30-minute cookie cache once, preventing revoked Sessions from managing
@@ -243,12 +185,10 @@ export function createLocAuth(env){
     // administer Auth. Different email addresses are still never merged.
     account:{modelName:RAINBOW_MODEL_NAMES.account,
       accountLinking:{enabled:true,allowDifferentEmails:false,
-        trustedProviders:['cloudflare-access','google']}},
+        trustedProviders:['google']}},
     verification:{modelName:RAINBOW_MODEL_NAMES.verification},
     emailAndPassword:{enabled:false},
-    // Cloudflare Access is the intended upstream provider. Google remains
-    // available as the recovery path for the already-registered owner account
-    // and disappears on its own when its credentials are removed.
+    // Google is the sole sign-in provider.
     // disableSignUp makes Google a whitelist, not an open door. Better Auth
     // only consults this flag when no user with the incoming email exists
     // (oauth2/link-account.mjs: the check sits in the no-existing-user branch,
@@ -315,35 +255,6 @@ export function createLocAuth(env){
         clientPrivileges:ownerPrivilege,
         resourcePrivileges:ownerPrivilege,
         extensions:[{clientDiscovery:extensionClientDiscovery()}]
-      }),
-      // Cloudflare Access is the one delegated upstream identity provider.
-      // Better Auth still owns the LOC user/session/account records and all
-      // LOC OAuth issuance. Keeping the provider in defaultSSO avoids a
-      // user-controlled provider registry and does not require a Clerk/Auth0
-      // SDK or an Enterprise SSO plan.
-      sso({
-        providersLimit:0,
-        trustEmailVerified:true,
-        // Cloudflare Access issues an identity only after its own policy has
-        // authenticated the person, but its ID token carries no
-        // `email_verified` claim, so Better Auth saw an unverified profile and
-        // refused to attach it to the existing owner account: sign-in returned
-        // "account not linked" after an otherwise complete round trip. Marking
-        // the provider authoritative for its own domain supplies the trust
-        // signal that the missing claim cannot.
-        // Scope of that trust: an identity may attach only to a LOC user that
-        // already exists with the same address, because implicit sign-up stays
-        // off below, and only after Cloudflare Access has let it through. The
-        // domain comes from the owner's address, so widen or split it before
-        // admitting anyone whose mailbox is outside the owner's control.
-        domainVerification:{enabled:true},
-        // "No open registration" means a stranger who can authenticate at the
-        // upstream provider still does not become a LOC identity: approval
-        // stays a LOC Web decision. It does NOT mean refusing to attach a new
-        // provider to an account that already exists, which is why account
-        // linking above is enabled. Collapsing the two locks out the owner.
-        disableImplicitSignUp:true,
-        defaultSSO:[cloudflareSsoProvider(cloudflare)]
       })
     ]
   });

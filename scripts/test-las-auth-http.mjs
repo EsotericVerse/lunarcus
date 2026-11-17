@@ -23,16 +23,16 @@ test('LunArcus Auth health metadata needs no database, secrets or session',async
   });
 });
 
-test('LunArcus preserves both Google OAuth and Cloudflare SSO login choices',async()=>{
+test('LunArcus login is Google OAuth only; Cloudflare Access SSO was removed 2026-11-17',async()=>{
   const response=await request('/login');
   assert.equal(response.status,200);
   assert.match(response.headers.get('content-type')||'',/text\/html/);
   const html=await response.text();
   assert.match(html,/id="oauth"/);
-  assert.match(html,/id="sso"/);
+  assert.doesNotMatch(html,/id="sso"/);
   assert.match(html,/\/api\/auth\/sign-in\/social/);
-  assert.match(html,/\/api\/auth\/sign-in\/sso/);
-  assert.match(html,/cloudflare-access/);
+  assert.doesNotMatch(html,/\/api\/auth\/sign-in\/sso/);
+  assert.doesNotMatch(html,/cloudflare-access/);
   assert.match(response.headers.get('content-security-policy')||'',/frame-ancestors 'none'/);
 });
 
@@ -80,15 +80,16 @@ test('LAS requires LAS_DATABASE_URL and maps all twelve models to existing las_*
   const env={
     LAS_DATABASE_URL:'postgresql://test:test@database.example.test:5432/las',
     LOC_CONTROL_ENCRYPTION_KEY:'x'.repeat(48),
-    LOC_CLOUDFLARE_SSO_ISSUER:
-      'https://access.example.test/cdn-cgi/access/sso/oidc/test-client',
-    LOC_CLOUDFLARE_SSO_CLIENT_ID:'test-client',
-    LOC_CLOUDFLARE_SSO_CLIENT_SECRET:'test-secret'
+    GOOGLE_CLIENT_ID:'test-client',
+    GOOGLE_CLIENT_SECRET:'test-secret'
   };
   assert.equal(checkLocAuthEnvironment(env),true);
   assert.throws(()=>checkLocAuthEnvironment({
     ...env,LAS_DATABASE_URL:undefined
   }),/LAS requires PostgreSQL/);
+  assert.throws(()=>checkLocAuthEnvironment({
+    ...env,GOOGLE_CLIENT_ID:undefined,GOOGLE_CLIENT_SECRET:undefined
+  }),/requires Google OAuth credentials/);
   const mapped=Object.values(RAINBOW_TABLES);
   assert.equal(mapped.length,12);
   assert.equal(new Set(mapped).size,12);

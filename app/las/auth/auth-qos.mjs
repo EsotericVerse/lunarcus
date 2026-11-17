@@ -21,9 +21,17 @@ const BUCKET_MS=5000;
 const BUCKET_COUNT=16;
 const MAX_SOURCES=1024;
 const SURGE_REQUESTS=36;
-const TEMPORARY_WINDOW=30;
 const poisson=new PoissonCost();
 
+// Karaul's changepoint detector is advisory, not an enforcement budget of its
+// own. A single real owner's traffic has a near-zero baseline, so a
+// legitimate burst (the Extension catching up a backlog, a one-off bulk
+// import) is statistically indistinguishable from an attack surge — treating
+// a detected surge as its own, stricter budget (previously: 30s/max:1 for
+// every path the surge touched) turned this into a self-inflicted outage
+// instead of the soft signal it was meant to be. 2026-11-17: on a detected
+// surge, Better Auth's normal per-endpoint budget above still applies in
+// full; nothing here tightens it further.
 export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChangepoints}={}){
   // Shared across requests in one Worker isolate; no timers or persistence.
   const histories=new Map();
@@ -41,17 +49,10 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
     const tick=Math.floor(time/BUCKET_MS);
     let entry=histories.get(key);
     if(!entry||tick<entry.tick||tick-entry.tick>=BUCKET_COUNT)
-      entry={tick,counts:Array(BUCKET_COUNT).fill(0),until:0};
+      entry={tick,counts:Array(BUCKET_COUNT).fill(0)};
     histories.delete(key);
     histories.set(key,entry);
     if(histories.size>MAX_SOURCES)histories.delete(histories.keys().next().value);
-
-    if(entry.until>time)return {window:TEMPORARY_WINDOW,max:1};
-    if(entry.until){
-      entry.counts.fill(0);
-      entry.tick=tick;
-      entry.until=0;
-    }
 
     if(tick>entry.tick){
       const shift=tick-entry.tick;
@@ -70,8 +71,8 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
             const before=baseline.reduce((a,b)=>a+b,0)/baseline.length;
             const after=tail.reduce((a,b)=>a+b,0)/tail.length;
             if(after*tail.length>=SURGE_REQUESTS&&after>=Math.max(12,before*4)){
-              entry.until=time+TEMPORARY_WINDOW*1000;
-              return {window:TEMPORARY_WINDOW,max:1};
+              // Signal only: Better Auth's own counter below still owns
+              // whether this request is actually let through.
             }
           }
         }catch{
