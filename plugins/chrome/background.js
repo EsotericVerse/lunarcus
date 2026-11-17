@@ -645,10 +645,10 @@ async function currentTab(){
  return tab;
 }
 async function capture(tab,selection='',includeAssistant=false){
- if(isConversationSource(tab.url))
-  throw Error('對話內容擷取已暫停：目前 Queue 只支援無序 append，尚不能保存前後文關聯。頁面不會自動捲動，既有資料保留。');
  await inject(tab.id);
- const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
+ const chat=isConversationSource(tab.url);
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
+  includeAssistant:chat?true:includeAssistant});
  if(reply?.error)throw Error(String(reply.error));
  if(reply?.directQueued===true){
   // Full ChatGPT history is admitted in bounded viewport batches.
@@ -670,8 +670,11 @@ async function recordedTab(){
 }
 async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  const tab=providedTab||await currentTab();
- if(isConversationSource(tab.url))
-  throw Error('對話錄製／選取暫停：在可靠的對話模型重建前，不再把訊息亂序追加到文章。閱讀頁面不會被控制。');
+ // Conversation recording is passive; scrolling is entirely controlled by the
+ // reader. Missing original source ordinals fail before entering the Queue.
+ if(isConversationSource(tab.url)&&type!=='page.record')
+  throw Error('對話使用被動錄製或目前頁面擷取，不能以選取範圍取代完整時序');
+ if(isConversationSource(tab.url))includeAssistant=true;
  // One active recorder. Stop the prior tab before moving the recorder.
  const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
  if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
