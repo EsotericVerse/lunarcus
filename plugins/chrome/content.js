@@ -22,22 +22,14 @@
     const rect=el.getBoundingClientRect();
     return rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight;
   };
-  const socialPostUrl = url =>
-    /instagram\.com\/(?:p|reel|tv)\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(String(url||''));
+  const sourceModel=globalThis.LasCaptureSourceModel;
+  const socialHost=()=>Boolean(sourceModel?.isSocialHost(location.hostname));
+  const socialPostUrl=url=>Boolean(sourceModel?.permalink(url,location.href));
   const links = el => [...el.querySelectorAll('a[href]')]
     .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.getAttribute('href'))}))
     .filter(x=>x.url);
   const stableSource = el => {
-    const match=[...el.querySelectorAll('a[href]')].find(a=>{
-      const u=normalizeUrl(a.href);
-      return u&&socialPostUrl(u);
-    });
-    if(match)return normalizeUrl(match.href);
-    if(socialPostUrl(location.href))return normalizeUrl(location.href);
-    // Never merge unrelated social-feed posts into the profile/feed URL
-    // when a stable individual post permalink is not present.
-    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(location.hostname.toLowerCase()))
-      return null;
+    if(socialHost())return sourceModel.sourceForCard(el,location.href)?.url||null;
     return normalizeUrl(location.href);
   };
   // ChatGPT and Claude change markup independently. Identify a message turn by
@@ -133,6 +125,7 @@
     if(state.mode==='record'||state.mode==='paused')
       throw Error('請先停止目前錄製，再執行整篇歷史擷取');
     const href=normalizeUrl(location.href);
+    const deadline=Date.now()+180000; // Bound virtualized-history scans; never silently claim completeness.
     const main=document.querySelector('main')||document.body;
     const scroller=chatHistoryScroller(main);
     if(!scroller)throw Error('找不到對話的捲動容器；不能把目前載入的幾則訊息當成完整對話');
@@ -171,6 +164,7 @@
       // turns to be loaded. Repeated top-edge probes handle lazy backfill.
       let still=0,lastSig='';
       for(let n=0;n<3500;n++){
+        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
         ensureChat();
         const before=scroller.scrollTop,height=scroller.scrollHeight;
         setChatScroll(scroller,Math.max(0,before-step));
@@ -189,6 +183,7 @@
       // turns are collected before ChatGPT unmounts them.
       let stillAtEnd=0,lastAtEnd='';
       for(let n=0;n<5000;n++){
+        if(Date.now()>deadline)throw Error('整篇對話掃描超過 3 分鐘；已保存已入列資料，請分段擷取');
         const sig=collect();
         if(buffer.length>=50&&(!includeAssistant||assistant>0))await writeBuffered();
         const before=scroller.scrollTop,height=scroller.scrollHeight;
@@ -309,6 +304,21 @@
     }
     return hits;
   }
+  // LOC #1765 pattern: declared source paths, one bounded projection runner.
+  // Never infer an entire web app/sidebar as a single conversation turn.
+  function modelConversationTurns(scope,provider,includeAssistant=false,mode='capture'){
+    const identity=sourceModel?.conversationUrl(location.href);
+    const registry=globalThis.LasConversationSourceModel;
+    const profile=registry?.profileFor(provider,location.hostname.toLowerCase());
+    if(identity?.provider!==provider||!profile)return [];
+    const rows=registry.project(profile,scope,{
+      includeAssistant,record:mode==='record',visible,readText:cleanText,fingerprint
+    });
+    return rows.map(row=>({
+      key:row.key,source_key:identity.url,url:identity.url,
+      title:document.title,content:'['+row.role+']\n'+row.content
+    }));
+  }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
     const doc=scope||document.body;
     const hostname=location.hostname.toLowerCase();
@@ -319,16 +329,16 @@
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
       return shadowConversationTurns(region,includeAssistant,mode);
     }
-    if(hostname==='claude.ai'){
-      // Claude retains its own role-based extraction path.
+    if(hostname==='claude.ai'||hostname==='gemini.google.com'){
       const region=mode==='record'||doc===document.body?
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
-      return conversationTurns(region,includeAssistant);
+      return modelConversationTurns(region,hostname==='claude.ai'?'claude':'gemini',
+        includeAssistant,mode);
     }
     // Readability is invoked only for a full-page single capture; avoid destroying
     // the live DOM or re-parsing every MutationObserver notification during recording.
     if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
-      !/(?:instagram\.com|threads\.(?:net|com)|chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      !socialHost()&& !/(?:chatgpt\.com|claude\.ai|chat\.openai\.com|gemini\.google\.com)$/.test(hostname)){
       try{
         const parsed=new Readability(document.cloneNode(true)).parse();
         if(parsed?.textContent?.trim()?.length>100){
@@ -347,7 +357,7 @@
     // Threads may render cards as generic DIVs rather than <article>.
     // Follow only already-rendered permanent links; never invent a source
     // or treat the whole infinite feed as a single post.
-    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(hostname)){
+    if(socialHost()){
       for(const a of [...doc.querySelectorAll('a[href]')].slice(0,500)){
         if(!socialPostUrl(normalizeUrl(a.href)))continue;
         const parent=a.closest('article,[role="article"],[data-testid="post-container"]')||
@@ -357,11 +367,15 @@
       }
     }
     const unique=[...new Set(articles)];
-    const cards=(unique.length?unique:(mode==='record'?[]:[doc])).slice(0,50);
-    return cards.map((el,index)=>{
+    // Never archive an entire social post page as one record: that includes
+    // comments, recommendations and unrelated feed cards under one identity.
+    const cards=(unique.length?unique:(mode==='record'||socialHost()?[]:[doc])).slice(0,50);
+    const emittedSources=new Set();
+    return cards.map(el=>{
       const source=stableSource(el);
       const text=cleanText(el);
-      if(!source||!text)return null;
+      if(!source||!text||emittedSources.has(source))return null;
+      emittedSources.add(source);
       const hrefs=links(el).map(x=>x.text+' <'+x.url+'>').join('\n');
       const media=[...el.querySelectorAll('img[src],video[src],video[poster],source[src]')]
         .filter(visible).slice(0,24).map(node=>
@@ -551,7 +565,8 @@
       return;
     }
     if(msg.type==='page.record'&&
-      (CHAT_HOST.test(location.hostname.toLowerCase())||location.hostname==='claude.ai')){
+      (CHAT_HOST.test(location.hostname.toLowerCase())||
+       location.hostname==='claude.ai'||location.hostname==='gemini.google.com')){
       // Chat capture targets its main conversation immediately; users should
       // never have to pick a second area after selecting Start Recording.
       stop();

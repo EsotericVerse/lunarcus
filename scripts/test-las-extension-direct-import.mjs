@@ -1,3 +1,5 @@
+import './test-las-capture-source-model.mjs';
+import './test-las-conversation-source-model.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
