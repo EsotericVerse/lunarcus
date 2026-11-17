@@ -68,8 +68,8 @@ test('Release envelope is short-lived and uses no new secrets',()=>{
 test('OIDC GitHub signature, repo, branch, workflow and SHA protect notification',async()=>{
   await withMocks(async(calls)=>{
     assert.equal((await verifyWorkflowOidc(await idToken(),sha)).sha,sha);
-    await assert.rejects(()=>verifyWorkflowOidc(await idToken({ref:'refs/heads/dev'}),sha),/Unauthorized/);
-    await assert.rejects(()=>verifyWorkflowOidc(await idToken({sha:'b'.repeat(40)}),sha),/Unauthorized/);
+    await assert.rejects(async()=>verifyWorkflowOidc(await idToken({ref:'refs/heads/dev'}),sha),/Unauthorized/);
+    await assert.rejects(async()=>verifyWorkflowOidc(await idToken({sha:'b'.repeat(40)}),sha),/Unauthorized/);
     assert.ok(calls.some(c=>c.url.endsWith('/.well-known/jwks')));
   });
 });
