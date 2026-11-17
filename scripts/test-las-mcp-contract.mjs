@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {callLocOperation,assertLocMcpRole,readMemory,articleDistribution}
  from '../app/las/mcp/loc-mapping.mjs';
 import {MCP_TOOL_INPUTS} from '../app/las/mcp/tool-contracts.mjs';
+import {businessAction} from '../app/las/mcp/business-actions.mjs';
 import {callLocOperation as tunnelCallLocOperation} from '../app/las/tunnel/loc-mapping.mjs';
 
 const samples=[];
@@ -46,4 +47,40 @@ test('LAS does not import LOC Galaxy sources across repos',()=>{
     assert.ok(!src.includes('/packages/zenstack/'));
     assert.ok(!src.includes('DATABASE_ACCESS_LIST'));
   }
+});
+
+test('MCP business actions and Tunnel share one fixed LOC HTTPS transport',async()=>{
+  const operations=[];
+  const fetchImpl=async(url,opts)=>{
+    assert.equal(url,'https://loc.lo3rwang.cc/api/las-native');
+    assert.equal(opts.method,'POST');
+    assert.equal(opts.headers.authorization,'Bearer verified');
+    assert.equal(opts.redirect,'error');
+    assert.equal(opts.cache,'no-store');
+    const body=JSON.parse(opts.body);
+    operations.push(body);
+    return Response.json({data:{ok:true,kind:body.kind}});
+  };
+  const scope=await businessAction('scope_storage',{scopeid:'lo3rwang'},
+    'verified',{},fetchImpl);
+  assert.deepEqual(scope,{ok:true,kind:'mcp-scope-status'});
+  const galaxy=await businessAction('galaxy_link',{
+    action:'check',scopeid:'lo3rwang',conversation_id:'c1',
+    updated_at:'2026-11-17T00:00:00Z'
+  },'verified',{},fetchImpl);
+  assert.deepEqual(galaxy,{ok:true,kind:'mcp-conversation'});
+  assert.deepEqual(operations.map(x=>x.kind),['mcp-scope-status','mcp-conversation']);
+  assert.deepEqual(operations[1],{
+    kind:'mcp-conversation',scopeid:'lo3rwang',action:'check',
+    conversation_id:'c1',updated_at:'2026-11-17T00:00:00Z'
+  });
+});
+test('MCP business mapping still rejects arbitrary actions before transport',async()=>{
+  let calls=0;
+  const fetchImpl=async()=>{calls++;return Response.json({data:{}});};
+  await assert.rejects(businessAction('galaxy_link',{
+    action:'delete',scopeid:'lo3rwang',conversation_id:'c1',
+    updated_at:'2026-11-17T00:00:00Z'
+  },'verified',{},fetchImpl),/Unsupported Galaxy Link action/);
+  assert.equal(calls,0);
 });

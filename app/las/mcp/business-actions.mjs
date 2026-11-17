@@ -1,7 +1,7 @@
-// LOC MCP business data actions. LOC Auth issues OAuth identity using the
-// Better Auth module; MCP remains independent. Business writes and Scope roles
-// are decided by LOC business policy via the existing Neon api.manage table.
-const API='https://loc.lo3rwang.cc/api/las-native';
+// LOC MCP business actions: validate and map tool arguments only.
+// The single LAS Tunnel transport owns POST, bearer, timeout and errors.
+// LOC remains the authority for Scope rights and Galaxy business behavior.
+import {callLocOperation} from '../tunnel/loc-mapping.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PR=/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i;
 function invalid(message){
@@ -38,16 +38,6 @@ export async function businessAction(name,args,token,env={},fetchImpl=globalThis
   }else{
     throw invalid('Obsolete Auth-owned MCP action is not supported');
   }
-  const reply=await fetchImpl(API,{method:'POST',redirect:'error',cache:'no-store',
-    headers:{authorization:'Bearer '+token,'content-type':'application/json',
-      accept:'application/json'},
-    body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
-  const data=await reply.json().catch(()=>null);
-  if(!reply.ok){
-    const error=new Error(reply.status>=500?'LOC data service unavailable':
-      String(data?.error?.message||'LOC business permission denied'));
-    error.httpStatus=reply.status;
-    throw error;
-  }
-  return data?.data||{};
+  const value=await callLocOperation(payload,token,fetchImpl);
+  return value||{};
 }
