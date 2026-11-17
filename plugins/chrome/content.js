@@ -67,10 +67,13 @@
       throw Error('已勾選保存 AI 回覆，但目前無法辨識任何 AI 回覆；本次不寫入 Queue');
     return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
-        title,role:row.role,message_id:upstream.stableMessageId(threadId,row),
+        title,role:row.role,
+        message_id:row.id&&!row.id.startsWith('search-unit:')?row.id:
+          (row.source_order!=null?'source-ordinal:'+row.source_order:null),
         source_order:row.source_order??null,parent_id:row.parent_id??null,
         sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
-        content:'['+row.role+']\n'+row.content.slice(0,1400000)
+        text:row.content.slice(0,140000),
+        content:'['+row.role+']\n'+row.content.slice(0,140000)
       }));
   }
   // Respect the user's reading position. ChatGPT virtualizes older turns,
@@ -199,7 +202,12 @@
     });
     return rows.map(row=>({
       key:row.key,source_key:identity.url,url:identity.url,
-      title:document.title,content:'['+row.role+']\n'+row.content
+      title:document.title,role:row.role,
+      message_id:row.sourceId|| (row.source_order!=null?'source-ordinal:'+row.source_order:null),
+      source_order:row.source_order??null,parent_id:row.parent_id??null,
+      sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
+      text:row.content.slice(0,140000),
+      content:'['+row.role+']\n'+row.content.slice(0,140000)
     }));
   }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
