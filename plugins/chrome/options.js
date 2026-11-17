@@ -64,7 +64,7 @@ function renderOverviewGuidance(result){
 async function show(){
  const [result,saved]=await Promise.all([
   call('loc-status'),
-  chrome.storage.local.get(['locTargetScope'])
+  chrome.storage.local.get(['locTargetScope','locIncludeAssistant'])
  ]);
  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'尚未連接 LunArcus Auth');
  setAuthIndicator(Boolean(result.connected));
@@ -81,6 +81,7 @@ async function show(){
   (last.ok?'成功':'失敗')+' · '+last.name+' · '+formatLocalActionTime(last.at)+'\n'+last.message:
   '目前沒有操作紀錄。';
  $('scope').value=saved.locTargetScope||'lo3rwang';
+ $('includeAI').checked=saved.locIncludeAssistant===true;
 
 }
 $('connect').addEventListener('click',async()=>{
@@ -116,6 +117,20 @@ $('scope').addEventListener('change',async()=>{
   const result=await chrome.runtime.sendMessage({type:'queue.scope',scopeid:input.value});
   notice.textContent=result.error||result.message||'目的 Scope 已儲存';
  }catch(error){notice.textContent=String(error?.message||error);}
+});
+$('includeAI').addEventListener('change',async()=>{
+ const checkbox=$('includeAI');
+ const next=checkbox.checked;
+ checkbox.disabled=true;
+ try{
+  await chrome.storage.local.set({locIncludeAssistant:next});
+  notice.textContent=next
+   ?'對話擷取已包含 AI 回覆（使用者訊息仍會保存）'
+   :'對話擷取只保存使用者訊息，不包含 AI 回覆';
+ }catch(error){
+  checkbox.checked=!next;
+  notice.textContent='AI 回覆偏好儲存失敗：'+String(error?.message||error);
+ }finally{checkbox.disabled=false;}
 });
 $('diagnostics').addEventListener('click',async()=>{
  try{
