@@ -63,9 +63,8 @@
     const captured=rows.filter((row,index)=>
       row.role==='user'||(includeAssistant&&row.role==='assistant'&&index!==pendingIndex))
       .filter(row=>typeof row.content==='string'&&row.content.trim());
-    if(includeAssistant&&mode!=='record'&&rows.some(row=>row.role==='user')&&
-      !captured.some(row=>row.role==='assistant'))
-      throw Error('已勾選保存 AI 回覆，但目前無法辨識任何 AI 回覆；本次不寫入 Queue');
+    // A virtualized viewport can contain only user turns; this must not
+    // erase valid captured messages when assistant replies are mounted elsewhere.
     return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
         title,role:row.role,
@@ -96,13 +95,16 @@
           partial:true,message:'目前沒有已載入的可辨識訊息；頁面未捲動，Queue 未變動。'};
       const user=rows.filter(row=>row.content.startsWith('[user]\n')).length;
       const assistant=rows.filter(row=>row.content.startsWith('[assistant]\n')).length;
+      const missingAssistant=Boolean(includeAssistant&&user>0&&assistant===0);
       const result=await queuePublish(rows);
       if(result.error)throw Error('目前已載入的對話入列失敗：'+result.error);
       const queuedCaptures=Number(result.insertedCaptures||0);
       return {directQueued:true,detected:rows.length,user,assistant,queuedCaptures,
         partial:true,message:'已擷取目前載入 '+rows.length+' 則（使用者 '+user+
           '／AI '+assistant+'），本次新增 Queue '+queuedCaptures+
-          ' 則。未自動捲動；這不是完整歷史。需要更多訊息請啟動錄製並正常閱讀、捲動，擷取會跟隨已載入內容。'};
+          ' 則。未自動捲動；這不是完整歷史。'+
+          (missingAssistant?'注意：目前載入範圍未辨識到 AI 回覆，已保留使用者訊息；請在「訊息重整」檢查並正常閱讀補抓回覆。':'')+
+          '需要更多訊息請啟動錄製並正常閱讀、捲動，擷取會跟隨已載入內容。'};
     }finally{
       state.historyCapture=false;
     }
