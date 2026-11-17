@@ -84,3 +84,23 @@ test('MCP business mapping still rejects arbitrary actions before transport',asy
   },'verified',{},fetchImpl),/Unsupported Galaxy Link action/);
   assert.equal(calls,0);
 });
+
+test('existing galaxy_link exposes ordered turns without any MCP provider selector',async()=>{
+ const records=[{role:'user',message_id:'m20',source_order:20,
+   parent_id:null,text:'hello'}];
+ const args={action:'record_ordered',scopeid:'lo3rwang',
+   conversation_id:'https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940',
+   updated_at:'2026-11-18T00:00:00Z',records};
+ assert.equal(MCP_TOOL_INPUTS.galaxy_link.safeParse(args).success,true);
+ const sent=[];
+ const fetchImpl=async(_url,opts)=>{
+   sent.push(JSON.parse(opts.body));return Response.json({data:{accepted:true}});
+ };
+ const result=await businessAction('galaxy_link',args,'verified',{},fetchImpl);
+ assert.equal(result.accepted,true);
+ assert.equal(sent.length,1);
+ assert.equal(sent[0].kind,'mcp-conversation');
+ assert.equal(sent[0].action,'record_ordered');
+ assert.equal(sent[0].records[0].source_order,20);
+ assert.equal('provider' in sent[0],false);
+});
