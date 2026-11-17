@@ -281,3 +281,44 @@ test('pre-send organizer restores source order, but blocks duplicate ordinals an
  assert.ok(background.includes("row.kind==='ordered_conversation'&&row.reviewed===true"));
  assert.ok(background.includes("sender?.id!==chrome.runtime.id"));
 });
+
+test('source unit ordinal enters a stable local ordered Queue record',async()=>{
+ const {sandbox}=makeRuntime();
+ const url='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const item={url,source_key:url,role:'assistant',message_id:'real-msg-13',
+  source_order:13,order_evidence:'source-unit-ordinal',parent_id:null,
+  text:'answer',content:'[assistant]\\nanswer'};
+ const rows=await vm.runInContext("toEvents([sourceTurn],'lo3rwang')",
+   Object.assign(sandbox,{sourceTurn:item}));
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].kind,'ordered_conversation');
+ assert.equal(rows[0].source_order,13);
+ assert.equal(rows[0].message_id,'real-msg-13');
+});
+test('automatic flush excludes every previously reviewed turn when its source has new unreviewed turns',()=>{
+ const {sandbox}=makeRuntime();
+ const src='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const base={kind:'ordered_conversation',scopeid:'lo3rwang',source_key:src};
+ const prepared=[
+  {...base,id:'a',source_order:4,reviewed:true},
+  {...base,id:'b',source_order:2,reviewed:false},
+  {...base,id:'c',source_order:7,reviewed:true},
+  {id:'unrelated',kind:'capture',source_key:'https://example.org/a'}
+ ];
+ const pending=vm.runInContext('partitionQueueForFlush(reviewPending)',
+   Object.assign(sandbox,{reviewPending:prepared}));
+ assert.equal(pending.ordered.length,0,'No partial conversation is sent');
+ assert.equal(pending.unreviewed.length,1);
+ assert.equal(pending.rows.length,1,'Unrelated page capture remains available');
+ const approved=vm.runInContext('partitionQueueForFlush(reviewPending)',
+   Object.assign(sandbox,{reviewPending:prepared.slice(0,3).map(r=>({...r,reviewed:true}))}));
+ assert.deepEqual(Array.from(approved.ordered,x=>x.id),['a','b','c']);
+});
+test('full local turn preview is trusted extension settings only and never injected into a website',()=>{
+ const js=readFileSync(new URL('options.js',extension),'utf8');
+ assert.ok(js.includes("call('conversation.turn'"));
+ assert.ok(js.includes("organizerElement('pre','organize-turn-full'"));
+ assert.ok(background.includes("case 'conversation.turn':"));
+ assert.ok(background.includes("sender?.id!==chrome.runtime.id"));
+ assert.ok(background.includes("row.kind!=='ordered_conversation'"));
+});
