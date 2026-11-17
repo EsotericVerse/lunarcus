@@ -29,7 +29,7 @@ function renderOverviewGuidance(result){
   action={href:'#activity',label:'檢視待送資料'};
  }else{
   title.textContent='LunArcus 已可使用';
-  description.textContent='在想保存的網頁或對話上按右鍵，選擇 LunArcus 的擷取功能。';
+  description.textContent='在要保存的網頁上按右鍵，選擇 LunArcus 的擷取功能。';
   action={href:'#capture',label:'查看擷取方法'};
  }
  link.hidden=!action;
@@ -42,7 +42,7 @@ function renderOverviewGuidance(result){
 async function show(){
  const [result,saved]=await Promise.all([
   call('loc-status'),
-  chrome.storage.local.get(['locTargetScope','locIncludeAssistant'])
+  chrome.storage.local.get(['locTargetScope'])
  ]);
  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'尚未連接 LunArcus Auth');
  setAuthIndicator(Boolean(result.connected));
@@ -59,7 +59,6 @@ async function show(){
   (last.ok?'成功':'失敗')+' · '+last.name+' · '+formatLocalActionTime(last.at)+'\n'+last.message:
   '目前沒有操作紀錄。';
  $('scope').value=saved.locTargetScope||'lo3rwang';
- $('includeAI').checked=saved.locIncludeAssistant===true;
 
 }
 $('connect').addEventListener('click',async()=>{
@@ -95,10 +94,6 @@ $('scope').addEventListener('change',async()=>{
   const result=await chrome.runtime.sendMessage({type:'queue.scope',scopeid:input.value});
   notice.textContent=result.error||result.message||'目的 Scope 已儲存';
  }catch(error){notice.textContent=String(error?.message||error);}
-});
-$('includeAI').addEventListener('change',async()=>{
- await chrome.storage.local.set({locIncludeAssistant:$('includeAI').checked});
- notice.textContent=$('includeAI').checked?'已開啟 AI 回覆擷取':'只擷取使用者文字';
 });
 $('diagnostics').addEventListener('click',async()=>{
  try{

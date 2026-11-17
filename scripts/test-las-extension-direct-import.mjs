@@ -129,8 +129,9 @@ test('LunArcus clean install uses the new public OAuth client ID',async()=>{
 test('Extension MCP uses LAS gateway without a user-selectable upstream Provider Hub',()=>{
   const options=readFileSync(new URL('options.html',extension),'utf8');
   const code=readFileSync(new URL('options.js',extension),'utf8');
-  assert.match(options,/https:\/\/mcp\.lo3rwang\.cc\//);
-  assert.match(options,/id="providers"/,'Preserve the existing six-page navigation');
+  assert.ok(!options.includes('id="providers"'),'Inert MCP-only panel is removed');
+  assert.ok(!options.includes('href="#providers"'),'No dead navigation links');
+  assert.ok(!options.includes('id="includeAI"'),'Inactive AI preference is not shown');
   for(const removed of [
     'mcpProviders','ssoEmail','locSsoEmail','mcp-connect','mcp-disconnect',
     'mcp-status','MCP_PROVIDER_API','MCP_EXTENSION_RETURN',
@@ -159,4 +160,29 @@ test('conversation fragments cannot enter unordered short-import append',async()
   assert.ok(background.includes('if(isConversationSource(tab.url))'));
   assert.ok(background.includes('pending.filter(row=>!isUnorderedConversationCapture(row))'));
   assert.match(background,/legacyConversationCount/);
+});
+
+test('options views contain only live actions and no obsolete Provider pages',()=>{
+ const options=readFileSync(new URL('options.html',extension),'utf8');
+ const pages=readFileSync(new URL('options-pages.js',extension),'utf8');
+ const styles=readFileSync(new URL('options.css',extension),'utf8');
+ const js=readFileSync(new URL('options.js',extension),'utf8');
+ const functional=['overview','daily','capture','activity','settings'];
+ for(const id of functional){
+  assert.ok(options.includes('id="'+id+'"'),'Missing functional page '+id);
+  assert.ok(options.includes('href="#'+id+'"'),'Missing navigation '+id);
+  assert.ok(pages.includes(id+':'),'Unregistered view '+id);
+ }
+ for(const token of ['providers:', 'provider-grid','provider-actions','mcpProviders',
+   'Provider Vault','id="includeAI"','id="providers"','href="#providers"']){
+  assert.ok(!options.includes(token),'Stale options markup: '+token);
+  assert.ok(!pages.includes(token),'Stale route: '+token);
+  assert.ok(!styles.includes(token),'Stale CSS: '+token);
+ }
+ assert.ok(!js.includes("$('includeAI')"));
+ assert.ok(options.includes('id="scope"'));
+ assert.ok(options.includes('id="flush"'));
+ assert.ok(options.includes('id="connect"'));
+ assert.ok(options.includes('id="diagnostics"'));
+ assert.equal(bundled.resource,'https://mcp.lo3rwang.cc');
 });
