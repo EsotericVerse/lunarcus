@@ -1,4 +1,5 @@
 import mcpWorker from './mcp.mjs';
+import {handleLocDeploymentSignal,LOC_SIGNAL_PATH} from './loc-notification.mjs';
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
@@ -161,6 +162,9 @@ export default {
       return mcpWorker.fetch(request,env,ctx);
     if(url.hostname!=='auth.lo3rwang.cc')
       return new Response('Not found',{status:404});
+    // GitHub Actions OIDC only: no browser session, SQL or public notification endpoint.
+    if(url.pathname===LOC_SIGNAL_PATH)
+      return handleLocDeploymentSignal(request,env);
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
     if(origin&&!allowed.has(origin)&&!publicProtocol)

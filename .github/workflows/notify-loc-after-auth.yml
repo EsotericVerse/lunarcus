@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: las-to-loc-production
@@ -46,22 +47,8 @@ jobs:
           LAS_SHA: ${{ github.event.check_run.head_sha }}
           LOC_DEPLOY_MODE: ${{ inputs.loc_deploy || 'auto' }}
         run: node scripts/resolve-las-deployment-impact.mjs
-      - name: Trigger existing LOC Pages main build only if needed
+      - name: Notify LOC GitHub only for a published contract change
         if: steps.impact.outputs.decision == 'notify'
         env:
-          LOC_PAGES_DEPLOY_HOOK: ${{ secrets.LOC_PAGES_DEPLOY_HOOK }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$LOC_PAGES_DEPLOY_HOOK" ]]; then
-            echo "LOC deploy hook not configured; LOC will consume the published LAS service on its next normal deployment."
-            exit 0
-          fi
-          if [[ "$LOC_PAGES_DEPLOY_HOOK" != https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/* ]]; then
-            echo "::error::Invalid Cloudflare Pages deploy hook format"
-            exit 1
-          fi
-          curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
-            --connect-timeout 10 --max-time 30 --request POST \
-            "$LOC_PAGES_DEPLOY_HOOK" > /dev/null
-          echo "Requested one existing LOC Pages/main build (no LOC Git push)"
+          LAS_SHA: ${{ steps.impact.outputs.las_sha }}
+        run: node scripts/send-las-loc-notification.mjs
