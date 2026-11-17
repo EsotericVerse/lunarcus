@@ -40,7 +40,7 @@ test('Ambiguous repost and nested-card identities never silently queue the first
 test('Browser injects the capture model before content extraction',()=>{
   const background=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
   const content=readFileSync(new URL('../plugins/chrome/content.js',import.meta.url),'utf8');
-  assert.match(background,/capture-source-model\\.js','conversation-source-model\\.js','content\\.js'/);
+  assert.ok(background.includes("'capture-source-model.js','conversation-source-model.js','content.js'"));
   assert.match(content,/sourceModel\.sourceForCard/);
   assert.match(content,/emittedSources/);
 });
