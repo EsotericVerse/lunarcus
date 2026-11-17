@@ -7,7 +7,7 @@ const root=resolve(import.meta.dirname,'..');
 const skillsRoot=join(root,'.agents','skills');
 const shared=['auth','deployment','impeccable','mcp-builder','media',
   'security-audit','skill-creator','sql','superpowers','ui-ux-pro-max',
-  'visualization','web','writing-guidelines'];
+  'visualization','web','writing-guidelines','zh-tw-writing'];
 const las=['better-auth','oauth-oidc','cloudflare-workers','chrome-extensions',
   'mcp-transport','mcp-gateway','tunnel-data-mapping','native-packaging',
   'protocol-security','protocol-testing','plugin-architecture','observability'];
@@ -15,7 +15,7 @@ const expected=[...shared,...las];
 const actual=readdirSync(skillsRoot,{withFileTypes:true})
   .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
 assert.deepEqual(actual,[...expected].sort(),
-  'LAS requires all 13 locally installed shared skills and all 12 LAS specialists');
+  'LAS requires all 14 locally installed shared skills and all 12 LAS specialists');
 
 for(const name of expected){
   const path=join(skillsRoot,name,'SKILL.md');

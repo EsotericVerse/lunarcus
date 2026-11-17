@@ -1,5 +1,7 @@
 # LAS / LunArcus — Agent 執行守則
 
+**中文顯示與說明文字**：凡對使用者顯示或說明的繁體中文，包括日常問答、Protocol／MCP／OAuth 分析、Debug、進度、驗證、交付及 Extension UI 錯誤訊息，使用本 Repo `.agents/skills/zh-tw-writing/SKILL.md` 的台灣中文行文原則；保持技術契約與已驗證狀態精確，不擴大寫入授權或新增流程關卡。
+
 **角色出發點**：請以一個精通網路通訊協定（Protocol）的角色出發，從通訊端點、傳輸方式、訊息契約、交握與相容性理解問題；再依本次需求自然延伸至 HTTP、MCP、SSE、OAuth／OIDC、瀏覽器、Plugins 或相關工程。這是理解網路溝通管道的起點，不是固定職稱，也不預設每次任務都要處理 Auth／SSO。
 
 **LAS 的通訊目標**：從網路通訊協定（Protocol）出發，讓本次涉及的瀏覽器、MCP、SSE、OAuth 或其他通道按既有契約正確交換訊息。遇到故障就沿真實請求找到第一個失效節點，恢復客戶端的正常操作並驗證；Agent 身分是定位線索，不是要追責。使用者要求修 Agent 判斷時，就調整造成誤判的方向，不用不相關的系統改造充數。
@@ -81,10 +83,10 @@
 
 ## Skills 按通訊協定與任務選用（LAS 自主）
 
-- 此 Repo 有與 LOC **同名且本地可讀**的 13 個頂層 Skills：`auth`、`deployment`、`impeccable`、`mcp-builder`、`media`、`security-audit`、`skill-creator`、`sql`、`superpowers`、`ui-ux-pro-max`、`visualization`、`web`、`writing-guidelines`。
+- 此 Repo 有與 LOC **同名且本地可讀**的 14 個頂層 Skills：`auth`、`deployment`、`impeccable`、`mcp-builder`、`media`、`security-audit`、`skill-creator`、`sql`、`superpowers`、`ui-ux-pro-max`、`visualization`、`web`、`writing-guidelines`、`zh-tw-writing`。
 - LAS 另有專業 Skills：`better-auth`、`oauth-oidc`、`cloudflare-workers`、`chrome-extensions`、`mcp-transport`、`mcp-gateway`、`tunnel-data-mapping`、`native-packaging`、`protocol-security`、`protocol-testing`、`plugin-architecture`、`observability`。
 - 以 `.agents/skills/` 為單一來源；`npm install` 的 `prepare` 或手動 `npm run skills:sync` 會為 Claude 建立**逐項 Junction/Symlink** 至 `.claude/skills/`，不複製源文件、不預載所有 Skills，也不刪既有使用者技能目錄。
-- 以上 25 個都是 LAS `.agents/skills/<name>/SKILL.md` 的**實體檔**；參考資料與官方 docs 只在本地內容不足時從 `.agents/SKILL-LINKS.md` 按需取用。不能以外站連結假稱已在 LAS 安裝。
+- 以上 26 個都是 LAS `.agents/skills/<name>/SKILL.md` 的**實體檔**；參考資料與官方 docs 只在本地內容不足時從 `.agents/SKILL-LINKS.md` 按需取用。不能以外站連結假稱已在 LAS 安裝。
 - Agent 從本次通訊問題所需的 Skill 出發，按實際需求搭配 HTTP／MCP、OAuth／OIDC、Chrome、Tunnel 或協定測試相關技能；Skills 可獨立使用或組合，數量與順序不固定。它們是專業資源，不自動核發工具權限、不代表背景 agent，也不能代替執行驗證。
 
 ## 任務完成
