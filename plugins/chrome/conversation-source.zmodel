@@ -1,0 +1,17 @@
+// Source ZModels following LOC PR #1765: virtual, nonpersistent projections.
+// These fields describe extracted conversation turns, NOT SQL tables.
+// Runtime field paths live in conversation-source-model.js and are tested
+// against these declarations. No credentials, migrations or @@allow grants.
+type ClaudeConversationTurn {
+    role       String
+    content    String
+    sourceId   String?
+    key        String
+}
+
+type GeminiConversationTurn {
+    role       String
+    content    String
+    sourceId   String?
+    key        String
+}
