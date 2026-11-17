@@ -211,7 +211,7 @@ async function toEvents(items,scopeid='lo3rwang'){
    if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
       !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
       !item.text.trim()||item.text.length>140000||
-      !['source-ordinal'].includes(item.order_evidence))
+      !['source-ordinal','source-unit-ordinal'].includes(item.order_evidence))
     throw Error('來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序');
    const message_id=String(item.message_id||
      'source-ordinal:'+item.source_order);
@@ -603,7 +603,12 @@ async function flush(force=false){
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
-  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed===true);
+  // Never release one part of a conversation when new unreviewed turns
+  // exist for the same source; the whole group must be confirmed together.
+  const unreviewedKeys=new Set(pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true)
+   .map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
+  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
+   row.reviewed===true&&!unreviewedKeys.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
   const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
    row.kind!=='ordered_conversation');
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
