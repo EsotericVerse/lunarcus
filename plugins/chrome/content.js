@@ -67,7 +67,10 @@
       throw Error('已勾選保存 AI 回覆，但目前無法辨識任何 AI 回覆；本次不寫入 Queue');
     return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
-        title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
+        title,role:row.role,message_id:upstream.stableMessageId(threadId,row),
+        source_order:row.source_order??null,parent_id:row.parent_id??null,
+        sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
+        content:'['+row.role+']\n'+row.content.slice(0,1400000)
       }));
   }
   // Respect the user's reading position. ChatGPT virtualizes older turns,

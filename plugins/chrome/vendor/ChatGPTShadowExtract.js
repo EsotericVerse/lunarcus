@@ -313,7 +313,9 @@ const ChatGPTShadowExtract = (() => {
         if (seenIds.has(key)) return;
         seenIds.add(key);
       }
-      messages.push({ id, role, content, index, conversationId: renderedConversationId(el) });
+      const temporal=globalThis.LasSourceTemporalOrder?.fromElement(el)||{};
+      messages.push({ id, role, content, index, conversationId: renderedConversationId(el),
+        ...temporal });
     });
     return messages;
   }
@@ -396,7 +398,8 @@ const ChatGPTShadowExtract = (() => {
       const content = unitText(unit, role);
       const id = unitMessageId(unit);
       if (!content || isPlaceholderMessage(id, content)) return;
-      messages.push({ id, role, content, index, conversationId: renderedConversationId(unit) });
+      messages.push({ id, role, content, index, conversationId: renderedConversationId(unit),
+        ...(globalThis.LasSourceTemporalOrder?.fromElement(unit)||{}) });
     });
     return messages;
   }
