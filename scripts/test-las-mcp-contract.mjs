@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {callLocOperation,assertLocMcpRole,readMemory,articleDistribution}
  from '../app/las/mcp/loc-mapping.mjs';
 import {MCP_TOOL_INPUTS} from '../app/las/mcp/tool-contracts.mjs';
+import {advertisedTools} from '../app/las/mcp/router.mjs';
+import {providerStatuses} from '../app/las/mcp/upstream/upstream-policy.mjs';
 import {callLocOperation as tunnelCallLocOperation} from '../app/las/tunnel/loc-mapping.mjs';
 
 const samples=[];
@@ -46,4 +48,24 @@ test('LAS does not import LOC Galaxy sources across repos',()=>{
     assert.ok(!src.includes('/packages/zenstack/'));
     assert.ok(!src.includes('DATABASE_ACCESS_LIST'));
   }
+});
+
+// SSO identifies users; provider invocation cannot be enabled by identity alone.
+test('MCP provider catalog is observable but execution stays closed without encrypted store',async()=>{
+  const withoutStore=advertisedTools({});
+  assert.ok(withoutStore.some(t=>t.name==='provider_list'));
+  for(const name of ['provider_tools','provider_call','provider_receipt'])
+    assert.ok(!withoutStore.some(t=>t.name===name));
+  const status=await providerStatuses({},'loc_'+'a'.repeat(32));
+  assert.equal(status.ready,false);
+  assert.deepEqual(status.providers.map(p=>p.id).sort(),
+    ['clerk','github','neon','supabase']);
+  assert.ok(status.providers.every(p=>p.connected===false));
+  const fakeStore={get:async()=>null,put:async()=>{}};
+  assert.ok(!advertisedTools({LOC_MCP_PROVIDER_STORE:fakeStore})
+    .some(t=>t.name==='provider_call'));
+  const withStore=advertisedTools({LOC_MCP_PROVIDER_STORE:fakeStore,
+    LOC_MCP_PROVIDER_ENCRYPTION_KEY:'x'.repeat(32)});
+  for(const name of ['provider_tools','provider_call','provider_receipt'])
+    assert.ok(withStore.some(t=>t.name===name));
 });
