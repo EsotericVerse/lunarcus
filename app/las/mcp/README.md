@@ -1,29 +1,29 @@
-# MCP move: dependency and trust boundary
+# LAS MCP — transport, tools and authorization
 
-**`lo3r@las` (LAS / LunArcus / Luna Protocol)** owns protocol transport, OIDC/OAuth integration, Chrome Extension, MCP Gateway and cross-module **Data Mapping**. **`lo3r@loc` (LOC / LunaCodex)** owns Galaxy records/models, business authorization, imports, SQL Portable CRUD and PostgreSQL/MySQL/MSSQL dialect adapters. **`lo3r@lrs` (LRS / LunaRunes)** owns rune assets and game/effects. These are module IDs, not renamed domains, database Scopes or OAuth client identifiers.
+The canonical server URL is **`https://mcp.lo3rwang.cc/`** (no required `/mcp` suffix). Cloudflare routes it to the same existing `lunarcus` Worker as `auth.lo3rwang.cc`. `app/las/index.mjs` dispatches by hostname; `app/las/mcp/server.mjs` handles the MCP host.
 
-The LAS MCP source is owned by `app/las/mcp/`; `app/las/mcp/server.mjs` is a handler inside the single `lunarcus` Worker. `https://mcp.lo3rwang.cc/` is the primary MCP entrypoint, without an additional `/mcp` suffix. LOC business/data implementation remains in the LOC repository and is accessed through the fixed `/api/las-native` contract; it is not duplicated in LAS.
+## Source responsibilities
 
-| Copied module | Cross-repository requirements remaining |
+| File | Responsibility |
 |---|---|
-| `router.mjs` | Calls LOC-specific business actions, private Galaxy and article distribution |
-| `native-operations.mjs` | Imports LOC providers, Scope policies, import pipelines, Z-Model and SQL-portable code |
-| `galaxy-read.mjs` | Requires LOC Scope route index, portable search and ZenStack Galaxy model |
-| `native-kysely.mjs` | Imports LOC connection profile and dialect factory; may be replaced only with existing Kysely's `PostgresDialect` for the dedicated **Gateway** connection |
-| `tool-contracts.mjs` | Imports LOC Scope route index |
-| `business-actions.mjs`, `private-galaxy.mjs`, `article-distribution.mjs` | LOC-side authorization and data semantics |
-| `upstream/upstream-*.mjs`, `stateless-transport.mjs`, `stream-json.mjs` | LAS-owned transport and upstream-provider adapters; verify dependencies during any move |
+| `server.mjs` | MCP hostname entrypoint, protected-resource metadata, CORS and allowlisted LOC proxy paths |
+| `router.mjs` | OAuth Bearer validation, JSON-RPC initialize, tools/list, tools/call and authorization boundary |
+| `access-roles.mjs` | MCP role checks; upstream SSO identity does not grant business authority |
+| `tool-contracts.mjs` | MCP operation definitions and validated tool argument schemas |
+| `stateless-transport.mjs`, `stream-json.mjs` | Streamable HTTP and bounded JSON transport |
+| `business-actions.mjs`, `gateway-qos.mjs` | Tool execution and admission/quality-of-service checks |
+| `upstream/upstream-*.mjs` | Provider discovery, OAuth, policy, tool invocation, SSE responses and vault adapters |
+| `loc-mapping.mjs` | Compatibility re-export from `../tunnel/loc-mapping.mjs` |
 
-## Data Mapping versus LOC data ownership
+## Trust boundaries
 
-LAS mapping may normalize field names, transport envelopes, object/version references and validated source-to-target contracts across LOC and LRS. It must NOT own or duplicate LOC Galaxy's Z-Model, UID semantics, Scope grants, SQL dialect factory or business queries. Contracts can use existing LOC module exports when explicitly packaged, or bounded authenticated service calls; **no filesystem-relative imports across separate repos**. The existing `packages/` layout is not being moved as part of this migration. Auth/SSO continues using its existing PostgreSQL dialect on LAS without a second SQL Portable implementation.
+- LAS verifies an actual access token with the existing `auth.lo3rwang.cc/api/auth` issuer. Authentication alone does not grant MCP tool or LOC article/data permissions.
+- LAS forwards only fixed, bounded and authenticated operations through LOC's `https://loc.lo3rwang.cc/api/las-native` service; it does **not** accept arbitrary SQL, destination databases, SSRF URLs or client-selected grants.
+- LOC remains the authority for Galaxy/Anchor, Scope authorization, business queries, Z-Model and SQL Portable (PostgreSQL/MySQL/MSSQL). LRS alone owns rune/game source and assets.
+- Keep the current resource metadata, OAuth challenges, existing MCP tools, POST Streamable HTTP responses, consent behavior and idempotency receipts. The current GET `/` request with no Bearer challenges unauthorized callers; it is not a persistent GET-SSE channel.
 
-## MCP boundary to maintain
+## Acceptance
 
-1. LunArcus validates the caller's **real OAuth token** against the unchanged `auth.lo3rwang.cc/api/auth` issuer. A login alone never grants LOC business permissions.
-2. LunArcus forwards only a bounded, authenticated operation to a fixed LOC service URL over a trusted server-side channel. **No generic SQL, arbitrary URL or user-selected database connections** are exposed.
-3. LOC owns target database resolution, Scope access checks and policy. Queries/transactions use LOC's existing dialect and Z-Model contracts. LunArcus does not duplicate MySQL, MSSQL or SQL Portable adapters.
-4. Preserve existing MCP tools, SSE streaming, idempotency receipts, resource metadata and Chrome OAuth callbacks; test each affected path before claiming production parity.
-5. The current `mcp.lo3rwang.cc` production custom domain belongs to the existing `lunarcus` Worker. Do not recreate a standalone Worker or alter that domain when refactoring files.
+Run `npm run check:mcp` and `npm run mcp:dry-run`, then independently verify real `initialize`, `tools/list`, `tools/call`, tool-level Scope/role access, upstream provider flows and authenticated LOC operations on the public endpoint. CI/Worker deployment/SSO success alone does not prove every MCP action works. SSO and Consent were separately confirmed on 2026-11-17 after the Cloudflare SaaS application was recreated.
 
-LAS MCP code checks and Worker dry-run do not by themselves establish authenticated `initialize`, `tools/list` and `tools/call` acceptance on the public endpoint. The Cloudflare domain cutover has occurred; complete tool-level acceptance must be tracked separately.
+Cloudflare custom-domain and Secret configuration must not be changed merely to move code or documentation. Current build ownership and watch paths are described beside the workflows in `.github/workflows/README.md`.
