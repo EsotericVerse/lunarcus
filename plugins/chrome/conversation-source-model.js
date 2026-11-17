@@ -67,7 +67,8 @@
       const key=profile.model+':'+role+':'+(sourceId||'')+':'+fingerprint(content);
       if(seen.has(key))continue;
       seen.add(key);
-      out.push({role,content,sourceId,key});
+      const temporal=root.LasSourceTemporalOrder?.fromElement(node)||{};
+      out.push({role,content,sourceId,key,...temporal});
       if(role==='user')users++;else assistants++;
     }
     if(includeAssistant&&!record&&users>0&&assistants===0)
