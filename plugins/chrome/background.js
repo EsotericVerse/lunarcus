@@ -473,7 +473,7 @@ async function sendViaAuth(scopeid,batch,token,config){
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
-  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''));
+  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
   const rows=pending.filter(row=>!isUnorderedConversationCapture(row));
   // Preserve legacy conversations without preventing unrelated posts from sending.
