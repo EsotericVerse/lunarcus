@@ -18,12 +18,12 @@
 
 | LAS 模組 | 主要職責 | 現行程式／入口 |
 | --- | --- | --- |
-| `las:auth` | Better Auth、OAuth/OIDC、Cloudflare Access SSO、LAS Session | `app/las/auth/`、`app/las/index.mjs` |
+| `las:auth` | Better Auth、Google OAuth/OIDC、LAS Session | `app/las/auth/`、`app/las/index.mjs` |
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
 | `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `app/las/mcp/`、`app/las/mcp/server.mjs` |
 | `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `app/las/tunnel/` |
 
-產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，與 Cloudflare Access SSO Client ID 是三件獨立的事。
+產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，兩者是不同的事，不可互相混用。（Cloudflare Access SSO Client ID 曾是第三件事，已於 2026-11-17 隨整個 SSO 登入路徑移除，不要假設它還存在或重建它。）
 
 ## 專案邊界：不跨 Repo 操作
 
@@ -32,14 +32,14 @@
 - Chrome Extension 由 LAS Plugin 負責，Auth 由 LAS Worker 負責，LOC 才決定匯入文章是否有權限；各層不直接授予另一層的權限。
 - 碰到跨 Repo 問題，**精確提出 API／檔案交付契約或阻礙**；未獲委託不得在其他 Repo 建分支、修碼、合併或改部署。
 
-## Auth / SSO / PostgreSQL
+## Auth / 登入 / PostgreSQL
 
 - `auth.lo3rwang.cc` 是既有 LAS Auth issuer；`mcp.lo3rwang.cc` 是 MCP Resource。**兩個 hostname 使用同一個 `lunarcus` Worker**，按 hostname 分流。不要另建 Auth／MCP Worker、平行編譯或重新指定 issuer。
 - LAS 的 PostgreSQL 表格已採 `las_*`，RLS 由使用者設定。應讀取現有 mapping 和 `LAS_DATABASE_URL` 綁定，**不得自行 migration、改表／RLS 或把 RLS 當登入故障的預設原因**。
 - 已存在的環境變數名稱中有 `LOC_*` 兼容鍵，不因產品更名批量刪掉或強迫換 Secret。
-- 登入分：Google OAuth、Cloudflare Access 上游 SSO、LAS Session、下游 OAuth Provider；任何「授權」不等於 LOC 文章寫入權。
-- SSO 必須追查**第一個實際失敗的 HTTP/OIDC 邊界**。建置／正式部署成功不代表已完成瀏覽器登入及 Session 驗證。
-- OAuth Client ID、Chrome Extension ID、Access SSO Client ID、Session ID、Scope ID 是不同概念；改 Client 名稱時要同步 server discovery、Client config、Chrome 包內 config、測試，不修改其他識別碼。
+- 登入分：Google OAuth、LAS Session、下游 OAuth Provider；任何「授權」不等於 LOC 文章寫入權。（Cloudflare Access 上游 SSO 曾是第四段，只是把同一個 Google 帳號多繞一手，沒多證明什麼，已於 2026-11-17 移除——不要在故障排查或新功能裡假設還有這一段，也不要重建它。）
+- 登入問題必須追查**第一個實際失敗的 HTTP/OIDC 邊界**。建置／正式部署成功不代表已完成瀏覽器登入及 Session 驗證。
+- OAuth Client ID、Chrome Extension ID、Session ID、Scope ID 是不同概念；改 Client 名稱時要同步 server discovery、Client config、Chrome 包內 config、測試，不修改其他識別碼。
 
 ## MCP / Tunnel / Plugins
 
