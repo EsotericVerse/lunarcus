@@ -1,5 +1,27 @@
 const $=id=>document.getElementById(id);
 const status=$('status'), queue=$('queue'), notice=$('notice');
+// Options uses the existing Extension service worker only. No new backend.
+async function call(action,payload={}){
+ const result=await chrome.runtime.sendMessage({action,...payload});
+ if(result?.error)throw Error(String(result.error));
+ return result||{};
+}
+function formatLocalActionTime(value){
+ const time=new Date(value);
+ return Number.isFinite(time.getTime())?time.toLocaleString('zh-TW'):'時間未知';
+}
+function setAuthIndicator(connected){
+ const badge=$('authStateBadge');
+ if(!badge)return;
+ badge.classList.toggle('state-waiting',!connected);
+ badge.classList.toggle('state-connected',connected);
+ badge.replaceChildren();
+ const light=document.createElement('span');
+ light.className='state-light';
+ light.setAttribute('aria-hidden','true');
+ badge.append(light,document.createTextNode(connected?'已連接':'尚未連接'));
+}
+
 // Use the status already fetched for the six-key console: no extra polling.
 let overviewStatus=null;
 function renderOverviewGuidance(result){
@@ -129,3 +151,74 @@ chrome.storage.onChanged?.addListener((changes,area)=>{
  }
 });
 show().catch(error=>status.textContent=String(error?.message||error));
+
+
+let organizeFlight=false;
+function organizerElement(tag,cls,value){
+ const element=document.createElement(tag);
+ if(cls)element.className=cls;
+ if(value!=null)element.textContent=String(value);
+ return element;
+}
+async function renderOrganizer(){
+ const root=$('organizeGroups'),summary=$('organizeSummary'),feedback=$('organizeNotice');
+ root.replaceChildren();
+ feedback.textContent='';
+ const result=await call('conversation.review');
+ const groups=Array.isArray(result.conversations)?result.conversations:[];
+ summary.textContent=groups.length+' 組對話／'+Number(result.ordered_count||0)+
+  ' 則待送訊息；舊版未排序片段 '+Number(result.legacy_count||0)+' 則（隔離保留）';
+ if(!groups.length){
+  root.append(organizerElement('p','field-hint','目前沒有待重整的有序對話。'));
+  return;
+ }
+ for(const group of groups){
+  const section=organizerElement('section','organize-group');
+  section.append(organizerElement('h3',null,group.title||'對話'));
+  section.append(organizerElement('p','field-hint',
+   (group.valid?'原始時序有效':'原始序號或訊息識別衝突，禁止送出')+
+   ' · '+group.message_count+' 則 · '+group.scopeid));
+  const details=organizerElement('details','organize-details');
+  details.append(organizerElement('summary',null,'檢視排序後的訊息（'+group.message_count+'）'));
+  const list=organizerElement('ol','organize-timeline');
+  for(const turn of group.messages){
+   const item=organizerElement('li');
+   item.append(organizerElement('div','organize-turn-heading',
+      '#'+turn.source_order+' · '+(turn.role==='user'?'使用者':'AI 回覆')),
+     organizerElement('p','organize-turn-text',turn.preview));
+   list.append(item);
+  }
+  details.append(list);section.append(details);
+  const button=organizerElement('button','button button-primary',
+   group.ready?'已整理，送出 Queue':'確認時序並送出');
+  button.type='button';
+  button.disabled=!group.valid||organizeFlight;
+  button.addEventListener('click',async()=>{
+   if(organizeFlight)return;
+   organizeFlight=true;button.disabled=true;
+   feedback.textContent='正在確認時序並送出 Queue…';
+   try{
+    const approval=await call('conversation.approve',{
+      key:group.key,ids:group.messages.map(m=>m.id)});
+    if(approval.ready!==true)throw Error('時序確認失敗');
+    const sent=await call('loc-flush');
+    feedback.textContent=sent.message||'Queue 已處理；未收到回執的資料仍保留';
+    await show();
+    await renderOrganizer();
+   }catch(error){feedback.textContent='未確認送達：'+String(error?.message||error);}
+   finally{organizeFlight=false;button.disabled=false;}
+  });
+  section.append(button);root.append(section);
+ }
+}
+$('organizeRefresh').addEventListener('click',async()=>{
+ $('organizeNotice').textContent='正在整理本機訊息…';
+ try{await renderOrganizer();}
+ catch(error){$('organizeNotice').textContent=String(error?.message||error);}
+});
+window.addEventListener('hashchange',()=>{
+ if(window.location.hash==='#organize')
+  void renderOrganizer().catch(error=>$('organizeNotice').textContent=String(error?.message||error));
+});
+if(window.location.hash==='#organize')
+ void renderOrganizer().catch(error=>$('organizeNotice').textContent=String(error?.message||error));
