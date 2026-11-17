@@ -125,3 +125,39 @@ test('include AI setting off never records assistant reply even when it is rende
   assert.equal(reply.assistant,0);
   assert.equal(fixture.inserted.length,1);
 });
+
+test('nested search-unit user wrapper never suppresses a distinct assistant reply',()=>{
+  const ctx=vm.createContext({});
+  vm.runInContext(temporal,ctx);
+  vm.runInContext(vendor,ctx);
+  function unit(role,order,text,id,parent){
+    const attrs={
+      'data-chatgpt-search-unit-key':'fallback-turn-'+order+':2:'+role,
+      'data-chatgpt-selection-message-id':id
+    };
+    const bubble={innerText:text,textContent:text,
+      querySelector:()=>null,getAttribute:()=>null};
+    const obj={
+      getAttribute:key=>attrs[key]||null,innerText:text,textContent:text,
+      parentElement:parent?{closest:selector=>selector==='[data-chatgpt-search-unit-key]'?parent:null}:null,
+      querySelector:selector=>role==='user'&&selector.includes('[data-user-message-bubble]')
+        ?bubble:null,
+      querySelectorAll:()=>[],closest:()=>null
+    };
+    return obj;
+  }
+  const user=unit('user',2,'Question','user-stable-id',null);
+  const assistant=unit('assistant',3,'Answer','assistant-stable-id',user);
+  const source={
+    querySelectorAll(selector){
+      if(selector==='[data-message-author-role]')return [];
+      if(selector==='[data-chatgpt-search-unit-key]')return [user,assistant];
+      return selector.includes('[data-chatgpt-search-unit-key]')
+        ?[user,assistant]:[];
+    }
+  };
+  const rows=ctx.ChatGPTShadowExtract.extractMessages(source);
+  assert.deepEqual(Array.from(rows,r=>r.role),['user','assistant']);
+  assert.deepEqual(Array.from(rows,r=>r.id),['user-stable-id','assistant-stable-id']);
+  assert.deepEqual(Array.from(rows,r=>r.source_order),[2,3]);
+});
