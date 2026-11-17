@@ -141,6 +141,8 @@ async function toEvents(items,scopeid='lo3rwang'){
  const rows=[];
  for(const item of items){
   if(!item||typeof item.content!=='string'||!item.content.trim())continue;
+  if(isConversationSource(item.source_key||item.url))
+   throw Error('對話來源已暫停無序 append：不會將訊息亂序加入文章；舊 Queue 保留');
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
   if(url!==source_key)continue;
