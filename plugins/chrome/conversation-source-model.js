@@ -24,7 +24,7 @@
         user:['[data-testid="user-message"]'],
         assistant:['.font-claude-response']
       }),
-      identity:['data-message-id','data-testid']
+      identity:['data-message-id','data-turn-id','data-message-uuid']
     }),
     gemini:Object.freeze({
       model:'GeminiConversationTurn',

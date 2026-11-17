@@ -111,8 +111,10 @@ function captureSourceMatches(pageUrl,sourceUrl){
  if(page.protocol!=='https:'||source.protocol!=='https:')return false;
  const THREADS=new Set(['threads.net','www.threads.net','threads.com','www.threads.com']);
  const INSTAGRAM=new Set(['instagram.com','www.instagram.com','m.instagram.com']);
+ const CHATGPT=new Set(['chatgpt.com','chat.openai.com']);
  return (THREADS.has(page.hostname)&&THREADS.has(source.hostname))||
-   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname));
+   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname))||
+   (CHATGPT.has(page.hostname)&&CHATGPT.has(source.hostname));
 }
 async function stableUuid(input){
  const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(input)));
@@ -141,8 +143,32 @@ async function toEvents(items,scopeid='lo3rwang'){
  const rows=[];
  for(const item of items){
   if(!item||typeof item.content!=='string'||!item.content.trim())continue;
-  if(isConversationSource(item.source_key||item.url))
-   throw Error('對話來源已暫停無序 append：不會將訊息亂序加入文章；舊 Queue 保留');
+  if(isConversationSource(item.source_key||item.url)){
+   const url=normalizedUrl(item.url||item.source_key);
+   const source_key=normalizedUrl(item.source_key||item.url);
+   if(url!==source_key||!isConversationSource(url)||new URL(url).protocol!=='https:')
+    throw Error('對話來源識別不一致；Queue 未變動');
+   if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
+      !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
+      !item.text.trim()||item.text.length>140000||
+      !['source-ordinal'].includes(item.order_evidence))
+    throw Error('來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序');
+   const message_id=String(item.message_id||
+     'source-ordinal:'+item.source_order);
+   if(!message_id||message_id.length>256||
+      [...message_id].some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127))
+    throw Error('無效的來源訊息識別');
+   const parent_id=item.parent_id==null?null:String(item.parent_id);
+   if(parent_id&& (parent_id.length>256||[...parent_id].some(c=>c.charCodeAt(0)<32||c.charCodeAt(0)===127)))
+    throw Error('無效的原始對話父訊息識別');
+   const id=await stableUuid(scopeid+'\\u0000'+source_key+'\\u0000'+message_id);
+   const group_id=await stableUuid(scopeid+'\\u0000'+source_key);
+   rows.push({id,group_id,scopeid,kind:'ordered_conversation',
+      source_key,url,title:String(item.title||'對話').slice(0,350),
+      message_id,source_order:item.source_order,parent_id,role:item.role,
+      text:item.text,captured_at:new Date().toISOString()});
+   continue;
+  }
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
   if(url!==source_key)continue;
@@ -472,14 +498,56 @@ async function sendViaAuth(scopeid,batch,token,config){
  validateArticleReceipts(receipt.articles,batch.records);
  return receipt;
 }
+// Ordered turns use the fixed LAS Gateway, never the short-import append route.
+async function sendOrderedConversation(scopeid,records,token,config){
+ if(!SCOPE.test(scopeid)||!records.length||records.length>100)
+  throw contractError('有序對話批次不合法');
+ const source=records[0].source_key;
+ if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
+   (r.scopeid||'lo3rwang')!==scopeid))
+  throw contractError('有序對話批次來源不一致');
+ const endpoint=new URL(config.resource||'');
+ if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
+  throw contractError('LAS MCP Gateway 位址錯誤');
+ const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
+   records.map(r=>r.id).sort().join('|'));
+ const payload={jsonrpc:'2.0',id,method:'tools/call',params:{
+   name:'galaxy_link',arguments:{
+     action:'record_ordered',scopeid,conversation_id:source,
+     title:records[0].title,updated_at:new Date().toISOString(),
+     records:records.map(r=>({
+       message_id:r.message_id,source_order:r.source_order,
+       parent_id:r.parent_id||null,role:r.role,text:r.text
+     }))
+   }
+ }};
+ const response=await fetch(endpoint.href,{method:'POST',redirect:'error',
+   cache:'no-store',headers:{authorization:'Bearer '+token,
+     'content-type':'application/json',accept:'application/json'},
+   body:JSON.stringify(payload)});
+ if(!response.ok){
+   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status);
+   error.httpStatus=response.status;throw error;
+ }
+ const body=await response.json().catch(()=>null);
+ const receipt=body?.result?.structuredContent;
+ if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
+    !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
+    !Number.isSafeInteger(receipt?.count)||receipt.count<0||
+    !Number.isSafeInteger(receipt?.messages)||receipt.messages<1)
+  throw contractError('LOC 有序對話未確認寫入，Queue 原始資料保留');
+ return receipt;
+}
 async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
-  const rows=pending.filter(row=>!isUnorderedConversationCapture(row));
-  // Preserve legacy conversations without preventing unrelated posts from sending.
-  if(!rows.length)return {message:legacyConversationCount
+  const ordered=pending.filter(row=>row.kind==='ordered_conversation');
+  const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
+   row.kind!=='ordered_conversation');
+  // Legacy fragments remain quarantined. Ordered turns use a separate writer.
+  if(!rows.length&&!ordered.length)return {message:legacyConversationCount
    ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
    :'Queue 已清空',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
@@ -493,6 +561,26 @@ async function flush(force=false){
   if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
   let count=0;
   try{
+   const groups=new Map();
+   for(const row of ordered){
+    const key=(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(row);
+   }
+   for(const group of groups.values()){
+    for(const part of packet(group)){
+     const scopeid=part[0].scopeid||'lo3rwang';
+     try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
+     catch(error){
+      if(error.httpStatus!==401)throw error;
+      token=await activeToken(true);
+      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+     }
+     await removeEvents(part);
+     await updateQueueBadge().catch(()=>{});
+     count+=part.length;
+    }
+   }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
@@ -558,10 +646,10 @@ async function currentTab(){
  return tab;
 }
 async function capture(tab,selection='',includeAssistant=false){
- if(isConversationSource(tab.url))
-  throw Error('對話內容擷取已暫停：目前 Queue 只支援無序 append，尚不能保存前後文關聯。頁面不會自動捲動，既有資料保留。');
  await inject(tab.id);
- const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
+ const chat=isConversationSource(tab.url);
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
+  includeAssistant:chat?true:includeAssistant});
  if(reply?.error)throw Error(String(reply.error));
  if(reply?.directQueued===true){
   // Full ChatGPT history is admitted in bounded viewport batches.
@@ -583,8 +671,11 @@ async function recordedTab(){
 }
 async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  const tab=providedTab||await currentTab();
- if(isConversationSource(tab.url))
-  throw Error('對話錄製／選取暫停：在可靠的對話模型重建前，不再把訊息亂序追加到文章。閱讀頁面不會被控制。');
+ // Conversation recording is passive; scrolling is entirely controlled by the
+ // reader. Missing original source ordinals fail before entering the Queue.
+ if(isConversationSource(tab.url)&&type!=='page.record')
+  throw Error('對話使用被動錄製或目前頁面擷取，不能以選取範圍取代完整時序');
+ if(isConversationSource(tab.url))includeAssistant=true;
  // One active recorder. Stop the prior tab before moving the recorder.
  const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
  if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)

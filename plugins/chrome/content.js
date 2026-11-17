@@ -50,8 +50,9 @@
     // The URL is the durable Galaxy source identity. Never archive a local
     // placeholder or attach old DOM turns to the next conversation on SPA nav.
     if(!threadId||pendingId)return [];
-    const source=normalizeUrl(location.href);
-    if(!source)return [];
+    // Canonical source identity must remain stable across project routes,
+    // query strings and SPA navigation around one conversation.
+    const source='https://chatgpt.com/c/'+threadId;
     // Never stop an entire chat because one turn is still generating.
     // A visible Stop button is the only active-generation signal; save all
     // completed turns in both whole-page capture and ongoing recording.
@@ -67,10 +68,13 @@
       throw Error('已勾選保存 AI 回覆，但目前無法辨識任何 AI 回覆；本次不寫入 Queue');
     return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
-        title,role:row.role,message_id:upstream.stableMessageId(threadId,row),
+        title,role:row.role,
+        message_id:row.id&&!row.id.startsWith('search-unit:')?row.id:
+          (row.source_order!=null?'source-ordinal:'+row.source_order:null),
         source_order:row.source_order??null,parent_id:row.parent_id??null,
         sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
-        content:'['+row.role+']\n'+row.content.slice(0,1400000)
+        text:row.content.slice(0,140000),
+        content:'['+row.role+']\n'+row.content.slice(0,140000)
       }));
   }
   // Respect the user's reading position. ChatGPT virtualizes older turns,
@@ -199,7 +203,12 @@
     });
     return rows.map(row=>({
       key:row.key,source_key:identity.url,url:identity.url,
-      title:document.title,content:'['+row.role+']\n'+row.content
+      title:document.title,role:row.role,
+      message_id:row.sourceId|| (row.source_order!=null?'source-ordinal:'+row.source_order:null),
+      source_order:row.source_order??null,parent_id:row.parent_id??null,
+      sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
+      text:row.content.slice(0,140000),
+      content:'['+row.role+']\n'+row.content.slice(0,140000)
     }));
   }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){

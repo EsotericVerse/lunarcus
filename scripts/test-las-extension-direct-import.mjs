@@ -47,6 +47,15 @@ function makeRuntime({config=bundled}={}){
       return new Response(JSON.stringify(config),{status:200,headers:{'content-type':'application/json'}});
     if(String(url)==='https://auth.lo3rwang.cc/.well-known/oauth-authorization-server/api/auth')
       return new Response(JSON.stringify(metadata),{status:200,headers:{'content-type':'application/json'}});
+    if(String(url)==='https://mcp.lo3rwang.cc/'){
+      const rpc=JSON.parse(options.body);
+      const records=rpc.params?.arguments?.records||[];
+      return Response.json({jsonrpc:'2.0',id:rpc.id,result:{
+        structuredContent:{accepted:true,uid:'ABCD1234',count:records.length,
+          messages:records.length},
+        content:[{type:'text',text:'accepted'}]
+      }});
+    }
     if(String(url)===LOC_IMPORT){
       const body=JSON.parse(options.body);
       return new Response(JSON.stringify({
@@ -148,17 +157,17 @@ test('Extension MCP uses LAS gateway without a user-selectable upstream Provider
   assert.equal(bundled.import_url,LOC_IMPORT,'LOC data import remains independent');
 });
 
-test('conversation fragments cannot enter unordered short-import append',async()=>{
+test('conversation fragments without source order never enter the Queue',async()=>{
   const {sandbox}=makeRuntime();
   await assert.rejects(
     vm.runInContext("toEvents([{source_key:'https://chatgpt.com/c/abc',url:'https://chatgpt.com/c/abc',key:'turn-1',content:'[user]\\nquestion'}],'lo3rwang')",sandbox),
-    /對話來源已暫停無序 append/
+    /來源沒有可靠的原始訊息序號/
   );
   for(const host of ['chatgpt.com','chat.openai.com','claude.ai','gemini.google.com']){
     assert.match(background,new RegExp(host.replaceAll('.','\\.')));
   }
-  assert.ok(background.includes('if(isConversationSource(tab.url))'));
-  assert.ok(background.includes('pending.filter(row=>!isUnorderedConversationCapture(row))'));
+  assert.ok(background.includes('const chat=isConversationSource(tab.url)'));
+  assert.ok(background.includes("const ordered=pending.filter(row=>row.kind==='ordered_conversation')"));
   assert.match(background,/legacyConversationCount/);
 });
 
@@ -185,4 +194,47 @@ test('options views contain only live actions and no obsolete Provider pages',()
  assert.ok(options.includes('id="connect"'));
  assert.ok(options.includes('id="diagnostics"'));
  assert.equal(bundled.resource,'https://mcp.lo3rwang.cc');
+});
+
+test('ordered source turns have stable Queue identities independent of arrival time',async()=>{
+ const {sandbox}=makeRuntime();
+ const source='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const items=[{source_key:source,url:source,title:'Conversation',role:'assistant',
+   message_id:'msg-100',source_order:100,parent_id:'msg-99',
+   order_evidence:'source-ordinal',text:'answer',
+   content:'[assistant]\\nanswer'},
+   {source_key:source,url:source,title:'Conversation',role:'user',
+   message_id:'msg-20',source_order:20,parent_id:'msg-19',
+   order_evidence:'source-ordinal',text:'question',
+   content:'[user]\\nquestion'}];
+ const records=await vm.runInContext('toEvents(orderedItems,\'lo3rwang\')',
+   Object.assign(sandbox,{orderedItems:items}));
+ assert.equal(records.length,2);
+ assert.equal(records[0].kind,'ordered_conversation');
+ assert.equal(records[0].source_order,100);
+ assert.equal(records[1].source_order,20);
+ assert.ok(records[0].id!==records[1].id);
+ const repeat=await vm.runInContext('toEvents(orderedItems,\'lo3rwang\')',sandbox);
+ assert.equal(records[0].id,repeat[0].id);
+ assert.equal(records[1].id,repeat[1].id);
+});
+test('ordered Queue goes only to canonical MCP tool, validates receipt',async()=>{
+ const {sandbox,requests}=makeRuntime();
+ const src='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const queued=[{id:'event-1',kind:'ordered_conversation',scopeid:'lo3rwang',
+   source_key:src,url:src,title:'Conversation',message_id:'msg-20',
+   source_order:20,parent_id:null,role:'user',text:'question'}];
+ const receipt=await vm.runInContext(
+   'sendOrderedConversation(\'lo3rwang\',orderedRows,\'test-token\',config)',
+   Object.assign(sandbox,{orderedRows:queued,config:bundled}));
+ assert.equal(receipt.accepted,true);
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].url,'https://mcp.lo3rwang.cc/');
+ assert.equal(requests[0].options.headers.authorization,'Bearer test-token');
+ const body=JSON.parse(requests[0].options.body);
+ assert.equal(body.params.name,'galaxy_link');
+ assert.equal(body.params.arguments.action,'record_ordered');
+ assert.equal(body.params.arguments.records[0].source_order,20);
+ assert.equal(body.params.arguments.records[0].message_id,'msg-20');
+ assert.equal(requests.some(req=>req.url===LOC_IMPORT),false);
 });
