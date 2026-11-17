@@ -13,6 +13,7 @@ const ChatGPTShadowExtract = (() => {
   // role ("fallback-turn-13:2:assistant"), wrapping a div that carries the
   // message id. Both legacy and search-unit layouts are merged in DOM order.
   const UNIT_SELECTOR = "[data-chatgpt-search-unit-key]";
+  const FALLBACK_SELECTOR = '[data-testid^="conversation-turn-"],[data-testid="assistant-message"],[data-testid="user-message"],[data-turn-role]';
   const MESSAGE_ID_ATTR = "data-chatgpt-selection-message-id";
   const LOCAL_CONVERSATION_ATTR = "data-chatgpt-selection-conversation-id";
   const STOP_BUTTON = '[data-testid="stop-button"]';
@@ -283,11 +284,13 @@ const ChatGPTShadowExtract = (() => {
     const units = Array.from(root.querySelectorAll(UNIT_SELECTOR));
     const legacyIndex = new Map(legacy.map((node, index) => [node, index]));
     const unitIndex = new Map(units.map((node, index) => [node, index]));
-    const nodes = root.querySelectorAll(ROLE_SELECTOR + "," + UNIT_SELECTOR);
+    const nodes = root.querySelectorAll(ROLE_SELECTOR + "," + UNIT_SELECTOR + "," + FALLBACK_SELECTOR);
     const messages = [];
     const seenIds = new Set();
+    const seenContainers = new Set();
     Array.from(nodes).forEach((el) => {
       const isUnit = unitIndex.has(el);
+      const isLegacy = legacyIndex.has(el);
       let role, content, id, index;
       if (isUnit) {
         if (isNestedUnit(el)) return;
@@ -295,7 +298,7 @@ const ChatGPTShadowExtract = (() => {
         content = unitText(el, role);
         id = unitMessageId(el);
         index = unitIndex.get(el);
-      } else {
+      } else if (isLegacy) {
         role = String(el.getAttribute("data-message-author-role") || "").toLowerCase();
         // A wrapper containing a different-role unit still owns its message:
         // never discard a legacy user merely because an assistant is nested.
@@ -305,7 +308,25 @@ const ChatGPTShadowExtract = (() => {
         content = extractMessageText(el);
         id = el.getAttribute("data-message-id") || "";
         index = legacyIndex.get(el);
+      } else {
+        // A child assistant-message inside a known turn is never emitted twice.
+        const owner = el.closest && el.closest('[data-testid^="conversation-turn-"]');
+        if (owner && owner !== el) return;
+        if (el.closest && (el.closest(UNIT_SELECTOR) || el.closest(ROLE_SELECTOR))) return;
+        if (el.querySelector && (el.querySelector(UNIT_SELECTOR) || el.querySelector(ROLE_SELECTOR)))
+          return;
+        role = fallbackRole(el);
+        if (role !== "user" && role !== "assistant") return;
+        content = extractMessageText(el);
+        const child = el.querySelector && el.querySelector(
+          '[data-message-id],[data-chatgpt-selection-message-id]');
+        id = attr(el, "data-message-id") || attr(el, MESSAGE_ID_ATTR) ||
+          attr(child, "data-message-id") || attr(child, MESSAGE_ID_ATTR);
+        index = messages.length;
       }
+      const owner = (el.closest && el.closest('[data-testid^="conversation-turn-"]')) || el;
+      if (seenContainers.has(owner)) return;
+      seenContainers.add(owner);
       if (role !== "user" && role !== "assistant") return;
       if (!content || isPlaceholderMessage(id, content)) return;
       if (id) {
@@ -350,12 +371,37 @@ const ChatGPTShadowExtract = (() => {
   function unitRole(unit) {
     const key = attr(unit, "data-chatgpt-search-unit-key");
     const suffix = key.match(/:(user|assistant)$/i);
-    if (suffix) return suffix[1].toLowerCase();
-    const tagged = attr(unit, "data-conversation-role") ||
-      attr(unit.querySelector && unit.querySelector("[data-conversation-role]"), "data-conversation-role");
-    if (tagged) return tagged.toLowerCase();
-    if (unit.querySelector && unit.querySelector("[data-user-message-bubble]")) return "user";
-    return "";
+    const sourceRole = suffix ? suffix[1].toLowerCase() : "";
+    const tagged = (attr(unit, "data-conversation-role") ||
+      attr(unit, "data-message-author-role") ||
+      attr(unit, "data-turn-role") ||
+      attr(unit.querySelector && unit.querySelector("[data-conversation-role]"), "data-conversation-role") ||
+      attr(unit.querySelector && unit.querySelector("[data-message-author-role]"), "data-message-author-role")).toLowerCase();
+    const assistantMarker = Boolean(unit.querySelector &&
+      unit.querySelector('[data-testid="assistant-message"]'));
+    const userMarker = Boolean(unit.querySelector &&
+      unit.querySelector('[data-testid="user-message"],[data-user-message-bubble]'));
+    const markerRole = assistantMarker !== userMarker
+      ? (assistantMarker ? "assistant" : "user") : "";
+    const declared = tagged === "user" || tagged === "assistant" ? tagged : "";
+    // Contradictory source role evidence cannot be safely put into Queue.
+    const known = [sourceRole, declared, markerRole].filter(Boolean);
+    return known.length && known.every(role => role === known[0]) ? known[0] : "";
+  }
+
+  // ChatGPT also renders standalone conversation-turn / assistant-message
+  // elements outside the search-unit and legacy role wrappers. These are
+  // explicit message markers, not a guess based on the presence of Markdown.
+  function fallbackRole(node) {
+    const own = (attr(node, "data-message-author-role") ||
+      attr(node, "data-turn-role") || attr(node, "data-conversation-role")).toLowerCase();
+    if (own === "user" || own === "assistant") return own;
+    const testid = attr(node, "data-testid");
+    if (testid === "assistant-message") return "assistant";
+    if (testid === "user-message") return "user";
+    const assistant = Boolean(node.querySelector && node.querySelector('[data-testid="assistant-message"]'));
+    const user = Boolean(node.querySelector && node.querySelector('[data-testid="user-message"]'));
+    return assistant !== user ? (assistant ? "assistant" : "user") : "";
   }
 
   function unitMessageId(unit) {
