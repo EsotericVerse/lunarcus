@@ -558,6 +558,16 @@ async function sendViaAuth(scopeid,batch,token,config){
  validateArticleReceipts(receipt.articles,batch.records);
  return receipt;
 }
+function partitionQueueForFlush(pending){
+ const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
+ const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true);
+ const blocked=new Set(unreviewed.map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
+ const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
+   row.reviewed===true&&!blocked.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
+ const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
+   row.kind!=='ordered_conversation');
+ return {legacyConversationCount,unreviewed,ordered,rows};
+}
 // Ordered turns use the fixed LAS Gateway, never the short-import append route.
 async function sendOrderedConversation(scopeid,records,token,config){
  if(!SCOPE.test(scopeid)||!records.length||records.length>100)
@@ -602,20 +612,12 @@ async function flush(force=false){
  if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
-  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
-  // Never release one part of a conversation when new unreviewed turns
-  // exist for the same source; the whole group must be confirmed together.
-  const unreviewedKeys=new Set(pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true)
-   .map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
-  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
-   row.reviewed===true&&!unreviewedKeys.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
-  const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
-   row.kind!=='ordered_conversation');
+  const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
   if(!rows.length&&!ordered.length){
-   const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true).length;
-   return {message:unreviewed
-    ?'有 '+unreviewed+' 則對話尚未完成訊息重整，請先在第六鍵「訊息重整」確認'
+   const unreviewedCount=unreviewed.length;
+   return {message:unreviewedCount
+    ?'有 '+unreviewedCount+' 則對話尚未完成訊息重整，請先在第六鍵「訊息重整」確認'
     :legacyConversationCount
       ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
       :'Queue 已清空',sent:0};
@@ -638,6 +640,8 @@ async function flush(force=false){
     groups.get(key).push(row);
    }
    for(const group of groups.values()){
+    // Always send in original source order, not in arrival order.
+    group.sort((a,b)=>a.source_order-b.source_order);
     for(const part of packet(group)){
      const scopeid=part[0].scopeid||'lo3rwang';
      try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
@@ -916,6 +920,18 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
     return reviewGroups(await allEvents());
+   }
+   case 'conversation.turn':{
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('完整訊息僅能在 LunArcus 訊息重整頁讀取');
+    const id=String(message.id||'');
+    if(!id||id.length>256)throw Error('無效的待送訊息 ID');
+    const rows=await allEvents(),row=rows.find(item=>item.id===id);
+    if(!row||row.kind!=='ordered_conversation')
+     throw Error('訊息已不在待送 Queue，請重新整理預覽');
+    return {id:row.id,source_order:row.source_order,role:row.role,
+      text:String(row.text||'').slice(0,140000)};
    }
    case 'conversation.approve':{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
