@@ -62,6 +62,6 @@ jobs:
       - name: Enforce module names and LOC-owned IPA boundary
         run: node --test scripts/test-module-boundaries.mjs
       - name: Validate LAS to LOC deployment signal contract
-        run: node --test scripts/test-las-deployment-notify.mjs
+        run: node --test scripts/test-las-deployment-notify.mjs scripts/test-las-workflow-notify.mjs
       - name: Dry-run Worker bundles (never publish)
         run: npm run auth:dry-run && npm run mcp:dry-run
