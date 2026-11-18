@@ -260,6 +260,7 @@ test('six function keys include pre-send message organizer without restoring pro
 test('pre-send organizer restores source order, but blocks duplicate ordinals and quarantines legacy',()=>{
  const {sandbox}=makeRuntime();
  const base={scopeid:'lo3rwang',kind:'ordered_conversation',
+  order_evidence:'source-ordinal',
   source_key:'https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940',
   title:'Test',role:'user',text:'message'};
  const items=[
@@ -288,7 +289,7 @@ test('source unit ordinal enters a stable local ordered Queue record',async()=>{
  const {sandbox}=makeRuntime();
  const url='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
  const item={url,source_key:url,role:'assistant',message_id:'real-msg-13',
-  source_order:13,order_evidence:'source-unit-ordinal',parent_id:null,
+  source_order:13,order_evidence:'source-conversation-turn',parent_id:null,
   text:'answer',content:'[assistant]\\nanswer'};
  const rows=await vm.runInContext("toEvents([sourceTurn],'lo3rwang')",
    Object.assign(sandbox,{sourceTurn:item}));
@@ -300,7 +301,8 @@ test('source unit ordinal enters a stable local ordered Queue record',async()=>{
 test('automatic flush excludes every previously reviewed turn when its source has new unreviewed turns',()=>{
  const {sandbox}=makeRuntime();
  const src='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
- const base={kind:'ordered_conversation',scopeid:'lo3rwang',source_key:src};
+ const base={kind:'ordered_conversation',scopeid:'lo3rwang',source_key:src,
+   order_evidence:'source-ordinal'};
  const prepared=[
   {...base,id:'a',source_order:4,reviewed:true},
   {...base,id:'b',source_order:2,reviewed:false},
@@ -355,4 +357,21 @@ test('include AI replies checkbox stays functional for both capture and passive 
    await vm.runInContext("selectOrRecord('page.record',inputAI,inputTab)",sandbox);
    assert.equal(sandbox.lastCaptureMessage.includeAssistant,enabled);
  }
+});
+
+test('unverified legacy window-relative chronology is quarantined, even when marked reviewed',async()=>{
+ const {sandbox}=makeRuntime();
+ const src='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const rows=[{id:'old',kind:'ordered_conversation',scopeid:'lo3rwang',
+   source_key:src,message_id:'msg-old',source_order:9,role:'user',
+   text:'old',reviewed:true,order_evidence:'source-unit-ordinal'}];
+ const pending=vm.runInContext('partitionQueueForFlush(untrusted)',
+   Object.assign(sandbox,{untrusted:rows}));
+ assert.equal(pending.ordered.length,0);
+ assert.equal(pending.unreviewed.length,1);
+ const review=vm.runInContext('reviewGroups(untrusted)',sandbox);
+ assert.equal(review.conversations[0].valid,false);
+ await assert.rejects(vm.runInContext("toEvents([untrustedInput],'lo3rwang')",
+   Object.assign(sandbox,{untrustedInput:{...rows[0],
+     source_key:src,url:src,content:'[user]\nold'}})),/來源沒有可靠的原始訊息序號/);
 });
