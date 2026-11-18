@@ -878,6 +878,20 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
   skipped_nontext:result.skipped};
 }
 
+function sourceOrderFailureLabel(status){
+ if(!status)return '';
+ const key=String(status);
+ if(key==='source-paginated')return 'ChatGPT 只回傳部分歷史，不能假裝完整';
+ if(key==='source-without-order')return '原始資料沒有可驗證的訊息鏈或序號';
+ if(key==='source-http-401'||key==='source-http-403')
+  return 'ChatGPT 原始對話讀取遭拒（'+key.slice(-3)+'）';
+ if(key==='source-http-429')return 'ChatGPT 原始對話讀取遭流量限制（429）';
+ if(key==='browser-source-unavailable'||key==='source-unavailable')
+  return '瀏覽器無法讀取 ChatGPT 原始訊息鏈';
+ if(key==='source-too-large'||key==='source-message-too-long')
+  return '原始對話超過安全擷取上限';
+ return key;
+}
 async function capture(tab,selection='',includeAssistant=false){
  // An authorized, read-only ChatGPT source snapshot supplies original message
  // order even when the visible page is virtualized. No DOM scrolling required.
@@ -889,7 +903,7 @@ async function capture(tab,selection='',includeAssistant=false){
     '；時序依據為原始對話訊息鏈'+
     (source.skipped_nontext?'；未入列無文字訊息 '+source.skipped_nontext+' 則':'')};
   }
-  sourceFailure=String(source?.source_unavailable||'');
+  sourceFailure=sourceOrderFailureLabel(source?.source_unavailable);
  }
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
