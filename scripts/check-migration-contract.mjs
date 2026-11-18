@@ -21,6 +21,16 @@ const files=[
   '.github/workflows/deploy-lunarcus-auth.yml',
   '.github/workflows/deploy-las-mcp.yml'
 ];
+// LAS no longer notifies LOC on deploy; LOC/LRS/LAS deploy fully independently.
+const removedFiles=[
+  '.github/workflows/notify-loc-after-auth.yml',
+  'app/las/auth/loc-notification.mjs',
+  'scripts/resolve-las-deployment-impact.mjs',
+  'scripts/plan-las-deployment.mjs',
+  'scripts/send-las-loc-notification.mjs'
+];
+for(const file of removedFiles)assert.ok(!existsSync(resolve(root,file)),
+  'LAS must not re-introduce LOC deployment coupling: '+file);
 for(const file of files)assert.ok(existsSync(resolve(root,file)),'Missing migration asset: '+file);
 assert.ok(!existsSync(resolve(root,'.github/workflows/ios-device-build.yml')),'IPA workflow belongs to LOC, not LAS');
 const runtimeFiles=[
@@ -30,7 +40,6 @@ const runtimeFiles=[
   'app/las/auth/pg-driver.mjs',
   'app/las/auth/extension-client.mjs',
   'app/las/auth/first-party-client.mjs',
-  'app/las/auth/loc-notification.mjs',
   'app/las/mcp/server.mjs'
 ];
 for(const name of runtimeFiles){

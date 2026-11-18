@@ -77,10 +77,10 @@ test('documentation is colocated with owned LAS source rather than a root docs d
     'Dated migration notes must not be treated as current deployment state');
 });
 
-test('LAS-to-LOC GitHub dispatch is preserved in the moved single Worker',()=>{
+test('LAS no longer dispatches deployment signals to LOC: LOC/LRS/LAS deploy independently',()=>{
   const entry=read('app/las/index.mjs');
-  assert.ok(entry.includes("from './auth/loc-notification.mjs'"));
-  assert.ok(entry.includes('handleLocDeploymentSignal(request,env)'));
-  assert.ok(existsSync(new URL('../app/las/auth/loc-notification.mjs',import.meta.url)));
-  assert.ok(!existsSync(new URL('../services/workers/lunarcus/loc-notification.mjs',import.meta.url)));
+  assert.ok(!entry.includes('loc-notification.mjs'));
+  assert.ok(!entry.includes('handleLocDeploymentSignal'));
+  assert.ok(!existsSync(new URL('../app/las/auth/loc-notification.mjs',import.meta.url)));
+  assert.ok(!existsSync(new URL('../.github/workflows/notify-loc-after-auth.yml',import.meta.url)));
 });
