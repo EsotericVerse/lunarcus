@@ -27,8 +27,8 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
   assert.equal(worker.name,'lunarcus','MCP shares the existing LAS Worker');
   assert.equal(worker.workers_dev,false);
   assert.deepEqual(worker.routes,[
-    {pattern:'auth.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc'},
-    {pattern:'mcp.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc'}
+    {pattern:'auth.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc',previews_enabled:true},
+    {pattern:'mcp.lo3rwang.cc',custom_domain:true,zone_name:'lo3rwang.cc',previews_enabled:true}
   ]);
   assert.ok(read('app/las/index.mjs').includes("if(url.hostname==='mcp.lo3rwang.cc')"));
   assert.ok(read('app/las/index.mjs').includes("import mcpWorker from './mcp/server.mjs'"));
