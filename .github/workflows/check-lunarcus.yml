@@ -29,6 +29,8 @@ on:
       - 'scripts/test-las-auth-http.mjs'
       - 'scripts/check-migration-contract.mjs'
       - '.github/workflows/check-lunarcus.yml'
+      - '.github/workflows/package-extension.yml'
+      - 'scripts/check-las-workflow-triggers.rb'
   workflow_dispatch:
 
 permissions:
@@ -44,6 +46,8 @@ jobs:
         with:
           node-version: '22.23.5'
           cache: npm
+      - name: Validate LAS workflow triggers (adapted from LOC parsed-YAML guard)
+        run: ruby scripts/check-las-workflow-triggers.rb
       - name: Verify LAS-local Skills and agent rules
         run: node scripts/check-las-agent-skills.mjs
       - name: Verify LAS skills are discoverable by Claude without copying
