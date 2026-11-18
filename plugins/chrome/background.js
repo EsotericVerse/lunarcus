@@ -614,6 +614,17 @@ async function sendOrderedConversation(scopeid,records,token,config){
    error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
  }
  const body=await response.json().catch(()=>null);
+ // MCP can return a transport-200 tools/call with isError=true when
+ // LOC's business backend is temporarily unavailable. It is not a malformed
+ // receipt: retry the unchanged IndexedDB row later, without pausing forever.
+ const toolError=body?.result?.isError&&
+   String(body?.result?.content?.[0]?.text||'').trim();
+ if(body?.id===id&&toolError==='LOC data service unavailable; please retry later.'){
+  const retry=Error('LAS MCP 下游資料服務暫時無法使用（503）；Queue 保留等待重試');
+  retry.httpStatus=503;
+  retry.queueEndpoint='MCP';
+  throw retry;
+ }
  const receipt=body?.result?.structuredContent;
  if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
