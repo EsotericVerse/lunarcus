@@ -765,7 +765,12 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
  }catch{return {status:'source-unavailable'};}
  if(json?.conversation_id&&String(json.conversation_id).toLowerCase()!==threadId.toLowerCase())
   return {status:'source-id-mismatch'};
- if(json?.has_more||json?.has_next_page||json?.next_cursor)
+ if(json?.has_more||json?.has_next_page||json?.next_cursor||
+    json?.pagination?.has_more||json?.pagination?.next_cursor)
+  return {status:'source-paginated'};
+ // An App Shell pagination placeholder is not the origin of the full tree.
+ if(json?.mapping&&Object.keys(json.mapping).some(key=>
+    /^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key)))
   return {status:'source-paginated'};
  let chain;
  if(json?.mapping&&typeof json.mapping==='object'&&typeof json.current_node==='string'){
@@ -848,16 +853,17 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
   result=frame?.[0]?.result;
  }catch(error){
   console.warn('[LunArcus ChatGPT source read unavailable]',String(error?.message||error));
-  return null;
+  return {source_unavailable:'browser-source-unavailable'};
  }
  if(result?.status!=='ok'){
-  // No body or session data is copied to logs on failure.
-  console.warn('[LunArcus ChatGPT source order]',String(result?.status||'unavailable'));
-  return null;
+  // No body, session or token data in diagnostic output.
+  const status=String(result?.status||'source-unavailable').slice(0,80);
+  console.warn('[LunArcus ChatGPT source order]',status);
+  return {source_unavailable:status};
  }
  if(String(result.conversation_id).toLowerCase()!==id.toLowerCase()||
     !Array.isArray(result.messages)||!result.messages.length)
-  return null;
+  return {source_unavailable:'source-invalid-receipt'};
  const canonical='https://chatgpt.com/c/'+id;
  const items=result.messages.map(row=>({
   key:row.message_id,source_key:canonical,url:canonical,
@@ -875,21 +881,25 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
 async function capture(tab,selection='',includeAssistant=false){
  // An authorized, read-only ChatGPT source snapshot supplies original message
  // order even when the visible page is virtualized. No DOM scrolling required.
+ let sourceFailure='';
  if(!selection?.trim()){
   const source=await captureChatgptOriginalSequence(tab,includeAssistant);
-  if(source){
+  if(source&&!source.source_unavailable){
    return {...source,message:source.message+
     '；時序依據為原始對話訊息鏈'+
     (source.skipped_nontext?'；未入列無文字訊息 '+source.skipped_nontext+' 則':'')};
   }
+  sourceFailure=String(source?.source_unavailable||'');
  }
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
   includeAssistant:includeAssistant===true});
- if(reply?.error)throw Error(String(reply.error));
+ if(reply?.error)throw Error(String(reply.error)+
+  (sourceFailure?'；原始對話讀取：'+sourceFailure:''));
  if(reply?.directQueued===true){
   // Full ChatGPT history is admitted in bounded viewport batches.
-  return {message:String(reply.message||'已完成歷史對話掃描'),
+  return {message:String(reply.message||'已完成目前畫面擷取')+
+   (sourceFailure?'；原始對話來源：'+sourceFailure:''),
    queued:await queueCount(),detected:reply.detected,
    user:reply.user,assistant:reply.assistant,
    insertedCaptures:reply.queuedCaptures||0,
