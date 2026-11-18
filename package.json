@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "LunArcus bridge: Better Auth, PostgreSQL SSO, MCP protocol, extension and IPA packaging",
+  "description": "LunArcus protocol integration: Better Auth, PostgreSQL, MCP, Chrome plugins and cross-system transport",
   "scripts": {
     "check:auth": "node --check app/las/index.mjs && node --check app/las/auth/auth.mjs && node --check app/las/auth/pg-driver.mjs && node --test scripts/test-las-auth-http.mjs scripts/test-las-dialect.mjs scripts/test-first-party-client.mjs",
     "check:extension": "node --check plugins/chrome/background.js && node --check plugins/chrome/content.js && node --test scripts/test-extension-complete-history.mjs scripts/test-las-chatgpt-assistant-detection.mjs scripts/test-extension-queue-receipts.mjs scripts/test-extension-clear-diagnostics.mjs scripts/test-las-extension-direct-import.mjs scripts/test-las-conversation-reconcile.mjs scripts/test-las-source-temporal-order.mjs",
