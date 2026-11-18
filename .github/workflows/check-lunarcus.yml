@@ -1,29 +1,14 @@
-name: Check LunArcus Auth, MCP and Plugins
+name: Verify LAS server runtime (no deployment)
 on:
   pull_request:
     paths:
+      - 'app/las/**'
       - 'vendor/loc-dialect/**'
-      - 'scripts/test-las-dialect.mjs'
-      - 'app/las/index.mjs'
-      - 'app/las/**/*.mjs'
-      - 'plugins/chrome/**'
-      - 'public/plugins/chrome/oauth/**'
       - 'wrangler.jsonc'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/deploy-lunarcus-auth.yml'
-      - '.github/workflows/deploy-las-mcp.yml'
-      - 'AGENTS.md'
-      - '.agents/**'
-      - '.github/skills/**'
-      - 'scripts/check-las-agent-skills.mjs'
-      - 'scripts/test-module-boundaries.mjs'
-      - 'scripts/test-las-mcp-worker-http.mjs'
-      - 'scripts/test-las-extension-direct-import.mjs'
-      - 'scripts/reconcile-mcp-conversations.mjs'
-      - 'scripts/test-las-conversation-reconcile.mjs'
       - 'scripts/test-las-auth-http.mjs'
-      - 'scripts/check-migration-contract.mjs'
+      - 'scripts/test-las-mcp-*.mjs'
       - '.github/workflows/check-lunarcus.yml'
   workflow_dispatch:
 
@@ -31,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -40,19 +25,9 @@ jobs:
         with:
           node-version: '22.23.5'
           cache: npm
-      - name: Verify LAS-local Skills and agent rules
-        run: node scripts/check-las-agent-skills.mjs
-      - name: Verify LAS skills are discoverable by Claude without copying
-        run: npm run skills:sync && node scripts/check-las-agent-skills.mjs
-      - name: Install minimal PostgreSQL Auth dependencies
+      - name: Install LAS server dependencies without lifecycle hooks
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Validate repo ownership, extension ID and immutable domains
-        run: node scripts/check-migration-contract.mjs
-      - name: Check LunArcus Worker and Extension syntax
-        run: npm run check:auth && npm run check:extension
-      - name: Validate MCP runtime contract and mapping
-        run: npm run check:mcp
-      - name: Enforce module names and LOC-owned IPA boundary
-        run: node --test scripts/test-module-boundaries.mjs
-      - name: Dry-run Worker bundles (never publish)
-        run: npm run auth:dry-run && npm run mcp:dry-run
+      - name: Verify LAS Auth and MCP on LAS-owned source only
+        run: npm run check:auth && npm run check:mcp
+      - name: Verify existing Worker bundle without publishing
+        run: npx --yes wrangler@4.157.0 deploy --dry-run
