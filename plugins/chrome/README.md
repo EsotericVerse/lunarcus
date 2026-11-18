@@ -9,7 +9,7 @@
 
 若連線或匯入失敗，開啟 extension 設定頁按「複製診斷紀錄」；紀錄只保留端點、HTTP 狀態與遮罩後的錯誤摘要，不包含 access token、refresh token、授權碼或 PKCE verifier。
 
-Neon／Supabase MCP 連線在同一設定頁完成：輸入一次 SSO Email，分別按 provider 的「授權一次」。上游授權完成後由 LOC MCP Gateway 加密保存並 refresh provider token；extension 不保存上游 token，也不會在每次 MCP 呼叫重新登入。
+目前設定頁不提供 Neon／Supabase MCP Provider 授權入口；已移除舊版 Provider Hub 與 Cloudflare Access SSO 的操作說明。Chrome Extension 使用 LunArcus Auth OAuth，LOC 業務匯入依其固定 API 與既有授權契約處理。
 
 僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。每次擷取入列後立即嘗試發送全部待送資料，無需累積筆數或容量門檻；手動發送同樣處理全部待送資料，傳輸仍依 API 限制分批；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
 
