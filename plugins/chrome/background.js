@@ -719,7 +719,161 @@ async function currentTab(){
  if(!tab?.id||!/^https?:\/\//.test(tab.url||''))throw Error('請在一般網頁上使用');
  return tab;
 }
+// Runs ONLY after a user chooses to capture the open ChatGPT conversation.
+// Chrome executes the function in that page's own origin; it requests that
+// SAME conversation's existing read-only source record. It does not retrieve
+// access tokens, touch another origin, scroll the page or grant new access.
+// The source API is undocumented: failure must preserve the old Queue.
+async function readChatgptSourceInPage(threadId,includeAssistant){
+ const idFormat=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ if(!idFormat.test(threadId))return {status:'invalid-thread'};
+ const here=location;
+ if(!['chatgpt.com','chat.openai.com'].includes(here.hostname))return {status:'wrong-origin'};
+ const pathId=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(here.pathname)?.[1];
+ if(!pathId||pathId.toLowerCase()!==threadId.toLowerCase())
+  return {status:'changed-conversation'};
+ let json;
+ try{
+  // The historical and the App Shell paths can differ. A second GET is made
+  // ONLY after a 404; 401, 403 and 429 are never retried automatically.
+  let response=await fetch('/backend-api/conversation/'+encodeURIComponent(threadId),{
+   method:'GET',credentials:'same-origin',redirect:'error',
+   cache:'no-store',headers:{accept:'application/json'}
+  });
+  if(response.status===404)
+   response=await fetch('/backend-api/conversations/'+encodeURIComponent(threadId),{
+    method:'GET',credentials:'same-origin',redirect:'error',
+    cache:'no-store',headers:{accept:'application/json'}
+   });
+  if(!response.ok)return {status:'source-http-'+response.status};
+  if(!String(response.headers.get('content-type')||'').includes('json'))
+   return {status:'source-not-json'};
+  if(Number(response.headers.get('content-length')||0)>10000000)
+   return {status:'source-too-large'};
+  const raw=await response.text();
+  if(raw.length>10000000)return {status:'source-too-large'};
+  json=JSON.parse(raw);
+ }catch{return {status:'source-unavailable'};}
+ if(json?.conversation_id&&String(json.conversation_id).toLowerCase()!==threadId.toLowerCase())
+  return {status:'source-id-mismatch'};
+ if(json?.has_more||json?.has_next_page||json?.next_cursor)
+  return {status:'source-paginated'};
+ let chain;
+ if(json?.mapping&&typeof json.mapping==='object'&&typeof json.current_node==='string'){
+  const ancestors=[],seen=new Set();
+  let cursor=json.current_node;
+  while(cursor){
+   if(seen.has(cursor)||ancestors.length>10000)
+    return {status:'invalid-source-chain'};
+   seen.add(cursor);
+   const node=json.mapping[cursor];
+   if(!node)return {status:'broken-source-chain'};
+   ancestors.push({message:node.message,parent:node.parent||null,
+    nodeId:cursor});
+   cursor=node.parent||null;
+  }
+  chain=ancestors.reverse();
+ }else if(Array.isArray(json?.messages)){
+  chain=json.messages.map((message,i)=>({
+   message:message.message||message,
+   parent:message.parent||message.parent_id||null,
+   nodeId:message.id||'original-'+i
+  }));
+ }else return {status:'source-without-order'};
+ if(chain.length>10000)return {status:'source-too-many-messages'};
+ const rows=[],ids=new Set();
+ let skipped=0,totalChars=0;
+ for(let i=0;i<chain.length;i++){
+  const {message:m,parent,nodeId}=chain[i];
+  if(!m||typeof m!=='object')continue;
+  const role=m.author?.role||m.role||m.sender?.role;
+  if(role!=='user'&&role!=='assistant')continue;
+  const channel=m.channel||m.metadata?.channel||m.metadata?.message_channel||null;
+  if(channel&& !['final','commentary'].includes(channel))continue;
+  if(m.metadata?.is_visually_hidden_from_conversation===true)continue;
+  if(m.recipient&&m.recipient!=='all')continue;
+  if(role==='assistant'&&!includeAssistant)continue;
+  if(m.status==='in_progress'||m.status==='streaming')continue;
+  const c=m.content;
+  let text='';
+  if(typeof c==='string')text=c;
+  else if(typeof c?.text==='string')text=c.text;
+  else if(Array.isArray(c?.parts)){
+   const parts=c.parts.map(p=>typeof p==='string'?p:
+    p?.content_type==='text'&&typeof p.text==='string'?p.text:null);
+   text=parts.filter(p=>p!==null).join('\n');
+  }
+  if(!text.trim()){skipped++;continue;}
+  if(text.length>140000)return {status:'source-message-too-long'};
+  const id=String(m.id||m.message_id||nodeId||'');
+  if(!id||id.length>256||ids.has(id))return {status:'source-id-conflict'};
+  ids.add(id);
+  totalChars+=text.length;
+  if(totalChars>8000000||rows.length>=2000)return {status:'source-too-large'};
+  rows.push({message_id:id,role,source_order:i,
+   parent_id:typeof parent==='string'&&parent.length<=256?parent:null,
+   text});
+ }
+ if(!rows.length)return {status:'source-no-text'};
+ // The current URL must still name the same chat after the async request.
+ const finalId=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(location.pathname)?.[1];
+ if(finalId?.toLowerCase()!==threadId.toLowerCase())
+  return {status:'changed-conversation'};
+ return {status:'ok',conversation_id:threadId,
+  title:String(json?.title||document.title||'對話').slice(0,350),
+  messages:rows,skipped,original_count:chain.length};
+}
+
+async function captureChatgptOriginalSequence(tab,includeAssistant){
+ const url=new URL(tab.url||'');
+ if(!['chatgpt.com','chat.openai.com'].includes(url.hostname))return null;
+ const id=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(url.pathname)?.[1];
+ if(!id||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(id))
+  return null;
+ let result;
+ try{
+  const frame=await chrome.scripting.executeScript({
+   target:{tabId:tab.id},world:'MAIN',func:readChatgptSourceInPage,
+   args:[id,includeAssistant===true]
+  });
+  result=frame?.[0]?.result;
+ }catch(error){
+  console.warn('[LunArcus ChatGPT source read unavailable]',String(error?.message||error));
+  return null;
+ }
+ if(result?.status!=='ok'){
+  // No body or session data is copied to logs on failure.
+  console.warn('[LunArcus ChatGPT source order]',String(result?.status||'unavailable'));
+  return null;
+ }
+ if(String(result.conversation_id).toLowerCase()!==id.toLowerCase()||
+    !Array.isArray(result.messages)||!result.messages.length)
+  return null;
+ const canonical='https://chatgpt.com/c/'+id;
+ const items=result.messages.map(row=>({
+  key:row.message_id,source_key:canonical,url:canonical,
+  title:result.title,role:row.role,
+  message_id:row.message_id,source_order:row.source_order,
+  parent_id:row.parent_id,order_evidence:'source-ordinal',
+  text:row.text,content:'['+row.role+']\n'+row.text
+ }));
+ const receipt=await acceptItems(items);
+ return {...receipt,read_source:'original-message-chain',
+  original_count:result.original_count,
+  skipped_nontext:result.skipped};
+}
+
 async function capture(tab,selection='',includeAssistant=false){
+ // An authorized, read-only ChatGPT source snapshot supplies original message
+ // order even when the visible page is virtualized. No DOM scrolling required.
+ if(!selection?.trim()){
+  const source=await captureChatgptOriginalSequence(tab,includeAssistant);
+  if(source){
+   return {...source,message:source.message+
+    '；時序依據為原始對話訊息鏈'+
+    (source.skipped_nontext?'；未入列無文字訊息 '+source.skipped_nontext+' 則':'')};
+  }
+ }
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
   includeAssistant:includeAssistant===true});
