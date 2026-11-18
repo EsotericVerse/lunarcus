@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "LunArcus: LAS Auth, MCP, Tunnel and Chrome Extension",
-  "scripts": {},
+  "scripts": {
+    "build": "npx --yes wrangler@4.157.0 deploy --dry-run --outdir dist"
+  },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
     "@streamparser/json": "0.0.26",
