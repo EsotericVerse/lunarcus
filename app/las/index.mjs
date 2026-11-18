@@ -4,7 +4,6 @@ import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth/auth.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
-// Preview smoke-check: LAS branch builds use Wrangler Preview, never either production domain.
 // Only transport and OAuth login/consent UI remain here. No custom auth protocol.
 // Build Better Auth fresh per request. Its native pg.Client connections are
 // acquired and released inside the same request; never reuse sockets opened
