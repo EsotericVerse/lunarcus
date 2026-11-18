@@ -13,4 +13,4 @@ Documentation follows ownership instead of a root `docs/` directory:
 - **ISR planned-only ownership:** `.agents/skills/deployment/SKILL.md`
 - **Historical handoffs (not current deployment authority):** private Slack engineering archive and Git Commit history
 
-Run `npm run check:auth`, `npm run check:mcp`, or `npm run check:extension` for the relevant module; `npm run auth:dry-run` does not publish. LOC owns the complete App/IPA packaging workflow and Galaxy/SQL Portable business implementation; LRS owns rune assets and engine. Cloudflare external Watch Paths must be verified before merging the module-path refactor.
+Run `npm run check:auth`, `npm run check:mcp`, or `npm run check:extension` for the relevant module; `npm run auth:dry-run` does not publish. LOC owns its own App/IPA and Galaxy/SQL Portable business implementation; LRS independently owns its rune/game Web and native App/IPA. LAS does not build an IPA. Cloudflare external Watch Paths and deployed contract versions must be verified against the current configuration rather than historical migration notes.
