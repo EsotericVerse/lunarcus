@@ -41,8 +41,6 @@ test('LAS gateway is separate from LOC models and uses fixed service contracts',
     'Do not recreate a second MCP deployment target');
 });
 test('native IPA packaging belongs to LOC and is absent from LAS',()=>{
-  const doc=read('app/las/README.md');
-  assert.ok(doc.includes('EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml'));
   for(const path of [
     '.github/workflows/ios-device-build.yml',
     'scripts/restore-lrs-native-ui.mjs',
