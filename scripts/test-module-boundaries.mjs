@@ -60,21 +60,15 @@ test('ISR is not a hidden required Auth dependency',()=>{
     'Do not claim source migration is finished when ISR source is unavailable');
 });
 
-test('documentation is colocated with owned LAS source rather than a root docs directory',()=>{
+test('LAS module boundaries do not require historical Markdown snapshots',()=>{
+  // Deployment safety belongs to executable checks; archived handoff notes
+  // are maintained in Slack rather than required by a code build.
   assert.ok(!existsSync(new URL('../docs/',import.meta.url)),
-    'Do not recreate a centralized docs/ directory');
-  for(const path of [
-    'app/las/README.md',
-    'app/las/auth/README.md',
-    'app/las/mcp/README.md',
-    'app/las/tunnel/README.md',
-    '.github/workflows/README.md',
-    'app/las/MIGRATION-HISTORY-20261116.md'
-  ])assert.ok(existsSync(new URL('../'+path,import.meta.url)),
-    'Missing colocated module or deployment guidance: '+path);
-  const history=read('app/las/MIGRATION-HISTORY-20261116.md');
-  assert.ok(history.includes('Historical handoff snapshot'),
-    'Dated migration notes must not be treated as current deployment state');
+    'Do not recreate a centralized docs directory');
+  for(const path of ['app/las/auth/auth.mjs','app/las/mcp/server.mjs',
+    'app/las/tunnel/loc-mapping.mjs','plugins/chrome/manifest.json'])
+    assert.ok(existsSync(new URL('../'+path,import.meta.url)),
+      'LAS module entrypoint missing: '+path);
 });
 
 test('LAS-to-LOC GitHub dispatch is preserved in the moved single Worker',()=>{
