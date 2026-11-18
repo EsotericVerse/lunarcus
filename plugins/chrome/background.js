@@ -623,7 +623,16 @@ async function sendOrderedConversation(scopeid,records,token,config){
  return receipt;
 }
 async function flush(force=false){
- if(inFlight){flushRequested=true;return inFlight;}
+ // A manual send must not inherit an already-running automatic attempt.
+ // Await its settlement and then run a fresh forced pass against durable Queue.
+ if(inFlight){
+  if(force){
+   try{await inFlight}catch{}
+   return flush(true);
+  }
+  flushRequested=true;
+  return inFlight;
+ }
  inFlight=(async()=>{
   const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
@@ -1114,7 +1123,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),allEvents()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     ...captureTotals(queue),lastAction:session.locLastAction||null,
+     ...captureTotals(queue),
+     blockedReview:queue.filter(row=>row.kind==='ordered_conversation'&&
+       (row.reviewed!==true||!trustedSourceOrder(row))).length,
+     legacyUnordered:queue.filter(isUnorderedConversationCapture).length,
+     lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
       retryEndpoint:session.locQueueRetryEndpoint||'',
