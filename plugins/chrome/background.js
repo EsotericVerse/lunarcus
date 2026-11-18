@@ -743,16 +743,38 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
   return {status:'changed-conversation'};
  let json;
  try{
+  // ChatGPT's own SPA sometimes requires its short-lived same-origin bearer
+  // on /backend-api even when the browser has a valid session cookie. Obtain
+  // it once, only inside this MAIN-world function. NEVER return, save, log or
+  // send it to the extension, LAS, Queue or LOC.
+  let bearer='';
+  try{
+   const session=await fetch('/api/auth/session',{method:'GET',
+    credentials:'same-origin',redirect:'error',cache:'no-store',
+    headers:{accept:'application/json'}});
+   if(session.ok&&String(session.headers.get('content-type')||'').includes('json')){
+    if(Number(session.headers.get('content-length')||0)<=64000){
+     const rawSession=await session.text();
+     if(rawSession.length<=64000){
+      const token=JSON.parse(rawSession)?.accessToken;
+      if(typeof token==='string'&&token.length>0&&token.length<=8192)
+       bearer=token;
+     }
+    }
+   }
+  }catch{}
+  const headers={accept:'application/json'};
+  if(bearer)headers.authorization='Bearer '+bearer;
   // The historical and the App Shell paths can differ. A second GET is made
   // ONLY after a 404; 401, 403 and 429 are never retried automatically.
   let response=await fetch('/backend-api/conversation/'+encodeURIComponent(threadId),{
    method:'GET',credentials:'same-origin',redirect:'error',
-   cache:'no-store',headers:{accept:'application/json'}
+   cache:'no-store',headers
   });
   if(response.status===404)
    response=await fetch('/backend-api/conversations/'+encodeURIComponent(threadId),{
     method:'GET',credentials:'same-origin',redirect:'error',
-    cache:'no-store',headers:{accept:'application/json'}
+    cache:'no-store',headers
    });
   if(!response.ok)return {status:'source-http-'+response.status};
   if(!String(response.headers.get('content-type')||'').includes('json'))
