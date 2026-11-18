@@ -96,7 +96,8 @@ function reviewGroups(rows){
   const valid=sorted.every(r=>Number.isSafeInteger(r.source_order)&&r.source_order>=0&&
    typeof r.message_id==='string'&&r.message_id.length>0&&
    ['user','assistant'].includes(r.role)&&typeof r.text==='string')&&
-   ids.size===sorted.length&&positions.size===sorted.length;
+   ids.size===sorted.length&&positions.size===sorted.length&&
+   sorted.every(trustedSourceOrder);
   return {key,scopeid:sorted[0].scopeid||'lo3rwang',
    source:sorted[0].source_key,title:sorted[0].title||'對話',
    valid,ready:valid&&sorted.every(r=>r.reviewed===true),
@@ -211,7 +212,7 @@ async function toEvents(items,scopeid='lo3rwang'){
    if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
       !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
       !item.text.trim()||item.text.length>140000||
-      !['source-ordinal','source-unit-ordinal'].includes(item.order_evidence))
+      !['source-ordinal','source-conversation-turn'].includes(item.order_evidence))
     throw Error('來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序');
    const message_id=String(item.message_id||
      'source-ordinal:'+item.source_order);
@@ -226,6 +227,7 @@ async function toEvents(items,scopeid='lo3rwang'){
    rows.push({id,group_id,scopeid,kind:'ordered_conversation',
       source_key,url,title:String(item.title||'對話').slice(0,350),
       message_id,source_order:item.source_order,parent_id,role:item.role,
+      order_evidence:item.order_evidence,
       text:item.text,captured_at:new Date().toISOString()});
    continue;
   }
@@ -558,9 +560,16 @@ async function sendViaAuth(scopeid,batch,token,config){
  validateArticleReceipts(receipt.articles,batch.records);
  return receipt;
 }
+function trustedSourceOrder(row){
+ return row?.order_evidence==='source-ordinal'||
+   row?.order_evidence==='source-conversation-turn';
+}
 function partitionQueueForFlush(pending){
  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
- const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true);
+ // Older extension builds omitted chronology evidence from Queue rows.
+ // These rows remain untouched until their source order is reverified.
+ const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&
+   (row.reviewed!==true||!trustedSourceOrder(row)));
  const blocked=new Set(unreviewed.map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
    row.reviewed===true&&!blocked.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
@@ -719,14 +728,192 @@ async function currentTab(){
  if(!tab?.id||!/^https?:\/\//.test(tab.url||''))throw Error('請在一般網頁上使用');
  return tab;
 }
+// Runs ONLY after a user chooses to capture the open ChatGPT conversation.
+// Chrome executes the function in that page's own origin; it requests that
+// SAME conversation's existing read-only source record. It does not retrieve
+// access tokens, touch another origin, scroll the page or grant new access.
+// The source API is undocumented: failure must preserve the old Queue.
+async function readChatgptSourceInPage(threadId,includeAssistant){
+ const idFormat=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ if(!idFormat.test(threadId))return {status:'invalid-thread'};
+ const here=location;
+ if(!['chatgpt.com','chat.openai.com'].includes(here.hostname))return {status:'wrong-origin'};
+ const pathId=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(here.pathname)?.[1];
+ if(!pathId||pathId.toLowerCase()!==threadId.toLowerCase())
+  return {status:'changed-conversation'};
+ let json;
+ try{
+  // The historical and the App Shell paths can differ. A second GET is made
+  // ONLY after a 404; 401, 403 and 429 are never retried automatically.
+  let response=await fetch('/backend-api/conversation/'+encodeURIComponent(threadId),{
+   method:'GET',credentials:'same-origin',redirect:'error',
+   cache:'no-store',headers:{accept:'application/json'}
+  });
+  if(response.status===404)
+   response=await fetch('/backend-api/conversations/'+encodeURIComponent(threadId),{
+    method:'GET',credentials:'same-origin',redirect:'error',
+    cache:'no-store',headers:{accept:'application/json'}
+   });
+  if(!response.ok)return {status:'source-http-'+response.status};
+  if(!String(response.headers.get('content-type')||'').includes('json'))
+   return {status:'source-not-json'};
+  if(Number(response.headers.get('content-length')||0)>10000000)
+   return {status:'source-too-large'};
+  const raw=await response.text();
+  if(raw.length>10000000)return {status:'source-too-large'};
+  json=JSON.parse(raw);
+ }catch{return {status:'source-unavailable'};}
+ if(json?.conversation_id&&String(json.conversation_id).toLowerCase()!==threadId.toLowerCase())
+  return {status:'source-id-mismatch'};
+ if(json?.has_more||json?.has_next_page||json?.next_cursor||
+    json?.pagination?.has_more||json?.pagination?.next_cursor)
+  return {status:'source-paginated'};
+ // An App Shell pagination placeholder is not the origin of the full tree.
+ if(json?.mapping&&Object.keys(json.mapping).some(key=>
+    /^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key)))
+  return {status:'source-paginated'};
+ let chain;
+ if(json?.mapping&&typeof json.mapping==='object'&&typeof json.current_node==='string'){
+  const ancestors=[],seen=new Set();
+  let cursor=json.current_node;
+  while(cursor){
+   if(seen.has(cursor)||ancestors.length>10000)
+    return {status:'invalid-source-chain'};
+   seen.add(cursor);
+   const node=json.mapping[cursor];
+   if(!node)return {status:'broken-source-chain'};
+   ancestors.push({message:node.message,parent:node.parent||null,
+    nodeId:cursor});
+   cursor=node.parent||null;
+  }
+  chain=ancestors.reverse();
+ }else if(Array.isArray(json?.messages)){
+  chain=json.messages.map((message,i)=>({
+   message:message.message||message,
+   parent:message.parent||message.parent_id||null,
+   nodeId:message.id||'original-'+i
+  }));
+ }else return {status:'source-without-order'};
+ if(chain.length>10000)return {status:'source-too-many-messages'};
+ const rows=[],ids=new Set();
+ let skipped=0,totalChars=0;
+ for(let i=0;i<chain.length;i++){
+  const {message:m,parent,nodeId}=chain[i];
+  if(!m||typeof m!=='object')continue;
+  const role=m.author?.role||m.role||m.sender?.role;
+  if(role!=='user'&&role!=='assistant')continue;
+  const channel=m.channel||m.metadata?.channel||m.metadata?.message_channel||null;
+  if(channel&& !['final','commentary'].includes(channel))continue;
+  if(m.metadata?.is_visually_hidden_from_conversation===true)continue;
+  if(m.recipient&&m.recipient!=='all')continue;
+  if(role==='assistant'&&!includeAssistant)continue;
+  if(m.status==='in_progress'||m.status==='streaming')continue;
+  const c=m.content;
+  let text='';
+  if(typeof c==='string')text=c;
+  else if(typeof c?.text==='string')text=c.text;
+  else if(Array.isArray(c?.parts)){
+   const parts=c.parts.map(p=>typeof p==='string'?p:
+    p?.content_type==='text'&&typeof p.text==='string'?p.text:null);
+   text=parts.filter(p=>p!==null).join('\n');
+  }
+  if(!text.trim()){skipped++;continue;}
+  if(text.length>140000)return {status:'source-message-too-long'};
+  const id=String(m.id||m.message_id||nodeId||'');
+  if(!id||id.length>256||ids.has(id))return {status:'source-id-conflict'};
+  ids.add(id);
+  totalChars+=text.length;
+  if(totalChars>8000000||rows.length>=2000)return {status:'source-too-large'};
+  rows.push({message_id:id,role,source_order:i,
+   parent_id:typeof parent==='string'&&parent.length<=256?parent:null,
+   text});
+ }
+ if(!rows.length)return {status:'source-no-text'};
+ // The current URL must still name the same chat after the async request.
+ const finalId=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(location.pathname)?.[1];
+ if(finalId?.toLowerCase()!==threadId.toLowerCase())
+  return {status:'changed-conversation'};
+ return {status:'ok',conversation_id:threadId,
+  title:String(json?.title||document.title||'對話').slice(0,350),
+  messages:rows,skipped,original_count:chain.length};
+}
+
+async function captureChatgptOriginalSequence(tab,includeAssistant){
+ const url=new URL(tab.url||'');
+ if(!['chatgpt.com','chat.openai.com'].includes(url.hostname))return null;
+ const id=/(?:^|\/)c\/([0-9a-f-]{36})(?:\/|$)/i.exec(url.pathname)?.[1];
+ if(!id||!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(id))
+  return null;
+ let result;
+ try{
+  const frame=await chrome.scripting.executeScript({
+   target:{tabId:tab.id},world:'MAIN',func:readChatgptSourceInPage,
+   args:[id,includeAssistant===true]
+  });
+  result=frame?.[0]?.result;
+ }catch(error){
+  console.warn('[LunArcus ChatGPT source read unavailable]',String(error?.message||error));
+  return {source_unavailable:'browser-source-unavailable'};
+ }
+ if(result?.status!=='ok'){
+  // No body, session or token data in diagnostic output.
+  const status=String(result?.status||'source-unavailable').slice(0,80);
+  console.warn('[LunArcus ChatGPT source order]',status);
+  return {source_unavailable:status};
+ }
+ if(String(result.conversation_id).toLowerCase()!==id.toLowerCase()||
+    !Array.isArray(result.messages)||!result.messages.length)
+  return {source_unavailable:'source-invalid-receipt'};
+ const canonical='https://chatgpt.com/c/'+id;
+ const items=result.messages.map(row=>({
+  key:row.message_id,source_key:canonical,url:canonical,
+  title:result.title,role:row.role,
+  message_id:row.message_id,source_order:row.source_order,
+  parent_id:row.parent_id,order_evidence:'source-ordinal',
+  text:row.text,content:'['+row.role+']\n'+row.text
+ }));
+ const receipt=await acceptItems(items);
+ return {...receipt,read_source:'original-message-chain',
+  original_count:result.original_count,
+  skipped_nontext:result.skipped};
+}
+
+function sourceOrderFailureLabel(status){
+ if(!status)return '';
+ const key=String(status);
+ if(key==='source-paginated')return 'ChatGPT 只回傳部分歷史，不能假裝完整';
+ if(key==='source-without-order')return '原始資料沒有可驗證的訊息鏈或序號';
+ if(key==='source-http-401'||key==='source-http-403')
+  return 'ChatGPT 原始對話讀取遭拒（'+key.slice(-3)+'）';
+ if(key==='source-http-429')return 'ChatGPT 原始對話讀取遭流量限制（429）';
+ if(key==='browser-source-unavailable'||key==='source-unavailable')
+  return '瀏覽器無法讀取 ChatGPT 原始訊息鏈';
+ if(key==='source-too-large'||key==='source-message-too-long')
+  return '原始對話超過安全擷取上限';
+ return key;
+}
 async function capture(tab,selection='',includeAssistant=false){
+ // An authorized, read-only ChatGPT source snapshot supplies original message
+ // order even when the visible page is virtualized. No DOM scrolling required.
+ let sourceFailure='';
+ if(!selection?.trim()){
+  const source=await captureChatgptOriginalSequence(tab,includeAssistant);
+  if(source&&!source.source_unavailable){
+   return {...source,message:source.message+
+    '；時序依據為原始對話訊息鏈'+
+    (source.skipped_nontext?'；未入列無文字訊息 '+source.skipped_nontext+' 則':'')};
+  }
+  sourceFailure=sourceOrderFailureLabel(source?.source_unavailable);
+ }
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,
   includeAssistant:includeAssistant===true});
- if(reply?.error)throw Error(String(reply.error));
+ if(reply?.error)throw Error(String(reply.error)+
+  (sourceFailure?'；原始對話讀取：'+sourceFailure:''));
  if(reply?.directQueued===true){
   // Full ChatGPT history is admitted in bounded viewport batches.
-  return {message:String(reply.message||'已完成歷史對話掃描'),
+  return {message:String(reply.message||'已完成目前畫面擷取')+
+   (sourceFailure?'；原始對話來源：'+sourceFailure:''),
    queued:await queueCount(),detected:reply.detected,
    user:reply.user,assistant:reply.assistant,
    insertedCaptures:reply.queuedCaptures||0,

@@ -33,7 +33,8 @@ function visibleNodes(){
     const role=i%2?'assistant':'user';
     const node=new Element({
       'data-chatgpt-search-unit-key':'fallback-turn-'+i+':2:'+role,
-      'data-chatgpt-selection-message-id':'real-message-'+i
+      'data-chatgpt-selection-message-id':'real-message-'+i,
+      'data-testid':'conversation-turn-'+i
     },'Same repeated words');
     node.parentElement=scroller;
     return node;
@@ -95,7 +96,7 @@ test('capture uses the currently mounted 9 turns and never scrolls the reader',a
   assert.equal(reply.queuedCaptures,9);
   assert.equal(inserted.length,9);
   assert.deepEqual(inserted.map(x=>x.source_order),[71,72,73,74,75,76,77,78,79]);
-  assert.ok(inserted.every(x=>x.order_evidence==='source-unit-ordinal'));
+  assert.ok(inserted.every(x=>x.order_evidence==='source-conversation-turn'));
   assert.ok(inserted.every(x=>x.message_id?.startsWith('real-message-')));
 
   assert.equal(new Set(inserted.map(item=>item.key)).size,9);

@@ -159,5 +159,6 @@ test('nested search-unit user wrapper never suppresses a distinct assistant repl
   const rows=ctx.ChatGPTShadowExtract.extractMessages(source);
   assert.deepEqual(Array.from(rows,r=>r.role),['user','assistant']);
   assert.deepEqual(Array.from(rows,r=>r.id),['user-stable-id','assistant-stable-id']);
-  assert.deepEqual(Array.from(rows,r=>r.source_order),[2,3]);
+  assert.deepEqual(Array.from(rows,r=>r.source_order),[null,null],
+    'Window-relative fallback keys must not claim to be global ordinals');
 });
