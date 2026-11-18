@@ -502,3 +502,26 @@ test('ChatGPT forbidden original source returns a precise reason without guessin
   /ChatGPT 原始對話讀取遭拒（403）/);
  assert.equal(requested,1,'Do not retry unauthorized source reads');
 });
+
+test('Queue identifies MCP 503 separately from LOC 504 without reporting private payloads',async()=>{
+ const src='https://chatgpt.com/c/6af8ff99-6b54-83ee-8ee5-06f99616d940';
+ const a=makeRuntime(),b=makeRuntime();
+ a.sandbox.fetch=async()=>new Response('',{status:503});
+ b.sandbox.fetch=async()=>new Response('',{status:504});
+ a.sandbox.testMcpRows=[{kind:'ordered_conversation',scopeid:'lo3rwang',
+  id:'test1',source_key:src,title:'test',message_id:'m1',
+  source_order:1,parent_id:null,role:'user',text:'private turn'}];
+ a.sandbox.testCfg=bundled;
+ await assert.rejects(vm.runInContext(
+  "sendOrderedConversation('lo3rwang',testMcpRows,'test-token',testCfg)",a.sandbox),
+  e=>e.httpStatus===503&&e.queueEndpoint==='MCP'&&!e.message.includes('private turn'));
+ b.sandbox.testCfg=bundled;
+ b.sandbox.testBatch={id:'sample-id',records:[{source_key:'https://example.org/a'}]};
+ await assert.rejects(vm.runInContext(
+  "sendViaAuth('lo3rwang',testBatch,'test-token',testCfg)",b.sandbox),
+  e=>e.httpStatus===504&&e.queueEndpoint==='LOC');
+ const ui=readFileSync(new URL('options.js',extension),'utf8');
+ assert.match(ui,/result\.retryEndpoint==='MCP'/);
+ assert.match(ui,/result\.retryStatus/);
+ assert.ok(background.includes("locQueueRetryType:s===0?'network':'server'"));
+});
