@@ -468,3 +468,28 @@ test('successful original graph snapshot enters Queue without touching page scro
  assert.ok(queued.every(row=>row.order_evidence==='source-ordinal'));
  assert.ok(queued.every(row=>row.source_key==='https://chatgpt.com/c/'+conversationIdForRead));
 });
+
+test('incomplete source graph is not misreported as the full conversation',async()=>{
+ const incomplete=fullConversationFixture();
+ incomplete.mapping['paginated-root']={parent:null,message:null};
+ const {sandbox}=sourceReadRuntime(incomplete);
+ sandbox.threadIdForRead=conversationIdForRead;
+ const output=await vm.runInContext('readChatgptSourceInPage(threadIdForRead,true)',sandbox);
+ assert.equal(output.status,'source-paginated');
+});
+test('ChatGPT forbidden original source returns a precise reason without guessing DOM order',async()=>{
+ const {sandbox}=sourceReadRuntime();
+ sandbox.fetch=async()=>new Response('',{status:403});
+ sandbox.threadIdForRead=conversationIdForRead;
+ const output=await vm.runInContext('readChatgptSourceInPage(threadIdForRead,true)',sandbox);
+ assert.equal(output.status,'source-http-403');
+ let requested=0;
+ sandbox.chrome.scripting={executeScript:async()=>{requested++;return [{result:output}]}};
+ vm.runInContext("inject=async()=>{}",sandbox);
+ sandbox.chrome.tabs={sendMessage:async()=>({
+  error:'來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序'})};
+ sandbox.tabForRead={id:7,url:'https://chatgpt.com/c/'+conversationIdForRead};
+ await assert.rejects(vm.runInContext('capture(tabForRead,"",true)',sandbox),
+  /ChatGPT 原始對話讀取遭拒（403）/);
+ assert.equal(requested,1,'Do not retry unauthorized source reads');
+});
