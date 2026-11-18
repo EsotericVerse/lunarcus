@@ -5,7 +5,7 @@ import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
 import {oauthProvider} from '@better-auth/oauth-provider';
-import {PostgresDialect} from 'kysely';
+import {createKyselyDialect} from '../../vendor/loc-dialect/index.mjs';
 import {createAuthPostgresPool} from './pg-driver.mjs';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
@@ -104,7 +104,7 @@ export function createLocAuth(env){
   // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
-  const db=new ZenStackClient(rainbowSchema,{dialect:new PostgresDialect({pool})});
+  const db=new ZenStackClient(rainbowSchema,{dialect:createKyselyDialect('postgres',{pool})});
   // The OAuth provider delegates client/resource authorization to the
   // application; it does not automatically apply the Admin Plugin's roles.
   // Use Better Auth's authoritative on-demand Session check for privileged
