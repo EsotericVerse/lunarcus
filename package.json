@@ -3,16 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "LunArcus bridge: Better Auth, PostgreSQL SSO, MCP protocol, extension and IPA packaging",
-  "scripts": {
-    "check:auth": "node --check app/las/index.mjs && node --check app/las/auth/auth.mjs && node --check app/las/auth/pg-driver.mjs && node --test scripts/test-las-auth-http.mjs scripts/test-las-dialect.mjs scripts/test-first-party-client.mjs",
-    "check:extension": "node --check plugins/chrome/background.js && node --check plugins/chrome/content.js && node --test scripts/test-extension-complete-history.mjs scripts/test-las-chatgpt-assistant-detection.mjs scripts/test-extension-queue-receipts.mjs scripts/test-extension-clear-diagnostics.mjs scripts/test-las-extension-direct-import.mjs scripts/test-las-conversation-reconcile.mjs scripts/test-las-source-temporal-order.mjs",
-    "auth:dry-run": "npx --yes wrangler@4.157.0 deploy --dry-run",
-    "auth:deploy": "npx --yes wrangler@4.157.0 deploy",
-    "check:mcp": "node --check app/las/mcp/server.mjs && node --check app/las/mcp/router.mjs && node --check app/las/mcp/loc-mapping.mjs && node --check app/las/tunnel/loc-mapping.mjs && node --test scripts/test-las-mcp-contract.mjs scripts/test-las-mcp-worker-http.mjs",
-    "skills:sync": "node scripts/sync-claude-skills.mjs",
-    "check:las-dialect": "node --test scripts/test-las-dialect.mjs"
-  },
+  "description": "LunArcus: LAS Auth, MCP, Tunnel and Chrome Extension",
+  "scripts": {},
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
     "@streamparser/json": "0.0.26",
