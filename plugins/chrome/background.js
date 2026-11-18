@@ -96,7 +96,8 @@ function reviewGroups(rows){
   const valid=sorted.every(r=>Number.isSafeInteger(r.source_order)&&r.source_order>=0&&
    typeof r.message_id==='string'&&r.message_id.length>0&&
    ['user','assistant'].includes(r.role)&&typeof r.text==='string')&&
-   ids.size===sorted.length&&positions.size===sorted.length;
+   ids.size===sorted.length&&positions.size===sorted.length&&
+   sorted.every(trustedSourceOrder);
   return {key,scopeid:sorted[0].scopeid||'lo3rwang',
    source:sorted[0].source_key,title:sorted[0].title||'對話',
    valid,ready:valid&&sorted.every(r=>r.reviewed===true),
@@ -211,7 +212,7 @@ async function toEvents(items,scopeid='lo3rwang'){
    if(!Number.isSafeInteger(item.source_order)||item.source_order<0||
       !['user','assistant'].includes(item.role)||typeof item.text!=='string'||
       !item.text.trim()||item.text.length>140000||
-      !['source-ordinal','source-unit-ordinal'].includes(item.order_evidence))
+      !['source-ordinal','source-conversation-turn'].includes(item.order_evidence))
     throw Error('來源沒有可靠的原始訊息序號；不使用頁面位置或 Queue 時間排序');
    const message_id=String(item.message_id||
      'source-ordinal:'+item.source_order);
@@ -226,6 +227,7 @@ async function toEvents(items,scopeid='lo3rwang'){
    rows.push({id,group_id,scopeid,kind:'ordered_conversation',
       source_key,url,title:String(item.title||'對話').slice(0,350),
       message_id,source_order:item.source_order,parent_id,role:item.role,
+      order_evidence:item.order_evidence,
       text:item.text,captured_at:new Date().toISOString()});
    continue;
   }
@@ -558,9 +560,16 @@ async function sendViaAuth(scopeid,batch,token,config){
  validateArticleReceipts(receipt.articles,batch.records);
  return receipt;
 }
+function trustedSourceOrder(row){
+ return row?.order_evidence==='source-ordinal'||
+   row?.order_evidence==='source-conversation-turn';
+}
 function partitionQueueForFlush(pending){
  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
- const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&row.reviewed!==true);
+ // Older extension builds omitted chronology evidence from Queue rows.
+ // These rows remain untouched until their source order is reverified.
+ const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&
+   (row.reviewed!==true||!trustedSourceOrder(row)));
  const blocked=new Set(unreviewed.map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
    row.reviewed===true&&!blocked.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
