@@ -375,3 +375,96 @@ test('unverified legacy window-relative chronology is quarantined, even when mar
    Object.assign(sandbox,{untrustedInput:{...rows[0],
      source_key:src,url:src,content:'[user]\nold'}})),/來源沒有可靠的原始訊息序號/);
 });
+
+const conversationIdForRead='6af8ff99-6b54-83ee-8ee5-06f99616d940';
+const fullConversationFixture=()=>{
+ const content=(role,text,id,channel='final')=>({
+  id,author:{role},content:{content_type:'text',parts:[text]},
+  metadata:{channel}
+ });
+ return {conversation_id:conversationIdForRead,title:'Source graph demo',
+  // Object key order deliberately disagrees with the source parent chain.
+  current_node:'reply-2',mapping:{
+   'reply-2':{parent:'user-2',message:content('assistant','answer two','a2')},
+   'user-1':{parent:'root',message:content('user','question one','u1')},
+   'root':{parent:null,message:null},
+   'hidden':{parent:'reply-1',message:content('assistant','private reasoning','hidden','analysis')},
+   'user-2':{parent:'hidden',message:content('user','question two','u2')},
+   'reply-1':{parent:'user-1',message:content('assistant','answer one','a1')}
+  }};
+};
+function sourceReadRuntime(payload=fullConversationFixture()){
+ const {sandbox}=makeRuntime();
+ sandbox.location={hostname:'chatgpt.com',pathname:'/c/'+conversationIdForRead};
+ sandbox.document={title:'On-screen conversation'};
+ const calls=[];
+ sandbox.fetch=async (url,options={})=>{
+  calls.push({url,options});
+  return Response.json(payload,{headers:{'content-type':'application/json'}});
+ };
+ return {sandbox,calls};
+}
+test('ChatGPT first-party parent graph yields original sequence, never mapping order or capture time',async()=>{
+ const {sandbox,calls}=sourceReadRuntime();
+ sandbox.threadIdForRead=conversationIdForRead;
+ const output=await vm.runInContext(
+   'readChatgptSourceInPage(threadIdForRead,true)',sandbox);
+ assert.equal(output.status,'ok');
+ assert.equal(output.title,'Source graph demo');
+ assert.deepEqual(Array.from(output.messages,x=>x.message_id),['u1','a1','u2','a2']);
+ assert.deepEqual(Array.from(output.messages,x=>x.source_order),[1,2,4,5]);
+ assert.deepEqual(Array.from(output.messages,x=>x.role),['user','assistant','user','assistant']);
+ assert.equal(output.messages.some(x=>x.text.includes('private reasoning')),false);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'/backend-api/conversation/'+conversationIdForRead);
+ assert.equal(calls[0].options.credentials,'same-origin');
+ assert.equal(calls[0].options.method,'GET');
+});
+test('Include AI off excludes assistant content without losing original user ordinals',async()=>{
+ const {sandbox}=sourceReadRuntime();
+ sandbox.threadIdForRead=conversationIdForRead;
+ const output=await vm.runInContext(
+   'readChatgptSourceInPage(threadIdForRead,false)',sandbox);
+ assert.equal(output.status,'ok');
+ assert.deepEqual(Array.from(output.messages,x=>x.source_order),[1,4]);
+ assert.ok(output.messages.every(x=>x.role==='user'));
+});
+test('source graph does not expose another conversation or ambiguous paginated records',async()=>{
+ const {sandbox,calls}=sourceReadRuntime();
+ sandbox.threadIdForRead=conversationIdForRead;
+ sandbox.location.pathname='/c/00000000-0000-4000-8000-000000000000';
+ let output=await vm.runInContext(
+   'readChatgptSourceInPage(threadIdForRead,true)',sandbox);
+ assert.equal(output.status,'changed-conversation');
+ assert.equal(calls.length,0,'No requests are issued for another chat');
+ const second=sourceReadRuntime({...fullConversationFixture(),has_more:true});
+ second.sandbox.threadIdForRead=conversationIdForRead;
+ output=await vm.runInContext(
+   'readChatgptSourceInPage(threadIdForRead,true)',second.sandbox);
+ assert.equal(output.status,'source-paginated');
+});
+test('successful original graph snapshot enters Queue without touching page scroll or DOM',async()=>{
+ const {sandbox}=sourceReadRuntime();
+ let injected=0,queued=null;
+ sandbox.chrome.scripting={
+  executeScript:async({target,world,func,args})=>{
+   injected++;
+   assert.equal(target.tabId,7);
+   assert.equal(world,'MAIN');
+   assert.equal(args[0],conversationIdForRead);
+   return [{result:await func(...args)}];
+  }};
+ sandbox.spyRows=rows=>{queued=rows};
+ vm.runInContext(
+  'acceptItems=async rows=>{spyRows(rows);return {detected:rows.length,insertedCaptures:rows.length,message:"queued"}}',
+  sandbox);
+ sandbox.tabForRead={id:7,url:'https://chatgpt.com/c/'+conversationIdForRead};
+ const receipt=await vm.runInContext('capture(tabForRead,"",true)',sandbox);
+ assert.equal(injected,1);
+ assert.equal(receipt.read_source,'original-message-chain');
+ assert.equal(receipt.insertedCaptures,4);
+ assert.equal(queued.length,4);
+ assert.deepEqual(queued.map(row=>row.source_order),[1,2,4,5]);
+ assert.ok(queued.every(row=>row.order_evidence==='source-ordinal'));
+ assert.ok(queued.every(row=>row.source_key==='https://chatgpt.com/c/'+conversationIdForRead));
+});
