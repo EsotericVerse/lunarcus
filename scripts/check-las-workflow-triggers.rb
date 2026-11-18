@@ -8,7 +8,6 @@ EXPECTED_EVENTS = {
   'check-lunarcus.yml' => %w[pull_request workflow_dispatch],
   'deploy-las-mcp.yml' => %w[pull_request workflow_dispatch],
   'deploy-lunarcus-auth.yml' => %w[push workflow_dispatch],
-  'notify-loc-after-auth.yml' => %w[check_run workflow_dispatch],
   'package-extension.yml' => %w[workflow_dispatch]
 }.freeze
 
@@ -69,9 +68,6 @@ files.each do |file|
         raise 'Chrome client must not trigger server verification'
       end
       raise 'GitHub must never publish a second Worker' unless File.read(file).include?('deploy --dry-run')
-    elsif name == 'notify-loc-after-auth.yml'
-      check = mapping_field(on, 'check_run')
-      raise 'LOC notification requires completed server build' unless scalar_list(mapping_field(check, 'types')) == ['completed']
     elsif name == 'package-extension.yml'
       raise 'Client ZIP must be a downloadable artifact, not a server deployment' unless
         File.read(file).include?('actions/upload-artifact@v4')
