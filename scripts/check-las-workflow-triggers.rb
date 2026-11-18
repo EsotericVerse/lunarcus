@@ -65,8 +65,8 @@ files.each do |file|
       raise 'LAS server verification must only follow main' unless branches == ['main']
       paths = scalar_list(mapping_field(push, 'paths'))
       raise 'LAS server paths must include its runtime' unless paths.include?('app/las/**/*.mjs')
-      raise 'Chrome client must not trigger server verification' if paths.any? do |path|
-        path.start_with?('plugins/', 'public/plugins/')
+      if paths.any? { |path| path.start_with?('plugins/', 'public/plugins/') }
+        raise 'Chrome client must not trigger server verification'
       end
       raise 'GitHub must never publish a second Worker' unless File.read(file).include?('deploy --dry-run')
     elsif name == 'notify-loc-after-auth.yml'
