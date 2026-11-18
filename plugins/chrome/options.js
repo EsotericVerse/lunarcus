@@ -79,7 +79,11 @@ async function show(){
     result.retryReason==='network'?'網路連線失敗':'暫時服務異常')+
    '（'+destination+'／'+failure+'），自動重試延後至 '+
    new Date(result.nextRetryAt).toLocaleString('zh-TW')):'';
+ const reviewBlocked=Number(result.blockedReview||0);
+ const legacyBlocked=Number(result.legacyUnordered||0);
  queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
+  (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
+  (legacyBlocked?'；'+legacyBlocked+' 筆舊版未排序內容保留':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  renderOverviewGuidance(result);
  const last=result.lastAction;

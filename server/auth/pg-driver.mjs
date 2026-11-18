@@ -2,7 +2,7 @@
 // provides only Kysely's request-scoped pg connection lifecycle.
 // No SQL target discovery, database sharing, or implicit privileges.
 import pg from 'pg';
-import {requestScopedPool} from '../../../vendor/loc-dialect/index.mjs';
+import {requestScopedPool} from '../../vendor/loc-dialect/index.mjs';
 
 export function createAuthPostgresPool(connectionString,ClientClass=pg.Client,
     {attempts=2,delayMs=400}={}){

@@ -5,7 +5,7 @@ import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
 import {oauthProvider} from '@better-auth/oauth-provider';
-import {createKyselyDialect} from '../../../vendor/loc-dialect/index.mjs';
+import {createKyselyDialect} from '../../vendor/loc-dialect/index.mjs';
 import {createAuthPostgresPool} from './pg-driver.mjs';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
