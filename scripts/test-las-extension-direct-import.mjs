@@ -400,6 +400,9 @@ function sourceReadRuntime(payload=fullConversationFixture()){
  const calls=[];
  sandbox.fetch=async (url,options={})=>{
   calls.push({url,options});
+  if(url==='/api/auth/session')
+   return Response.json({accessToken:'test-page-only-bearer-secret'},
+    {headers:{'content-type':'application/json'}});
   return Response.json(payload,{headers:{'content-type':'application/json'}});
  };
  return {sandbox,calls};
@@ -415,10 +418,14 @@ test('ChatGPT first-party parent graph yields original sequence, never mapping o
  assert.deepEqual(Array.from(output.messages,x=>x.source_order),[1,2,4,5]);
  assert.deepEqual(Array.from(output.messages,x=>x.role),['user','assistant','user','assistant']);
  assert.equal(output.messages.some(x=>x.text.includes('private reasoning')),false);
- assert.equal(calls.length,1);
- assert.equal(calls[0].url,'/backend-api/conversation/'+conversationIdForRead);
- assert.equal(calls[0].options.credentials,'same-origin');
- assert.equal(calls[0].options.method,'GET');
+ assert.equal(calls.length,2);
+ assert.equal(calls[0].url,'/api/auth/session');
+ assert.equal(calls[1].url,'/backend-api/conversation/'+conversationIdForRead);
+ assert.equal(calls[1].options.credentials,'same-origin');
+ assert.equal(calls[1].options.method,'GET');
+ assert.equal(calls[1].options.headers.authorization,'Bearer test-page-only-bearer-secret');
+ assert.equal(JSON.stringify(output).includes('test-page-only-bearer-secret'),false,
+   'Session bearer never escapes source read output');
 });
 test('Include AI off excludes assistant content without losing original user ordinals',async()=>{
  const {sandbox}=sourceReadRuntime();
@@ -467,6 +474,8 @@ test('successful original graph snapshot enters Queue without touching page scro
  assert.deepEqual(Array.from(queued,row=>row.source_order),[1,2,4,5]);
  assert.ok(queued.every(row=>row.order_evidence==='source-ordinal'));
  assert.ok(queued.every(row=>row.source_key==='https://chatgpt.com/c/'+conversationIdForRead));
+ assert.equal(JSON.stringify(queued).includes('test-page-only-bearer-secret'),false,
+   'Session bearer must never enter Queue records');
 });
 
 test('incomplete source graph is not misreported as the full conversation',async()=>{
