@@ -1,13 +1,6 @@
 name: Package LunArcus Chrome Extension
+# Chrome is owner-installed; never package it automatically on a server release.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'plugins/chrome/**'
-      - 'public/plugins/chrome/oauth/config.json'
-      - 'scripts/test-extension-*.mjs'
-      - 'scripts/test-las-extension-direct-import.mjs'
-      - '.github/workflows/package-extension.yml'
   workflow_dispatch:
 
 permissions:
