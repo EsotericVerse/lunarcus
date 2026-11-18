@@ -15,27 +15,29 @@ The person and brand aliases `Lucas Oscar Wang`, `lo3rwang`, `lo3r`, and `Luciph
 ## Fixed boundaries
 
 - **LOC SaaS** owns Galaxy/Anchor business schemas, permissions, queries, import policy, physical databases and the existing SQL dialect implementation. LOC can extend PostgreSQL/MySQL/MSSQL drivers without pulling those into LAS.
-- **LRS** owns original rune images, Effekseer and future game logic. Web consumes published links; iOS/Android native packaging requires actual local assets. The `lo3r@lrs` module identifier does not rename the established `lrunes` Scope or `lrunes.lo3rwang.cc`.
+- **LRS** owns original rune images, Effekseer, game logic, its independent Web Routing Table and its own native App／IPA. Other sites may link to LRS URLs, but must not copy the LRS Routing Table. The logical `lo3r@lrs` identifier does not rename LOC's existing `lrunes` Scope.
 - **LAS (Luna Protocol)** owns auth/session/SSO integration, MCP protocols, extensions/plugins, and cross-system transport mappings. `las:tunnel` maps **transport and field contracts** between systems; it does not duplicate Galaxy's data model or execute client-selected SQL. Avoid a parallel SQL dialect stack.
-- **LOC native packaging** owns the existing unsigned IPA build, RC/release and all App artifacts via `EsotericVerse/lunacodex/.github/workflows/ios-device-build.yml`. LAS does not own IPA/APK workflows; LRS supplies pinned, checksum-verified real files. This does not claim a signed or physically tested IPA.
+- **Native packaging is independent:** LOC owns LOC App/IPA via its existing `ios-device-build.yml`; LRS owns LRS App/IPA via its own repository workflow as it is introduced and verified. LAS does not package native apps. Version-pinned file exchange is optional and does not couple routine builds.
 - **ISR** is planned as a LAS Auth-administered optional service, not a mandatory Next.js dependency of authentication. Existing `loc-isr` runtime ownership is not yet migrated.
 
 ## Existing public identifiers (unchanged)
 
 - `loc.lo3rwang.cc` = LOC SaaS
-- `lrunes.lo3rwang.cc` = existing Rune/SaaS domain
+- `lrunes.lo3rwang.cc` = existing Rune Scope entry; it does **not** grant LOC ownership of LRS Web routing
 - `auth.lo3rwang.cc` = OAuth/OIDC Issuer (unchanged); existing Cloudflare Worker script is **`lunarcus`**
 - `mcp.lo3rwang.cc` = LAS MCP hostname (same production `lunarcus` Worker)
 - `isr.lo3rwang.cc` = existing separate ISR Worker
+
+**Routing Tables and deployments are separate for all three repositories:** LOC owns only LOC site／Scope routing, LRS owns only LRS Web／App routing, and LAS owns only its Auth／MCP protocol host routing. A cross-site link or authenticated API call is an interface contract, not a shared routing table or a deployment trigger.
 
 The current repository layout keeps `app/las/index.mjs` as the single Worker entrypoint, `app/las/auth/` for authentication, `app/las/mcp/` for MCP transport, and `app/las/tunnel/` for fixed cross-system contracts. Cloudflare Workers Builds must watch these actual paths before merging a source move. The existing Auth Worker script was renamed separately from `auth` to `lunarcus` by the owner; do not recreate the old `auth` script or alter its `auth.lo3rwang.cc` custom domain, OAuth Client ID, Extension ID, Cloudflare secret bindings or existing Scopes as part of module naming. `packages/` currently remains in its original repository and **has not been transferred**.
 
 ## Implementation status
 
-- `las:auth`: source deployed under `app/las/auth/`; the single `lunarcus` Worker serves Auth and MCP. SSO and Consent were verified after the owner rebuilt the Cloudflare Access SaaS application on 2026-11-17.
+- `las:auth`: source deployed under `app/las/auth/`; the single `lunarcus` Worker serves Auth and MCP. The retired upstream Cloudflare Access SSO route is not a runtime dependency. OAuth and Consent acceptance require current endpoint verification rather than an old SaaS test.
 - `las:plugins`: LunArcus Chrome extension source moved to `plugins/chrome/`; simulated 9-visible/80-turn ChatGPT full history case passes. Native Chrome verification and production extension directory handover still required.
 - `las:mcp` + `las:tunnel`: MCP protocol is under `app/las/mcp/` within the existing single Worker; fixed-operation LOC Data Mapping lives in `app/las/tunnel/loc-mapping.mjs`, with a compatibility re-export in MCP. The mapping cannot select SQL, DB targets, or untrusted service URLs. LAS owns `mcp.lo3rwang.cc`; MCP tools and authorization still require separate end-to-end acceptance.
-- `loc:ipa`: the existing manual unsigned workflow and LRS checksum handoff were returned to LOC in PR #1733; LOC pins its own commit and LRS source SHA, assembles native files and packages the App. LAS has no App build trigger. Physical iOS testing and Android APK are not claimed.
+- `loc:ipa` and `lrs:ipa` are separate application deliverables; LOC already has a manual unsigned workflow, while LRS's independent IPA workflow must be verified from LRS main and its artifacts. LAS has no native build trigger; physical-device signing and acceptance cannot be inferred from a PR or build script.
 - ISR: source migration blocked by missing original OpenNext source, runtime left intact.
 
 Preserve the original LOC source until **real production** compatibility has been proved. Remove orphan copies only from the *LAS repo* after independent module tests; never delete the still-serving LOC source automatically.

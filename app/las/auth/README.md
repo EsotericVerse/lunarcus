@@ -1,211 +1,25 @@
-# LunArcus — Auth / SSO Worker
+# LAS Auth — Better Auth / OAuth / Session
 
-LOC Auth is an independent SSO, OAuth/OIDC, Session and MCP Gateway service.
-Better Auth is the implementation module, **not** the product name.
+`app/las/auth/` 維護 LAS 的認證與身分資料，不管理 LOC 的 Galaxy、Scope 業務權限，也不接管 LRS 的符文資料。公開 issuer 為 `https://auth.lo3rwang.cc`，同一個 LAS `lunarcus` Worker 另按主機名稱將 `mcp.lo3rwang.cc` 請求交給 MCP 模組；兩者不屬於 LOC 或 LRS 的 Routing Table。
 
-The LOC Web (LunaCodex / Language of Codex Framework) shares source code, not
-the Auth user registry. LOC Web owns business tables and `api.manage`. A LOC
-Auth user is valid even if no LOC Web user or `api.manage` record exists.
-The two systems have independent identity, Session and business-authorization
-stores, but they are **not unrelated**. They may reference each other through
-explicit, narrowly scoped, verified contracts (for example Auth identity ->
-LOC Web `api.manage` when authorizing a website business write, or a website
-resource -> an Auth-issued MCP delegation). Such references never silently
-merge records, make one table authoritative for the other, or require a LOC Web
-record before an Auth identity/Session can exist. Auth-owned persistence and
-MCP Gateway control-plane writes must work independently of `api.manage`.
+## 單一認證與資料來源
 
-## Storage: the existing database connection, nothing new
+- 目前使用 Google OAuth 登入、Better Auth 與既有 Session；**Cloudflare Access 上游 SSO 已移除**，不可從歷史交接重建。
+- 只使用既有 `LAS_DATABASE_URL` PostgreSQL 連線及 `public.las_*` 資料表。實際映射見 `rainbow-tables.mjs`、`rainbow-zmodel.mjs`，存取見 `auth.mjs`、`pg-driver.mjs`。不建立第二套 D1／KV／R2／Durable Object 儲存，不執行自動 Migration、建表、修改 RLS 或隱性授權。
+- LOC Web 的 `api.manage` 是獨立的業務權限。LAS 身分、LAS Session、OAuth 授權與 LOC 文章的編輯權限不可混為一談；跨系統權限須走現有的固定契約。
+- 所有 Secret 與資料庫連線資訊只從環境取得，錯誤與日誌不得輸出原始憑證。
 
-**Read this before proposing any storage work.** Four separate attempts have
-been lost here, the longest costing three days, each one beginning with an
-agent deciding that the Auth store should be somewhere else.
+## Session、管理權限與流量
 
-Storage always uses the database connection this service already has. Today
-that is Neon PostgreSQL, reached through `LAS_DATABASE_URL`. It is always
-a database and always SQL. The twelve `public.las_*` tables already exist
-and were verified again on 2026-11-13 against the live catalog; they hold 146
-columns between them, and the JWKS signing key is persisted in `las_jwks`.
+- Session 的資料來源為 PostgreSQL；簽名 Cookie Cache 目前為 30 分鐘。特權 Auth 管理操作以現有程式的即時 Session／角色檢查為準，不能只憑 Cookie Cache 授予權限。
+- Admin 只能依程式已設權限執行管理操作，不能藉 Auth Admin 權限取得 LOC Scope 權限。具體角色、允許操作與例外在 `auth.mjs`。
+- `auth-qos.mjs` 集中定義 Better Auth 的原生頻率規則與 JWKS 例外；Karaul 的 PELT 目前僅提供觀測訊號，**不額外收緊每個端點的頻率限制**。不要把早期版本中更嚴格的處置說明當作現行行為。
+- JWKS 正常輪換、金鑰撤銷及 Session 失效是不同事件；單純請求量上升不應觸發整個 issuer 的簽名金鑰失效。
 
-Do not introduce a second place to put data. Not D1, not KV, not R2, not a
-Durable Object, not an object store, whatever the apparent fit. D1 is itself
-SQL, so "it is still SQL" does not make it acceptable: the rule is the
-*existing connection*, not the query language. Changing where Auth data lives
-is the user's decision to state explicitly, never an inference from a problem
-that looks storage-shaped.
+## 維護與驗證
 
-Two reasons, both of which have already cost real time here.
+`auth.mjs` 是 Better Auth 與官方 ZenStack adapter 的整合來源；`auth-qos.mjs` 是現行頻率規則，`rainbow-zmodel.mjs` 是現有實體欄位映射。這些契約應跟著程式碼及測試維護，**不在 README 重複逐欄定義**。
 
-**Billing.** Every new data space is a new billable resource. Provisioning one
-raises no error and fails no check; it appears quietly on the bill, and the
-person paying it did not ask for it.
+修改 Auth 時先執行 `npm run check:auth`；需要驗證 Worker bundle 時可執行 `npm run auth:dry-run`（不發布）。再按修改範圍檢查實際 OAuth 登入、Session、Consent、JWKS、管理權限及 MCP 下游身分銜接。語法、CI、Worker 部署與真實登入成功是不同的驗證層級。
 
-**The split.** LOC Auth and LOC Web are deliberately separate. Auth owns
-`public.las_*`; LOC Web owns its own business tables and `api.manage`.
-They have separate repositories and database ownership. That separation exists precisely so that
-work on one side cannot quietly reshape the other, so a storage change on
-either side is never a local decision.
-
-Related rules that have the same root, with the reasoning kept where it is
-useful rather than repeated here: no query of our own at request time (the
-SSO provider is configured through `defaultSSO`, which is resolved in memory
-and reads no `ssoProvider` table), and no shared bearer secret between the two
-sides — identity travels as a Better Auth session verified against the
-published JWKS, which is per-user, revocable and rotating, where one shared
-token is none of those.
-
-## Storage isolation: Rainbow names only
-
-**The old `loc_auth` test objects are not an Auth storage design.** Never
-recreate, import, use, or refer to those test records as the production system.
-The user has separately removed a temporary test table in Supabase. This
-repository must not try to re-create it.
-
-The code's **table-name mappings** (not actual SQL tables) are explicitly:
-
-| Logical model | Proposed PostgreSQL table |
-| --- | --- |
-| Better Auth user | `las_auth` |
-| Better Auth session | `las_session` |
-| Better Auth external account | `las_account` |
-| Better Auth verification | `las_verification` |
-| JWT JWKS | `las_jwks` |
-| OAuth client | `las_oauth_client` |
-| OAuth resource | `las_oauth_resource` |
-| OAuth client-resource link | `las_oauth_client_resource` |
-| OAuth refresh token | `las_oauth_refresh_token` |
-| OAuth access token | `las_oauth_access_token` |
-| OAuth consent | `las_oauth_consent` |
-| OAuth client assertion | `las_oauth_client_assertion` |
-
-**The owner has renamed the twelve existing tables to `public.las_*` and updated RLS.** This PR did not create them. RLS policies and SQL grants are maintained by the owner; do not infer, create, or require a dedicated runtime role. This establishes the policy/grant configuration, **not** successful Auth Worker connectivity or end-to-end persistence. The exact full model/field
-inventory, constraints, indexes, plugin-specific additions, and **each table's
-RLS SELECT / INSERT / UPDATE / DELETE policy must be reviewed with the user**
-before any production DDL. The table mapping is a code-side contract; if a pinned
-plugin uses further models, do not create them automatically. Review the
-vendor model inventory first.
-
-**Naming invariant:** `loc_auth` is reserved as a non-LOC-Auth identifier:
-no LOC Auth table, schema, fallback, or automatic migration may adopt it.
-Every LAS-owned table must start with `las_` (including future plugin
-models). Existing objects named `loc_auth` belong to a different context and
-must not be renamed, imported, adopted, or modified as part of this rewrite.
-
-The LAS PostgreSQL schema is `public`. The code uses `LAS_DATABASE_URL` and
-existing `public.las_*` tables, without a schema override, new database role,
-DDL, or RLS changes.
-These are runtime credentials only; never put a schema-owner credential in
-the Worker.
-
-**No automatic migrations, ad hoc schema/table creation, implicit RLS grants,
-or SQL RPC.** Auth data read/write uses Better Auth's supported PostgreSQL
-adapter. LOC Auth can share one Neon project with LOC Web while its tables and
-permissions remain separate. Existing Neon-managed Auth tables and LOC Web business tables remain distinct
-and may be referenced through explicitly verified integration contracts; neither
-becomes LOC Auth's own persistence store. Do not modify those existing tables
-for this change.
-
-## Cache and deployment
-
-Keep the user's active Auth Cache and LOC Web ISR configurations unchanged.
-Session state belongs in PostgreSQL. Signed Session Cookie Cache is
-**30 minutes**, not a 30-minute polling timer. A new Worker version changes
-the cache version; old cached values then stop being used, but the persisted
-database Session is not deleted. Privileged LOC Web identity checks use Better Auth's existing signed
-Session Cookie Cache rather than disabling it for each operation.
-Server-side business permissions remain independently enforced; revoked
-sessions may remain valid until the signed Cookie Cache window expires. Keep existing Auth Cloudflare Cache and LOC Web
-ISR configurations untouched. Do not reintroduce a Durable Object identity store.
-
-## QoS, simultaneous requests and signing-key safety
-
-Karaul is the **single LOC Auth QoS policy owner**: it preserves the
-existing general budget (**120 requests per 60 seconds**) and all seven
-original OAuth quotas (token 40, authorize 60, introspection 100, revoke
-30, registration 5, client-key rotation 5, UserInfo 120 per 60 seconds).
-All these values now live only in `auth-qos.mjs`, not in Better Auth
-core and OAuth Provider options. These are per-isolate rate limits, not
-globally synchronized per-client enforcement.
-
-Better Auth 1.7.18's upstream `rateLimit.customRules` now provides
-request admission, counters and 429 responses for every Auth endpoint (the `/**` path rule), except JWKS.
-The old bespoke in-flight/HTTP admission gate was removed. Its per-source
-concurrency ceilings are no longer present; the native limiter instead
-enforces per-IP/per-endpoint request-rate budgets. Session endpoints are
-subject to the same passive policy, but only enough accumulated activity
-triggers Poisson/PELT. Public metadata bypasses the Auth handler; JWKS is
-explicitly exempt. The default memory
-limiter is shared within an isolate but not globally across Cloudflare PoPs.
-
-**High request concurrency never invalidates the entire issuer JWKS.** Such
-invalidations would disrupt unrelated valid clients. Better Auth manages
-normal JWKS key rotation (currently 30-day rotation with 30-day previous-key
-grace). A confirmed credential/key compromise calls for the affected
-credential or key to be revoked, and any active token security review must
-account for already-issued stateless JWT validity. Connection storms instead
-receive backpressure / QoS limits, not global signing-key destruction.
-
-## Release gate
-
-The branch is a **draft**, not production accepted. It must not be deployed
-until the specific table models/fields and RLS are approved, the runtime
-database/schema bindings are present, verified Auth SQL read/write succeeds,
-OAuth/Session/JWKS works, and the MCP delegation path is tested.
-Schema creation requires the user's separate explicit approval on every change;
-the previously written test migration scripts have been deleted.
-
-## LOC Auth native OSS integration (2026-11-13)
-
-The Auth Worker now uses the **published** `@zenstackhq/better-auth@3.10.1`
-adapter as its only Better Auth database adapter, via ZenStack v3 and the
-existing Kysely PostgreSQL dialect. `rainbow-zmodel.mjs` is a static model
-snapshot generated from the 146 existing columns of all twelve
-`public.las_*` tables and their unique indexes; no per-request schema
-query, runtime migration, RLS changes, or new SQL endpoint is introduced.
-The adapter uses `supportsArrays:false` because the existing LAS schema
-stores OAuth array-valued fields in PostgreSQL JSONB columns, not native
-PostgreSQL arrays. Zod is supplied by Better Auth's native request validators,
-ZenStack's ORM validators and the existing Auth environment schema; the
-previous duplicate handwritten database validation hooks are removed.
-
-Better Auth's **official Admin Plugin** handles Auth users, bans/unbans,
-Session revocation, and access control. The Auth administrator role is limited
-to user listing/lookup/banning and Session listing/revocation/deletion;
-it has no role escalation, impersonation, or user-deletion capability. These
-Auth roles do not grant LOC Web business privileges. The five Admin fields
-(`role`, `banned`, `banReason`, `banExpires`, `impersonatedBy`) already
-exist on the two core LAS tables; the RLS policies are managed separately by the owner.
-
-Karaul's published `detectChangepoints(series, new PoissonCost())`
-provides a bounded 5-second time-series signal for all Auth endpoints,
-independently per source and normalized route. Only completed buckets with
-substantial traffic invoke PELT. A deep `/**` route matcher is required,
-since Better Auth's shallow `/*` misses nested routes such as
-`/oauth2/client/rotate-keys`.
-On a significant upward change point, Better Auth's native `rateLimit.customRules` selects
-a stricter 30-second request-rate budget; Better Auth itself counts and
-sends HTTP 429. Recovery is based on the next request and elapsed window.
-There are no intervals, timers, SQL polls, new stores or separate HTTP
-blacklist/enforcement loops. This is **per Worker isolate**, never a global
-IP blacklist or a permanent user ban. Account bans and Session revocation
-remain entirely inside the native Better Auth Admin Plugin. Public JWKS
-is explicitly exempt from the native rate limiter, as it was from the
-retired admission gate.
-
-Upstream source references: Better Auth 1.7.18
-`packages/better-auth/src/api/rate-limiter/index.ts`; its
-`docs/content/docs/concepts/rate-limit.mdx`; Stratal
-`packages/framework/src/auth/rate-limit-bridge.ts` (native-rule
-integration pattern); Karaul `src/pelt.ts` and `src/costs/poisson.ts`.
-No Stratal framework dependency or alternative identity store was added.
-
-The existing 30-minute signed Session Cookie Cache is unchanged for ordinary
-SSO traffic. Database Session revocation is authoritative when a request
-bypasses that cache or when the cached session expires. A previously issued
-JWT without an online liveness check remains subject to its normal TTL; this
-Auth-only change does not alter any MCP or website relying-party verifier.
-
-**Release evidence:** Package and schema mappings are committed. Actual Auth
-Worker deployment, live OAuth/Session regression, and production performance
-are separately verifiable release conditions; do not interpret a Pages build
-or a GitHub merge as proof of those behaviors.
+舊版遷移過程、供應商比較、設定試誤與逐版結果已封存於私人 Slack 工程紀錄和 Git Commit；它們不是現行設定的替代來源。

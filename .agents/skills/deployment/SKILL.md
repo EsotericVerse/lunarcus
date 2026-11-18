@@ -5,7 +5,7 @@ description: "LAS 單一 lunarcus Worker、Auth/MCP 合併部署與成功後選�
 
 # LAS Deployment — 先部署、再選擇通知
 
-**LAS 的正式目標只有 `lunarcus` Worker。** Root `wrangler.jsonc` 同時持有 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc`；MCP 為同一 Worker 的模組，不存在第二條 LAS MCP Worker 發布管線。Cloudflare Workers Builds 依 Production／Preview watch paths 發布 Auth 或 MCP 真正有變更的版本，`plugins/chrome/**`、`app/las/tunnel/**`、Skills／文件不應無條件觸發 Worker。
+**LAS 的正式目標只有 `lunarcus` Worker。** Root `wrangler.jsonc` 同時持有 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc`；MCP 為同一 Worker 的模組，不存在第二條 LAS MCP Worker 發布管線。Cloudflare Workers Builds 依 Production／Preview watch paths 發布 Auth、MCP 或其實際引用模組有變更的版本；`plugins/chrome/**`、Skills／文件不應無條件觸發 Worker。`app/las/tunnel/**` 若修改了 MCP 執行時引用的程式，須由 **LAS 自己**驗證並部署相應 Worker 版本，不能因「不通知 LOC」就誤認「LAS 也不用部署」。
 
 ## LAS → LOC 是部署成功後的可選決策
 1. LAS 先完成自己的正式部署，核對 Worker version、網域與必要 Health／MCP contract。
