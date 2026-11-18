@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - 'app/las/**'
+      - 'plugins/chrome/**'
+      - 'public/plugins/chrome/oauth/**'
+      - 'scripts/test-extension-*.mjs'
+      - 'scripts/test-las-conversation-*.mjs'
       - 'vendor/loc-dialect/**'
       - 'wrangler.jsonc'
       - 'package.json'
@@ -27,7 +31,7 @@ jobs:
           cache: npm
       - name: Install LAS server dependencies without lifecycle hooks
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify LAS Auth and MCP on LAS-owned source only
-        run: npm run check:auth && npm run check:mcp
+      - name: Verify LAS Auth, MCP and client Queue locally
+        run: npm run check:auth && npm run check:mcp && npm run check:extension
       - name: Verify existing Worker bundle without publishing
         run: npx --yes wrangler@4.157.0 deploy --dry-run
