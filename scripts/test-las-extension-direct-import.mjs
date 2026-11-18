@@ -464,7 +464,7 @@ test('successful original graph snapshot enters Queue without touching page scro
  assert.equal(receipt.read_source,'original-message-chain');
  assert.equal(receipt.insertedCaptures,4);
  assert.equal(queued.length,4);
- assert.deepEqual(queued.map(row=>row.source_order),[1,2,4,5]);
+ assert.deepEqual(Array.from(queued,row=>row.source_order),[1,2,4,5]);
  assert.ok(queued.every(row=>row.order_evidence==='source-ordinal'));
  assert.ok(queued.every(row=>row.source_key==='https://chatgpt.com/c/'+conversationIdForRead));
 });
