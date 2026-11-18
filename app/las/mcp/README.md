@@ -14,7 +14,7 @@ The canonical server URL is **`https://mcp.lo3rwang.cc/`** (no required `/mcp` s
 | `business-actions.mjs`, `gateway-qos.mjs` | Tool execution and admission/quality-of-service checks |
 | `loc-mapping.mjs` | Compatibility re-export from `../tunnel/loc-mapping.mjs` |
 
-No upstream MCP provider relay (Clerk/GitHub/Neon/Supabase OAuth, tool policy, pending-approval vault) is in scope. LAS has exactly one identity provider (Cloudflare SSO via `auth.lo3rwang.cc`); it is not a hub for other MCP servers' credentials. An unwired `upstream/` subtree implementing that relay was removed 2026-11-17 — it was never referenced by `router.mjs` and was built without the owner's direction.
+No upstream MCP provider relay (Clerk/GitHub/Neon/Supabase OAuth, tool policy, pending-approval vault) is in scope. LAS uses its existing Auth issuer at `auth.lo3rwang.cc`; do not recreate the retired Cloudflare Access upstream SSO path or treat LAS as an upstream provider credential vault. An unwired `upstream/` subtree implementing that relay was removed 2026-11-17 — it was never referenced by `router.mjs` and was built without the owner's direction.
 
 ## Trust boundaries
 
@@ -25,6 +25,6 @@ No upstream MCP provider relay (Clerk/GitHub/Neon/Supabase OAuth, tool policy, p
 
 ## Acceptance
 
-Run `npm run check:mcp` and `npm run mcp:dry-run`, then independently verify real `initialize`, `tools/list`, `tools/call`, tool-level Scope/role access, upstream provider flows and authenticated LOC operations on the public endpoint. CI/Worker deployment/SSO success alone does not prove every MCP action works. SSO and Consent were separately confirmed on 2026-11-17 after the Cloudflare SaaS application was recreated.
+Run `npm run check:mcp` and `npm run mcp:dry-run`, then independently verify real `initialize`, `tools/list`, `tools/call`, tool-level Scope/role access, upstream provider flows and authenticated LOC operations on the public endpoint. CI/Worker deployment/SSO success alone does not prove every MCP action works. Current authentication and consent behavior must be checked against the running LAS Auth implementation; dated Cloudflare Access SSO results are historical, not a live acceptance claim.
 
 Cloudflare custom-domain and Secret configuration must not be changed merely to move code or documentation. Current build ownership and watch paths are described beside the workflows in `.github/workflows/README.md`.
