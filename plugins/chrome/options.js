@@ -70,9 +70,15 @@ async function show(){
  setAuthIndicator(Boolean(result.connected));
  $('captureCount').textContent=result.error?'—':String(result.pendingCaptures??0);
  $('itemCount').textContent=result.error?'—':String(result.pending??0);
+ const destination=result.retryEndpoint==='MCP'?'LAS MCP':
+  result.retryEndpoint==='LOC'?'LOC API':'傳送端';
+ const code=Number(result.retryStatus||0);
+ const failure=code?'HTTP '+code:'網路連線中斷';
  const cooldown=result.nextRetryAt>Date.now()?
-  (result.retryReason==='server'?'；後端故障，自動重試延後至 ':'；流量管制至 ')+
-  new Date(result.nextRetryAt).toLocaleString('zh-TW'):'';
+  ('；'+(result.retryReason==='rate'?'流量管制':
+    result.retryReason==='network'?'網路連線失敗':'暫時服務異常')+
+   '（'+destination+'／'+failure+'），自動重試延後至 '+
+   new Date(result.nextRetryAt).toLocaleString('zh-TW')):'';
  queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  renderOverviewGuidance(result);

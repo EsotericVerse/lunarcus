@@ -530,7 +530,9 @@ async function sendViaAuth(scopeid,batch,token,config){
  const endpoint=new URL(config.import_url||'');
  if(endpoint.origin!=='https://loc.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC 網站短匯入位址錯誤');
  // The Scope is validated by LOC data authorization, not the Auth server.
- const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});
+ let reply;
+ try{reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});}
+ catch(error){error.queueEndpoint='LOC';throw error;}
  await logDiagnostic('import.response',{scopeid,status:reply.status,batch_id:batch.id});
  if(!reply.ok){
    let detail='';
@@ -552,6 +554,7 @@ async function sendViaAuth(scopeid,batch,token,config){
    const e=Error('LOC 匯入失敗：HTTP '+reply.status+
     (detail?' — '+detail:'（後端未提供可讀取的錯誤說明）'));
    e.httpStatus=reply.status;
+   e.queueEndpoint='LOC';
    e.retryAfter=reply.headers?.get?.('retry-after')||'';
    throw e;
   }
@@ -600,13 +603,15 @@ async function sendOrderedConversation(scopeid,records,token,config){
      }))
    }
  }};
- const response=await fetch(endpoint.href,{method:'POST',redirect:'error',
+ let response;
+ try{response=await fetch(endpoint.href,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
      'content-type':'application/json',accept:'application/json'},
-   body:JSON.stringify(payload)});
+   body:JSON.stringify(payload)});}
+ catch(error){error.queueEndpoint='MCP';throw error;}
  if(!response.ok){
    const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status);
-   error.httpStatus=response.status;throw error;
+   error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
  }
  const body=await response.json().catch(()=>null);
  const receipt=body?.result?.structuredContent;
@@ -685,10 +690,13 @@ async function flush(force=false){
      count+=group.length;
     }
    }
-   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures']);
+   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']);
    return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
   }catch(e){
    const s=Number(e.httpStatus||0);
+   const endpoint=['LOC','MCP'].includes(e.queueEndpoint)?e.queueEndpoint:'';
+   await chrome.storage.local.set({locQueueRetryEndpoint:endpoint,
+     locQueueRetryStatus:s>=100&&s<=599?s:0});
    if(s===429){
      const v=String(e.retryAfter||'');
      const ms=/^\d+$/.test(v)?Number(v)*1000:(Date.parse(v)||0)-Date.now();
@@ -698,7 +706,7 @@ async function flush(force=false){
      const failures=Math.min(8,Math.max(0,Number(settings.locQueueFailures||0))+1);
      const delay=Math.min(3600000,60000*2**Math.min(failures,6));
      await chrome.storage.local.set({locQueueFailures:failures,
-       locQueueRetryType:'server',locQueueRetryAfter:Date.now()+delay});
+       locQueueRetryType:s===0?'network':'server',locQueueRetryAfter:Date.now()+delay});
     }else if(e.code==='LOC_IMPORT_CONTRACT'||[400,401,403,404,409,410,413,415,422].includes(s))
      await chrome.storage.local.set({locImportPaused:true});
    throw e;
@@ -1103,12 +1111,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
    case 'loc-status':{
     const [session,queue]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures']),allEvents()]);
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),allEvents()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
      ...captureTotals(queue),lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
+      retryEndpoint:session.locQueueRetryEndpoint||'',
+      retryStatus:Number(session.locQueueRetryStatus||0),
      consecutiveFailures:Number(session.locQueueFailures||0)};
    }
    case 'loc-clear-diagnostics':{
