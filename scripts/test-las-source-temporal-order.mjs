@@ -42,37 +42,37 @@ test('the extractor preserves source chronology but still blocks unordered appen
  assert.ok(background.includes("if(isConversationSource(item.source_key||item.url))"));
 });
 
-test('ChatGPT stable search-unit turn key exposes global source ordinal without moving page',()=>{
- const first=temporal.fromElement(element({
-  'data-chatgpt-search-unit-key':'fallback-turn-27:2:assistant'
+test('window-relative ChatGPT fallback-turn key is never treated as original ordinal',()=>{
+ const first=temporal.fromElement(element({'data-chatgpt-search-unit-key':'fallback-turn-27:2:assistant'}));
+ assert.equal(first.source_order,null);
+ assert.equal(first.order_evidence,'unavailable');
+ const stable=temporal.fromElement(element({
+  'data-chatgpt-search-unit-key':'fallback-turn-0:2:assistant',
+  'data-testid':'conversation-turn-27'
  }));
- assert.equal(first.source_order,27);
- assert.equal(first.order_evidence,'source-unit-ordinal');
- const later=temporal.fromElement(element({
-  'data-chatgpt-search-unit-key':'fallback-turn-3:2:user'
- }));
- assert.equal(later.source_order,3);
- assert.equal(temporal.sortWithEvidence([first,later])[0].source_order,3);
+ assert.equal(stable.source_order,27);
+ assert.equal(stable.order_evidence,'source-conversation-turn');
 });
-test('source-key index conflicts and untrusted viewport identifiers are rejected',()=>{
+test('two independent original ordinal fields must agree; window keys cannot override them',()=>{
  const conflicting=temporal.fromElement(element({
-  'data-chatgpt-search-unit-key':'fallback-turn-31:2:user',
-  'data-message-index':'12'
+  'data-testid':'conversation-turn-31','data-message-index':'12'
  }));
  assert.equal(conflicting.source_order,null);
  assert.equal(conflicting.order_evidence,'conflicting-ordinals');
- for(const key of ['fallback-turn-3:2:tool','fallback-turn-03:2:user',
-   'fallback-turn-NaN:2:assistant','random-turn-99:2:user']){
-  assert.equal(temporal.fromElement(element({
-   'data-chatgpt-search-unit-key':key
-  })).source_order,null);
- }
+ const safe=temporal.fromElement(element({
+  'data-chatgpt-search-unit-key':'fallback-turn-0:2:user',
+  'data-testid':'conversation-turn-31',
+  'data-message-index':'31'
+ }));
+ assert.equal(safe.source_order,31);
+ assert.equal(safe.order_evidence,'source-ordinal');
 });
-test('mixed original-order and source-key evidence do not use capture or DB timestamps',()=>{
+test('mixed explicit source and legacy conversation-turn ordinals do not use capture time',()=>{
  const values=[
-  temporal.fromElement(element({'data-chatgpt-search-unit-key':'fallback-turn-9:2:user'})),
+  temporal.fromElement(element({'data-testid':'conversation-turn-9'})),
   temporal.fromElement(element({'data-turn-index':'2'}))
  ];
  assert.deepEqual(Array.from(temporal.sortWithEvidence(values),x=>x.source_order),[2,9]);
- assert.equal(temporal.fromElement(element({'data-testid':'conversation-turn-0'})).source_order,null);
+ assert.equal(temporal.fromElement(element({'data-testid':'conversation-turn-0'})).source_order,0);
+ assert.equal(temporal.fromElement(element({'data-index':'100'})).source_order,null);
 });
