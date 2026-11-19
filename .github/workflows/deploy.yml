@@ -1,4 +1,4 @@
-name: LAS production deploy (workers.dev only)
+name: LAS production deploy (workers.dev)
 on:
   push:
     branches: [main]
@@ -31,9 +31,9 @@ jobs:
             import fs from 'node:fs';
             const cfg=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
             if(cfg.name!=='lunarcus'||cfg.workers_dev!==true||
-               cfg.preview_urls!==false||Object.hasOwn(cfg,'routes')||
+               cfg.preview_urls!==true||Object.hasOwn(cfg,'routes')||
                Object.hasOwn(cfg,'route')||Object.hasOwn(cfg,'zone_id'))
-              throw Error('LAS release must only target workers.dev; no custom DNS routes or preview');
+              throw Error('LAS release must only target workers.dev; no custom DNS routes; workers.dev previews only');
           "
       - name: Require restricted LAS Worker deploy credential
         env:
