@@ -5,6 +5,8 @@ import {handleMcp,preflight,protectedResourceMetadata}
 
 const LOC='https://loc.lo3rwang.cc';
 const MCP_HOST='mcp.lo3rwang.cc';
+// Production uses the MCP custom domain; only LAS branch/version preview hosts may share this handler.
+const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const WEB='https://loc.lo3rwang.cc';
 const EXT='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const CORS=new Set([EXT,WEB]);
@@ -57,7 +59,7 @@ async function locProxy(request,target,env){
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
-    if(url.hostname!==MCP_HOST&&!url.hostname.endsWith('.workers.dev'))
+    if(url.hostname!==MCP_HOST&&!LAS_PREVIEW_HOST.test(url.hostname))
       return error(404,'Not found');
     if(url.pathname==='/.well-known/oauth-protected-resource'||
        url.pathname==='/.well-known/oauth-protected-resource/mcp'){
