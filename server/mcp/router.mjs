@@ -7,11 +7,13 @@ import {checkMcpGatewayQos} from './gateway-qos.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
-export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
+// Both values are public protocol identities, not deployment targets.
+// They must match the issuer's fixed OAuth resource registration even when
+// an old Cloudflare environment variable survives a Worker migration.
+export const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
-export function mcpConfig(env={}){
-  return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
-    issuer:LOC_OAUTH_ISSUER};
+export function mcpConfig(){
+  return {resource:MCP_RESOURCE,issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
