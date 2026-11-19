@@ -21,9 +21,11 @@ import {ensureFirstPartyOAuthClient,isFirstPartyOAuthConsent} from './first-part
 // content or business roles.
 // Neon supplies PostgreSQL storage, NOT Neon Auth. Neither website rendering
 // nor business permissions are implemented here.
-export const LOC_ISSUER='https://auth.lo3rwang.cc';
+// LAS owns its OAuth issuer and MCP resource on its Worker origin.
+// LOC remains a separate consumer and must explicitly trust the new issuer.
+export const LOC_ISSUER='https://lunarcus.esotericverse.workers.dev';
 export const LOC_WEB='https://loc.lo3rwang.cc';
-export const LOC_MCP='https://mcp.lo3rwang.cc';
+export const LOC_MCP=LOC_ISSUER;
 export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
 // Native Better Auth resource/action permissions. The Auth administrator may
