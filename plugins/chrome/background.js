@@ -580,6 +580,33 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
+// A 401 can be issued before the Gateway reads any conversation body.
+// Record only fixed error categories, byte count and HTTP metadata; never
+// store OAuth tokens, message text or an untrusted server error message.
+async function orderedMcpFailureEvidence(response,bodyBytes,recordCount){
+ const contentType=String(response.headers.get('content-type')||'').split(';',1)[0].toLowerCase();
+ let category='unknown';
+ if(contentType==='application/json'||contentType.endsWith('+json')){
+  const reply=await response.clone().json().catch(()=>null);
+  if(reply?.error==='unauthorized')category='mcp_oauth_token';
+  else if(reply?.error?.code===-32001){
+   const reason=reply.error.message;
+   category=reason==='Verified LOC OAuth identity required'
+    ?'loc_identity_verification':
+    reason==='LOC MCP role not granted'?'loc_role_denied':
+    reason==='LOC OAuth UserInfo rate limited'?'loc_userinfo_rate':
+    'mcp_role_authorization';
+  }else if(reply?.error?.code===-32600&&response.status===413)category='body_too_large';
+ }else if(response.status===401){
+  category='non_json_unauthorized';
+ }
+ await logDiagnostic('mcp.response',{
+  status:response.status,category,content_type:contentType,
+  challenge:response.headers.has('www-authenticate'),
+  body_bytes:bodyBytes,records:recordCount
+ });
+ return category;
+}
 // Ordered turns use the fixed LAS Gateway, never the short-import append route.
 async function sendOrderedConversation(scopeid,records,token,config){
  if(!SCOPE.test(scopeid)||!records.length||records.length>100)
@@ -603,14 +630,18 @@ async function sendOrderedConversation(scopeid,records,token,config){
      }))
    }
  }};
+ const payloadJson=JSON.stringify(payload);
  let response;
  try{response=await fetch(endpoint.href,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
      'content-type':'application/json',accept:'application/json'},
-   body:JSON.stringify(payload)});}
+   body:payloadJson});}
  catch(error){error.queueEndpoint='MCP';throw error;}
  if(!response.ok){
-   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status);
+   const category=await orderedMcpFailureEvidence(response,
+     encoder.encode(payloadJson).length,records.length);
+   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status+
+     '（'+category+'）');
    error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
  }
  const body=await response.json().catch(()=>null);
