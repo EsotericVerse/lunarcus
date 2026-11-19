@@ -99,10 +99,16 @@ export async function verifyOAuthToken(request,config,env={}){
     // Service-side key retrieval is an availability failure, not evidence
     // that an issued OAuth token is invalid. Do not force refresh/reconnect
     // on an unavailable JWKS. Never log tokens, claims or request bodies.
-    if(error?.code==='LAS_JWKS_UNAVAILABLE')throw error;
+    const name=String(error?.name||'');
+    // JOSE distinguishes key-store failures from cryptographic rejection.
+    // A timeout or invalid/multiple-key JWKS is a server issue, NOT a
+    // revoked OAuth bearer. Keep signature/issuer/audience checks intact.
+    if(error?.code==='LAS_JWKS_UNAVAILABLE'||
+       ['JWKSTimeout','JWKSInvalid','JWKSMultipleMatchingKeys'].includes(name))
+      throw Object.assign(new Error('LAS JWKS unavailable'),
+        {code:'LAS_JWKS_UNAVAILABLE'});
     const known=new Set(['JWTExpired','JWTClaimValidationFailed',
       'JWSSignatureVerificationFailed','JWKSNoMatchingKey','JWSInvalid']);
-    const name=String(error?.name||'');
     console.warn('LAS MCP token verification failed',
       known.has(name)?name:'jwks_or_verifier_unavailable');
     return null;
