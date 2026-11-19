@@ -150,16 +150,27 @@ document.getElementById('add').onclick=async function(){
 };
 load();
 `;
+// Production identities are the two custom domains. A version/branch URL
+// under this Worker's workers.dev namespace is preview-only, never an issuer.
+const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\\.esotericverse\\.workers\\.dev$/i;
+const PREVIEW_MCP_PATHS=new Set([
+  '/', '/mcp', '/api/loc-native',
+  '/.well-known/oauth-protected-resource',
+  '/.well-known/oauth-protected-resource/mcp'
+]);
 export default {
   async fetch(request,env,ctx){
     let pool;
     try{
     const url=new URL(request.url);
-    // One deployed LAS Worker serves two existing custom domains.
-    // Route MCP before Auth origin/session handling; never create an Auth DB pool for MCP.
-    if(url.hostname==='mcp.lo3rwang.cc')
+    // Route production by its own hostname. Only on workers.dev preview
+    // use paths to select MCP versus Auth; never rewrite a production host
+    // or redirect it to a preview URL.
+    const preview=LAS_PREVIEW_HOST.test(url.hostname);
+    if(url.hostname==='mcp.lo3rwang.cc'||
+      (preview&&PREVIEW_MCP_PATHS.has(url.pathname)))
       return mcpWorker.fetch(request,env,ctx);
-    if(url.hostname!=='auth.lo3rwang.cc')
+    if(url.hostname!=='auth.lo3rwang.cc'&&!preview)
       return new Response('Not found',{status:404});
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
