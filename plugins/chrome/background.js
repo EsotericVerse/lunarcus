@@ -657,11 +657,18 @@ async function sendOrderedConversation(scopeid,records,token,config){
   throw retry;
  }
  const receipt=body?.result?.structuredContent;
+ // LOC returns the *total stored messages* and the count newly appended
+ // for this batch. Duplicates legitimately append zero; a stored total below
+ // this submitted batch cannot be accepted as a complete receipt.
  if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
+    receipt.scopeid!==scopeid||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
     !Number.isSafeInteger(receipt?.count)||receipt.count<0||
-    !Number.isSafeInteger(receipt?.messages)||receipt.messages<1)
-  throw contractError('LOC 有序對話未確認寫入，Queue 原始資料保留');
+    receipt.count>records.length||
+    receipt.duplicate!==(receipt.count===0)||
+    !Number.isSafeInteger(receipt?.messages)||
+    receipt.messages<records.length)
+  throw contractError('LOC 有序對話未確認完整寫入，Queue 原始資料保留');
  return receipt;
 }
 async function flush(force=false){
