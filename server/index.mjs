@@ -163,12 +163,15 @@ export default {
     let pool;
     try{
     const url=new URL(request.url);
-    // One LAS origin: MCP's established resource paths remain separate from
-    // Better Auth's /api/auth/* routes. DNS aliases no longer select handlers.
-    if(!LAS_WORKERS_DEV.test(url.hostname))
-      return new Response('Not found',{status:404});
-    if(MCP_DEV_PATHS.has(url.pathname))
+    // The public OAuth aliases are owner-managed CNAME hostnames. Cloudflare
+    // Worker Routes (set by the owner) bind them to this one LAS deployment.
+    // No route, DNS or account permissions are held by this repository.
+    const isWorkerHost=LAS_WORKERS_DEV.test(url.hostname);
+    if(url.hostname==='mcp.lo3rwang.cc'||
+       (isWorkerHost&&MCP_DEV_PATHS.has(url.pathname)))
       return mcpWorker.fetch(request,env,ctx);
+    if(url.hostname!=='auth.lo3rwang.cc'&&!isWorkerHost)
+      return new Response('Not found',{status:404});
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
     if(origin&&!allowed.has(origin)&&!publicProtocol)

@@ -10,8 +10,8 @@ import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport
 export const MCP_RESOURCE=LOC_MCP;
 export const LOC_OAUTH_ISSUER=LOC_ISSUER+'/api/auth';
 export function mcpConfig(){
-  // Fixed resource identity: an old Worker env override must not silently
-  // issue tokens for an unrelated host or revive retired custom domains.
+  // Stable public OAuth identity even when LAS is deployed on workers.dev.
+  // No stale environment override can change the issuer or resource audience.
   return {resource:MCP_RESOURCE,issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
