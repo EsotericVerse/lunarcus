@@ -21,6 +21,7 @@
     }
   },
   "workers_dev": false,
+  "preview_urls": true,
   "routes": [
     {
       "pattern": "auth.lo3rwang.cc",
