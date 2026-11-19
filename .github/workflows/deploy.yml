@@ -1,4 +1,4 @@
-name: LAS build and deployment handoff
+name: LAS GitHub Build and Cloudflare release verification
 on:
   pull_request:
     branches: [main]
@@ -6,11 +6,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# GitHub keeps the LAS build and main release workflow.
-# The connected Cloudflare Workers Builds integration publishes the main commit;
-# this workflow does not upload a Worker, manage DNS, or use any Cloudflare token.
+# GitHub builds the exact branch/main commit. Cloudflare's existing Git
+# integration independently builds and publishes previews/production.
+# Observe Cloudflare's GitHub check; never deploy via a broad token or change DNS.
 permissions:
   contents: read
+  checks: read
 
 concurrency:
   group: las-release-${{ github.event.pull_request.number || github.ref }}
@@ -18,19 +19,21 @@ concurrency:
 
 jobs:
   build:
+    name: Build LAS Worker from GitHub source
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
           cache: npm
-      - name: Install LAS Worker dependencies
+      - name: Install LAS dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check LAS-owned Worker configuration
+      - name: Validate isolated LAS Worker config
         shell: bash
         run: |
           node --input-type=module -e "
@@ -39,25 +42,52 @@ jobs:
             if(cfg.name!=='lunarcus'||cfg.workers_dev!==true||
                cfg.preview_urls!==true||Object.hasOwn(cfg,'routes')||
                Object.hasOwn(cfg,'route')||Object.hasOwn(cfg,'zone_id'))
-              throw Error('LAS must not declare custom DNS/zone routes');
+              throw Error('LAS may publish only its own workers.dev; no DNS/zone routes');
           "
-      - name: Build Worker bundle without deployment credentials
+      - name: Build actual Worker bundle (no upload or CF API)
         run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir dist --config wrangler.jsonc --name lunarcus
+      - name: Keep GitHub build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: las-worker-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
 
-  deploy:
-    name: Main release handoff (Cloudflare-managed deploy)
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+  preview:
+    name: Verify Cloudflare branch Preview
+    if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 6
     steps:
-      - name: Record main release handoff
-        shell: bash
-        run: |
-          {
-            echo "## LAS main release handoff"
-            echo "GitHub Build completed for commit \`$GITHUB_SHA\`."
-            echo "Cloudflare's GitHub-connected Worker Builds owns the actual deployment."
-            echo "No Cloudflare API token, route modification or deploy call is used here."
-            echo "A successful handoff does NOT verify that Cloudflare deployed successfully."
-          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify Cloudflare Preview result via GitHub checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE_PHASE: preview
+        run: node .github/scripts/verify-workers-builds.mjs
+
+  deploy:
+    name: Verify Cloudflare main production deployment
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify real Cloudflare deploy result via GitHub checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+          RELEASE_PHASE: production
+        run: node .github/scripts/verify-workers-builds.mjs
