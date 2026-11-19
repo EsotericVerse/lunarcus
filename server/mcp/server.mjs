@@ -4,7 +4,8 @@ import {handleMcp,preflight,protectedResourceMetadata}
   from './router.mjs';
 
 const LOC='https://loc.lo3rwang.cc';
-const MCP_HOST='mcp.lo3rwang.cc';
+// Same LAS Worker handles the stable origin and its Cloudflare version previews.
+const MCP_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const WEB='https://loc.lo3rwang.cc';
 const EXT='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const CORS=new Set([EXT,WEB]);
@@ -57,7 +58,7 @@ async function locProxy(request,target,env){
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
-    if(url.hostname!==MCP_HOST&&!url.hostname.endsWith('.workers.dev'))
+    if(!MCP_HOST.test(url.hostname))
       return error(404,'Not found');
     if(url.pathname==='/.well-known/oauth-protected-resource'||
        url.pathname==='/.well-known/oauth-protected-resource/mcp'){
