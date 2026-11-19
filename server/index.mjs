@@ -150,10 +150,9 @@ document.getElementById('add').onclick=async function(){
 };
 load();
 `;
-// One LAS Worker is reached through workers.dev for production and preview.
-// Preview hosts prefix the Worker name with a version alias. This is transport
-// routing only: no DNS, OAuth issuer, resource audience or grant changes.
-const LAS_WORKERS_DEV=/^(?:[a-z0-9-]+-)?lunarcus\.[a-z0-9-]+\.workers\.dev$/i;
+// Stable LAS Worker origin plus versioned workers.dev preview hosts.
+// Never trust a different account's Worker hostname or request Host override.
+const LAS_WORKERS_DEV=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const MCP_DEV_PATHS=new Set([
   '/', '/mcp', '/api/loc-native',
   '/.well-known/oauth-protected-resource',
@@ -164,15 +163,12 @@ export default {
     let pool;
     try{
     const url=new URL(request.url);
-    // On workers.dev, MCP uses its established paths; Auth uses the
-    // remaining Auth paths. The two owner-managed CNAME hostnames still work
-    // if their DNS/Worker routing is correctly configured externally.
-    const isDev=LAS_WORKERS_DEV.test(url.hostname);
-    if(url.hostname==='mcp.lo3rwang.cc'||
-       (isDev&&MCP_DEV_PATHS.has(url.pathname)))
-      return mcpWorker.fetch(request,env,ctx);
-    if(url.hostname!=='auth.lo3rwang.cc'&&!isDev)
+    // One LAS origin: MCP's established resource paths remain separate from
+    // Better Auth's /api/auth/* routes. DNS aliases no longer select handlers.
+    if(!LAS_WORKERS_DEV.test(url.hostname))
       return new Response('Not found',{status:404});
+    if(MCP_DEV_PATHS.has(url.pathname))
+      return mcpWorker.fetch(request,env,ctx);
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
     if(origin&&!allowed.has(origin)&&!publicProtocol)
