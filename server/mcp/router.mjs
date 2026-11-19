@@ -56,10 +56,12 @@ async function localAuthJwks(env){
       method:'GET',headers:{accept:'application/json'}
     });
     const response=await auth.handler(request);
-    if(!response.ok)throw Error('LOC Auth local JWKS unavailable');
-    const keys=await response.json();
+    if(!response.ok)throw Object.assign(
+      new Error('LAS JWKS unavailable'),{code:'LAS_JWKS_UNAVAILABLE'});
+    const keys=await response.json().catch(()=>null);
     if(!Array.isArray(keys?.keys)||!keys.keys.length)
-      throw Error('LOC Auth local JWKS empty');
+      throw Object.assign(new Error('LAS JWKS unavailable'),
+        {code:'LAS_JWKS_UNAVAILABLE'});
     return keys;
   }finally{
     await pool.end().catch(()=>{});
@@ -87,7 +89,10 @@ export async function verifyOAuthToken(request,config,env={}){
     if(!scopes.includes('openid'))return null;
     return {subject:payload.sub,scopes};
   }catch(error){
-    // Fixed labels only. Never log a bearer, JWT claims, or request body.
+    // Service-side key retrieval is an availability failure, not evidence
+    // that an issued OAuth token is invalid. Do not force refresh/reconnect
+    // on an unavailable JWKS. Never log tokens, claims or request bodies.
+    if(error?.code==='LAS_JWKS_UNAVAILABLE')throw error;
     const known=new Set(['JWTExpired','JWTClaimValidationFailed',
       'JWSSignatureVerificationFailed','JWKSNoMatchingKey','JWSInvalid']);
     const name=String(error?.name||'');
@@ -130,7 +135,14 @@ export async function handleMcp(request,env={}){
   const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!match)return unauthorized(config);
   let identity=null;
-  try{identity=await verifyOAuthToken(request,config,env);}catch{return unauthorized(config);}
+  try{identity=await verifyOAuthToken(request,config,env);}
+  catch(error){
+    if(error?.code==='LAS_JWKS_UNAVAILABLE')
+      return response({error:'temporarily_unavailable',
+        error_description:'LOC OAuth verification keys unavailable'},503,
+        {'Retry-After':'15'});
+    return unauthorized(config);
+  }
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   // One bounded, per-OAuth-subject request budget before reading a JSON-RPC
