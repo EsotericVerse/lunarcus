@@ -49,7 +49,7 @@ function unauthorized(config){
 export async function verifyOAuthToken(request,config){
   try{
     const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
-      jwksUrl:LOC_OAUTH_ISSUER.replace(/\/api\/auth$/,'')+'/api/auth/jwks',
+      jwksUrl:LOC_ISSUER+'/api/auth/jwks',
       verifyOptions:{issuer:config.issuer,audience:config.resource,
         typ:'at+jwt',requiredClaims:['azp']},
       requiredScopes:['openid']
