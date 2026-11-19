@@ -7,11 +7,13 @@ import {checkMcpGatewayQos} from './gateway-qos.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
-export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
+// Both values are public protocol identities, not deployment targets.
+// They must match the issuer's fixed OAuth resource registration even when
+// an old Cloudflare environment variable survives a Worker migration.
+export const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
-export function mcpConfig(env={}){
-  return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
-    issuer:LOC_OAUTH_ISSUER};
+export function mcpConfig(){
+  return {resource:MCP_RESOURCE,issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
@@ -50,19 +52,26 @@ function unauthorized(config){
 // issuer, audience, typ and authorized party. No private keys are exported.
 const LOCAL_JWKS_CACHE_KEY={};
 async function localAuthJwks(env){
-  const {auth,pool}=createLocAuth(env);
+  let pool;
   try{
+    const built=createLocAuth(env);
+    pool=built.pool;
     const request=new Request(LOC_OAUTH_ISSUER+'/jwks',{
       method:'GET',headers:{accept:'application/json'}
     });
-    const response=await auth.handler(request);
-    if(!response.ok)throw Error('LOC Auth local JWKS unavailable');
-    const keys=await response.json();
+    const response=await built.auth.handler(request);
+    if(!response.ok)throw Error('Auth JWKS response unavailable');
+    const keys=await response.json().catch(()=>null);
     if(!Array.isArray(keys?.keys)||!keys.keys.length)
-      throw Error('LOC Auth local JWKS empty');
+      throw Error('Auth JWKS response invalid');
     return keys;
+  }catch{
+    // Includes environment, pool, and key-store failures. No credentials
+    // or driver messages propagate across the MCP boundary.
+    throw Object.assign(new Error('LAS JWKS unavailable'),
+      {code:'LAS_JWKS_UNAVAILABLE'});
   }finally{
-    await pool.end().catch(()=>{});
+    if(pool)await pool.end().catch(()=>{});
   }
 }
 // Better Auth's built-in JWKS verifier caches trusted keys for five minutes
@@ -87,7 +96,10 @@ export async function verifyOAuthToken(request,config,env={}){
     if(!scopes.includes('openid'))return null;
     return {subject:payload.sub,scopes};
   }catch(error){
-    // Fixed labels only. Never log a bearer, JWT claims, or request body.
+    // Service-side key retrieval is an availability failure, not evidence
+    // that an issued OAuth token is invalid. Do not force refresh/reconnect
+    // on an unavailable JWKS. Never log tokens, claims or request bodies.
+    if(error?.code==='LAS_JWKS_UNAVAILABLE')throw error;
     const known=new Set(['JWTExpired','JWTClaimValidationFailed',
       'JWSSignatureVerificationFailed','JWKSNoMatchingKey','JWSInvalid']);
     const name=String(error?.name||'');
@@ -130,7 +142,14 @@ export async function handleMcp(request,env={}){
   const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!match)return unauthorized(config);
   let identity=null;
-  try{identity=await verifyOAuthToken(request,config,env);}catch{return unauthorized(config);}
+  try{identity=await verifyOAuthToken(request,config,env);}
+  catch(error){
+    if(error?.code==='LAS_JWKS_UNAVAILABLE')
+      return response({error:'temporarily_unavailable',
+        error_description:'LOC OAuth verification keys unavailable'},503,
+        {'Retry-After':'15'});
+    return unauthorized(config);
+  }
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   // One bounded, per-OAuth-subject request budget before reading a JSON-RPC

@@ -589,6 +589,8 @@ async function orderedMcpFailureEvidence(response,bodyBytes,recordCount){
  if(contentType==='application/json'||contentType.endsWith('+json')){
   const reply=await response.clone().json().catch(()=>null);
   if(reply?.error==='unauthorized')category='mcp_oauth_token';
+  else if(response.status===503&&reply?.error==='temporarily_unavailable')
+   category='mcp_jwks_unavailable';
   else if(reply?.error?.code===-32001){
    const reason=reply.error.message;
    category=reason==='Verified LOC OAuth identity required'
@@ -657,11 +659,18 @@ async function sendOrderedConversation(scopeid,records,token,config){
   throw retry;
  }
  const receipt=body?.result?.structuredContent;
+ // LOC returns the *total stored messages* and the count newly appended
+ // for this batch. Duplicates legitimately append zero; a stored total below
+ // this submitted batch cannot be accepted as a complete receipt.
  if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
+    receipt.scopeid!==scopeid||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
     !Number.isSafeInteger(receipt?.count)||receipt.count<0||
-    !Number.isSafeInteger(receipt?.messages)||receipt.messages<1)
-  throw contractError('LOC 有序對話未確認寫入，Queue 原始資料保留');
+    receipt.count>records.length||
+    receipt.duplicate!==(receipt.count===0)||
+    !Number.isSafeInteger(receipt?.messages)||
+    receipt.messages<records.length)
+  throw contractError('LOC 有序對話未確認完整寫入，Queue 原始資料保留');
  return receipt;
 }
 async function flush(force=false){

@@ -223,6 +223,11 @@ export default {
       }
       if(url.pathname==='/consent'&&!signedQuery)
         return new Response('Signed OAuth request required',{status:400});
+      // The canonical Auth hostname is a human-facing entry point.
+      // Redirect only its root to the existing login page on the same host;
+      // never send production traffic to workers.dev or an OAuth callback.
+      if(request.method==='GET'&&url.pathname==='/')
+        return Response.redirect(LOC_ISSUER+'/login',302);
       if(request.method==='GET'&&url.pathname==='/login')
         return page('登入',
           '<p>LOC Auth 登入</p>'+
