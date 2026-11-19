@@ -50,21 +50,26 @@ function unauthorized(config){
 // issuer, audience, typ and authorized party. No private keys are exported.
 const LOCAL_JWKS_CACHE_KEY={};
 async function localAuthJwks(env){
-  const {auth,pool}=createLocAuth(env);
+  let pool;
   try{
+    const built=createLocAuth(env);
+    pool=built.pool;
     const request=new Request(LOC_OAUTH_ISSUER+'/jwks',{
       method:'GET',headers:{accept:'application/json'}
     });
-    const response=await auth.handler(request);
-    if(!response.ok)throw Object.assign(
-      new Error('LAS JWKS unavailable'),{code:'LAS_JWKS_UNAVAILABLE'});
+    const response=await built.auth.handler(request);
+    if(!response.ok)throw Error('Auth JWKS response unavailable');
     const keys=await response.json().catch(()=>null);
     if(!Array.isArray(keys?.keys)||!keys.keys.length)
-      throw Object.assign(new Error('LAS JWKS unavailable'),
-        {code:'LAS_JWKS_UNAVAILABLE'});
+      throw Error('Auth JWKS response invalid');
     return keys;
+  }catch{
+    // Includes environment, pool, and key-store failures. No credentials
+    // or driver messages propagate across the MCP boundary.
+    throw Object.assign(new Error('LAS JWKS unavailable'),
+      {code:'LAS_JWKS_UNAVAILABLE'});
   }finally{
-    await pool.end().catch(()=>{});
+    if(pool)await pool.end().catch(()=>{});
   }
 }
 // Better Auth's built-in JWKS verifier caches trusted keys for five minutes
