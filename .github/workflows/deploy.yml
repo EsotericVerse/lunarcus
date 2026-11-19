@@ -1,21 +1,23 @@
-name: LAS build verification (GitHub only)
+name: LAS build and deployment handoff
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
-# GitHub owns source and build validation only. Cloudflare's connected
-# Workers Builds integration independently owns production/preview deployment.
-# No API token, Wrangler upload, domain route or external dispatch from GitHub.
+# GitHub keeps the LAS build and main release workflow.
+# The connected Cloudflare Workers Builds integration publishes the main commit;
+# this workflow does not upload a Worker, manage DNS, or use any Cloudflare token.
 permissions:
   contents: read
 
 concurrency:
-  group: las-build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: las-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -28,7 +30,7 @@ jobs:
           cache: npm
       - name: Install LAS Worker dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check isolated Worker deployment configuration
+      - name: Check LAS-owned Worker configuration
         shell: bash
         run: |
           node --input-type=module -e "
@@ -37,7 +39,25 @@ jobs:
             if(cfg.name!=='lunarcus'||cfg.workers_dev!==true||
                cfg.preview_urls!==true||Object.hasOwn(cfg,'routes')||
                Object.hasOwn(cfg,'route')||Object.hasOwn(cfg,'zone_id'))
-              throw Error('LAS must not declare a custom domain or zone route');
+              throw Error('LAS must not declare custom DNS/zone routes');
           "
-      - name: Verify Worker bundle without deploying
+      - name: Build Worker bundle without deployment credentials
         run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir dist --config wrangler.jsonc --name lunarcus
+
+  deploy:
+    name: Main release handoff (Cloudflare-managed deploy)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Record main release handoff
+        shell: bash
+        run: |
+          {
+            echo "## LAS main release handoff"
+            echo "GitHub Build completed for commit \`$GITHUB_SHA\`."
+            echo "Cloudflare's GitHub-connected Worker Builds owns the actual deployment."
+            echo "No Cloudflare API token, route modification or deploy call is used here."
+            echo "A successful handoff does NOT verify that Cloudflare deployed successfully."
+          } >> "$GITHUB_STEP_SUMMARY"
