@@ -580,37 +580,53 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
-// LOC already provides the fixed LAS-native ordered JSON import operation.
-// Keep the OAuth resource/audience unchanged; do not call the retired MCP host.
-async function sendOrderedConversation(scopeid,records,token){
+// Ordered turns use the fixed LAS Gateway, never the short-import append route.
+async function sendOrderedConversation(scopeid,records,token,config){
  if(!SCOPE.test(scopeid)||!records.length||records.length>100)
   throw contractError('有序對話批次不合法');
  const source=records[0].source_key;
  if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
    (r.scopeid||'lo3rwang')!==scopeid))
   throw contractError('有序對話批次來源不一致');
- const endpoint='https://loc.lo3rwang.cc/api/las-native';
- const payload={kind:'mcp-conversation',action:'record_ordered',
-   scopeid,conversation_id:source,
-   title:records[0].title,updated_at:new Date().toISOString(),
-   records:records.map(r=>({
-     message_id:r.message_id,source_order:r.source_order,
-     parent_id:r.parent_id||null,role:r.role,text:r.text
-   }))
- };
+ const endpoint=new URL(config.resource||'');
+ if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
+  throw contractError('LAS MCP Gateway 位址錯誤');
+ const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
+   records.map(r=>r.id).sort().join('|'));
+ const payload={jsonrpc:'2.0',id,method:'tools/call',params:{
+   name:'galaxy_link',arguments:{
+     action:'record_ordered',scopeid,conversation_id:source,
+     title:records[0].title,updated_at:new Date().toISOString(),
+     records:records.map(r=>({
+       message_id:r.message_id,source_order:r.source_order,
+       parent_id:r.parent_id||null,role:r.role,text:r.text
+     }))
+   }
+ }};
  let response;
- try{response=await fetch(endpoint,{method:'POST',redirect:'error',
+ try{response=await fetch(endpoint.href,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
      'content-type':'application/json',accept:'application/json'},
    body:JSON.stringify(payload)});}
- catch(error){error.queueEndpoint='LOC';throw error;}
+ catch(error){error.queueEndpoint='MCP';throw error;}
  if(!response.ok){
-   const error=Error('LOC 有序對話 JSON 匯入失敗 HTTP '+response.status);
-   error.httpStatus=response.status;error.queueEndpoint='LOC';throw error;
+   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status);
+   error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
  }
  const body=await response.json().catch(()=>null);
- const receipt=body?.data;
- if(receipt?.accepted!==true||
+ // MCP can return a transport-200 tools/call with isError=true when
+ // LOC's business backend is temporarily unavailable. It is not a malformed
+ // receipt: retry the unchanged IndexedDB row later, without pausing forever.
+ const toolError=body?.result?.isError&&
+   String(body?.result?.content?.[0]?.text||'').trim();
+ if(body?.id===id&&toolError==='LOC data service unavailable; please retry later.'){
+  const retry=Error('LAS MCP 下游資料服務暫時無法使用（503）；Queue 保留等待重試');
+  retry.httpStatus=503;
+  retry.queueEndpoint='MCP';
+  throw retry;
+ }
+ const receipt=body?.result?.structuredContent;
+ if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
     !Number.isSafeInteger(receipt?.count)||receipt.count<0||
     !Number.isSafeInteger(receipt?.messages)||receipt.messages<1)
@@ -662,11 +678,11 @@ async function flush(force=false){
     group.sort((a,b)=>a.source_order-b.source_order);
     for(const part of packet(group)){
      const scopeid=part[0].scopeid||'lo3rwang';
-     try{await sendOrderedConversation(scopeid,part,token)}
+     try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
      catch(error){
       if(error.httpStatus!==401)throw error;
       token=await activeToken(true);
-      await sendOrderedConversation(scopeid,part,token);
+      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
      }
      await removeEvents(part);
      await updateQueueBadge().catch(()=>{});
