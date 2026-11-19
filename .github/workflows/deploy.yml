@@ -1,47 +1,52 @@
-name: LAS GitHub Pages
+name: LAS production deploy (workers.dev only)
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
-# GitHub publishes static assets only. DNS and backend services are external.
-# No Cloudflare token, Wrangler, Worker route, or Preview deploy.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: las-pages
+  group: las-production
   cancel-in-progress: false
 
 jobs:
-  build:
-    if: github.ref == 'refs/heads/main'
+  deploy:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Assemble static site
-        run: |
-          mkdir -p dist/pages
-          cp -R public/. dist/pages/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/setup-node@v4
         with:
-          path: dist/pages
-
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    environment:
-      name: github-pages
-      url: ${{ steps.publish.outputs.page_url }}
-    steps:
-      - name: Publish static assets to GitHub Pages
-        id: publish
-        uses: actions/deploy-pages@v4
+          node-version: '22.23.5'
+          cache: npm
+      - name: Install LAS Worker dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check domain-free release configuration
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            const cfg=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+            if(cfg.name!=='lunarcus'||cfg.workers_dev!==true||
+               cfg.preview_urls!==false||Object.hasOwn(cfg,'routes')||
+               Object.hasOwn(cfg,'route')||Object.hasOwn(cfg,'zone_id'))
+              throw Error('LAS release must only target workers.dev; no custom DNS routes or preview');
+          "
+      - name: Require restricted LAS Worker deploy credential
+        env:
+          LAS_WORKER_DEPLOY_TOKEN: ${{ secrets.LAS_WORKER_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          if [[ -z "$LAS_WORKER_DEPLOY_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "::error::LAS Worker-only deploy credential/account missing. No deployment attempted."
+            exit 1
+          fi
+      - name: Deploy LAS script to workers.dev (no zone routes)
+        run: npx --yes wrangler@4.157.0 deploy --config wrangler.jsonc --name lunarcus
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.LAS_WORKER_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
