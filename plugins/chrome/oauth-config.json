@@ -1,6 +1,6 @@
 {
-  "issuer": "https://auth.lo3rwang.cc/api/auth",
-  "resource": "https://mcp.lo3rwang.cc",
+  "issuer": "https://lunarcus.esotericverse.workers.dev/api/auth",
+  "resource": "https://lunarcus.esotericverse.workers.dev",
   "client_id": "lunarcus",
   "scope": "openid email loc:import offline_access",
   "import_url": "https://loc.lo3rwang.cc/api/loc-native"
