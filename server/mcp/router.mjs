@@ -1,4 +1,5 @@
-import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
+import {verifyJwsAccessToken,getDpopJktFromPayload} from 'better-auth/oauth2';
+import {createLocAuth} from '../auth/auth.mjs';
 import {businessAction} from './business-actions.mjs';
 import {authorizeMcpBearer} from './access-roles.mjs';
 import {readMemory,privateGalaxyLink,articleDistribution,mcpDatabaseConfiguration} from './loc-mapping.mjs';
@@ -41,21 +42,59 @@ function unauthorized(config){
     'WWW-Authenticate':oauthChallenge(config)
   });
 }
-// LOC MCP is an independent OAuth resource server, not a Better Auth subsystem.
-// Here it uses Better Auth's standards-based JOSE helper only to verify
-// LOC Auth-issued RFC 9068 tokens; MCP tools and business policy remain separate.
-export async function verifyOAuthToken(request,config){
+// MCP and Auth share one LAS Worker. Do not fetch its JWKS through the
+// protected public Auth hostname: Cloudflare Access returns a 302 login page
+// to service-to-service JWKS requests (causing a false MCP HTTP 401).
+// Instead call the existing Better Auth JWKS handler *inside this Worker*.
+// Better Auth's RFC 9068 JOSE verifier still checks signature, time,
+// issuer, audience, typ and authorized party. No private keys are exported.
+const LOCAL_JWKS_CACHE_KEY={};
+async function localAuthJwks(env){
+  const {auth,pool}=createLocAuth(env);
   try{
-    const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
-      jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
-      verifyOptions:{issuer:config.issuer,audience:config.resource,
-        typ:'at+jwt',requiredClaims:['azp']},
-      requiredScopes:['openid']
+    const request=new Request(LOC_OAUTH_ISSUER+'/jwks',{
+      method:'GET',headers:{accept:'application/json'}
     });
+    const response=await auth.handler(request);
+    if(!response.ok)throw Error('LOC Auth local JWKS unavailable');
+    const keys=await response.json();
+    if(!Array.isArray(keys?.keys)||!keys.keys.length)
+      throw Error('LOC Auth local JWKS empty');
+    return keys;
+  }finally{
+    await pool.end().catch(()=>{});
+  }
+}
+// Better Auth's built-in JWKS verifier caches trusted keys for five minutes
+// using this stable per-isolate key. Key-rotation misses trigger its bounded
+// re-fetch mechanism; no separate KV/cache/SQL verifier is introduced.
+export async function verifyOAuthToken(request,config,env={}){
+  try{
+    const token=/^Bearer\\s+(\\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
+    if(!token||request.headers.has('dpop'))return null;
+    const payload=await verifyJwsAccessToken(token,{
+      jwksFetch:()=>localAuthJwks(env),
+      jwksCacheKey:LOCAL_JWKS_CACHE_KEY,
+      verifyOptions:{issuer:config.issuer,audience:config.resource,
+        typ:'at+jwt',requiredClaims:['azp']}
+    });
+    // The gateway accepts only ordinary Bearer tokens. Refuse a token bound
+    // to a DPoP key rather than silently dropping sender constraints.
+    if(getDpopJktFromPayload(payload))return null;
     if(typeof payload.sub!=='string'||!payload.sub)return null;
-    return {subject:payload.sub,scopes:String(payload.scope||'')
-      .split(/\s+/).filter(Boolean)};
-  }catch{return null}
+    const scopes=typeof payload.scope==='string'
+      ?payload.scope.split(/\\s+/).filter(Boolean):[];
+    if(!scopes.includes('openid'))return null;
+    return {subject:payload.sub,scopes};
+  }catch(error){
+    // Fixed labels only. Never log a bearer, JWT claims, or request body.
+    const known=new Set(['JWTExpired','JWTClaimValidationFailed',
+      'JWSSignatureVerificationFailed','JWKSNoMatchingKey','JWSInvalid']);
+    const name=String(error?.name||'');
+    console.warn('LAS MCP token verification failed',
+      known.has(name)?name:'jwks_or_verifier_unavailable');
+    return null;
+  }
 }
 function result(id,value){return response({jsonrpc:'2.0',id,result:value});}
 function rpcError(id,code,message,httpStatus=200,headers={}){
@@ -91,7 +130,7 @@ export async function handleMcp(request,env={}){
   const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!match)return unauthorized(config);
   let identity=null;
-  try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
+  try{identity=await verifyOAuthToken(request,config,env);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   // One bounded, per-OAuth-subject request budget before reading a JSON-RPC
