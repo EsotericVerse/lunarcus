@@ -1,20 +1,21 @@
-name: LAS production deploy (workers.dev)
+name: LAS build verification (GitHub only)
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
+# GitHub owns source and build validation only. Cloudflare's connected
+# Workers Builds integration independently owns production/preview deployment.
+# No API token, Wrangler upload, domain route or external dispatch from GitHub.
 permissions:
   contents: read
 
 concurrency:
-  group: las-production
-  cancel-in-progress: false
+  group: las-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -27,24 +28,7 @@ jobs:
           cache: npm
       - name: Install LAS Worker dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify actual Worker bundle without deployment credentials
-        run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir dist --config wrangler.jsonc --name lunarcus
-
-  deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.23.5'
-          cache: npm
-      - name: Install LAS Worker dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check domain-free release configuration
+      - name: Check isolated Worker deployment configuration
         shell: bash
         run: |
           node --input-type=module -e "
@@ -53,20 +37,7 @@ jobs:
             if(cfg.name!=='lunarcus'||cfg.workers_dev!==true||
                cfg.preview_urls!==true||Object.hasOwn(cfg,'routes')||
                Object.hasOwn(cfg,'route')||Object.hasOwn(cfg,'zone_id'))
-              throw Error('LAS release must only target workers.dev; no custom DNS routes; workers.dev previews only');
+              throw Error('LAS must not declare a custom domain or zone route');
           "
-      - name: Require restricted LAS Worker deploy credential
-        env:
-          LAS_WORKER_DEPLOY_TOKEN: ${{ secrets.LAS_WORKER_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        shell: bash
-        run: |
-          if [[ -z "$LAS_WORKER_DEPLOY_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
-            echo "::error::LAS Worker-only deploy credential/account missing. No deployment attempted."
-            exit 1
-          fi
-      - name: Deploy LAS script to workers.dev (no zone routes)
-        run: npx --yes wrangler@4.157.0 deploy --config wrangler.jsonc --name lunarcus
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.LAS_WORKER_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify Worker bundle without deploying
+        run: npx --yes wrangler@4.157.0 deploy --dry-run --outdir dist --config wrangler.jsonc --name lunarcus
