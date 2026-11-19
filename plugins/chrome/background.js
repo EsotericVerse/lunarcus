@@ -589,6 +589,8 @@ async function orderedMcpFailureEvidence(response,bodyBytes,recordCount){
  if(contentType==='application/json'||contentType.endsWith('+json')){
   const reply=await response.clone().json().catch(()=>null);
   if(reply?.error==='unauthorized')category='mcp_oauth_token';
+  else if(response.status===503&&reply?.error==='temporarily_unavailable')
+   category='mcp_jwks_unavailable';
   else if(reply?.error?.code===-32001){
    const reason=reply.error.message;
    category=reason==='Verified LOC OAuth identity required'
