@@ -70,7 +70,7 @@ async function localAuthJwks(env){
 // re-fetch mechanism; no separate KV/cache/SQL verifier is introduced.
 export async function verifyOAuthToken(request,config,env={}){
   try{
-    const token=/^Bearer\\s+(\\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
+    const token=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
     if(!token||request.headers.has('dpop'))return null;
     const payload=await verifyJwsAccessToken(token,{
       jwksFetch:()=>localAuthJwks(env),
@@ -83,7 +83,7 @@ export async function verifyOAuthToken(request,config,env={}){
     if(getDpopJktFromPayload(payload))return null;
     if(typeof payload.sub!=='string'||!payload.sub)return null;
     const scopes=typeof payload.scope==='string'
-      ?payload.scope.split(/\\s+/).filter(Boolean):[];
+      ?payload.scope.split(/\s+/).filter(Boolean):[];
     if(!scopes.includes('openid'))return null;
     return {subject:payload.sub,scopes};
   }catch(error){
