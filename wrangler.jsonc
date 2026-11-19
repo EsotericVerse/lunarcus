@@ -20,8 +20,10 @@
       "head_sampling_rate": 1
     }
   },
+  // workers.dev is for version/branch Preview URLs only, never production.
   "workers_dev": false,
   "preview_urls": true,
+  // Production entrypoints are the stable Auth/MCP custom domains only.
   "routes": [
     {
       "pattern": "auth.lo3rwang.cc",
