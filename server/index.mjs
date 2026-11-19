@@ -152,7 +152,7 @@ load();
 `;
 // Production identities are the two custom domains. A version/branch URL
 // under this Worker's workers.dev namespace is preview-only, never an issuer.
-const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\\.esotericverse\\.workers\\.dev$/i;
+const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const PREVIEW_MCP_PATHS=new Set([
   '/', '/mcp', '/api/loc-native',
   '/.well-known/oauth-protected-resource',
