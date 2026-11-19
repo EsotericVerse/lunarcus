@@ -26,13 +26,13 @@
       "pattern": "auth.lo3rwang.cc",
       "custom_domain": true,
       "zone_name": "lo3rwang.cc",
-      "previews_enabled": true
+      "previews_enabled": false
     },
     {
       "pattern": "mcp.lo3rwang.cc",
       "custom_domain": true,
       "zone_name": "lo3rwang.cc",
-      "previews_enabled": true
+      "previews_enabled": false
     }
   ]
 }
