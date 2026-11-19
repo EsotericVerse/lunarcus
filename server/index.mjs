@@ -150,16 +150,28 @@ document.getElementById('add').onclick=async function(){
 };
 load();
 `;
+// One LAS Worker is reached through workers.dev for production and preview.
+// Preview hosts prefix the Worker name with a version alias. This is transport
+// routing only: no DNS, OAuth issuer, resource audience or grant changes.
+const LAS_WORKERS_DEV=/^(?:[a-z0-9-]+-)?lunarcus\.[a-z0-9-]+\.workers\.dev$/i;
+const MCP_DEV_PATHS=new Set([
+  '/', '/mcp', '/api/loc-native',
+  '/.well-known/oauth-protected-resource',
+  '/.well-known/oauth-protected-resource/mcp'
+]);
 export default {
   async fetch(request,env,ctx){
     let pool;
     try{
     const url=new URL(request.url);
-    // One deployed LAS Worker serves two existing custom domains.
-    // Route MCP before Auth origin/session handling; never create an Auth DB pool for MCP.
-    if(url.hostname==='mcp.lo3rwang.cc')
+    // On workers.dev, MCP uses its established paths; Auth uses the
+    // remaining Auth paths. The two owner-managed CNAME hostnames still work
+    // if their DNS/Worker routing is correctly configured externally.
+    const isDev=LAS_WORKERS_DEV.test(url.hostname);
+    if(url.hostname==='mcp.lo3rwang.cc'||
+       (isDev&&MCP_DEV_PATHS.has(url.pathname)))
       return mcpWorker.fetch(request,env,ctx);
-    if(url.hostname!=='auth.lo3rwang.cc')
+    if(url.hostname!=='auth.lo3rwang.cc'&&!isDev)
       return new Response('Not found',{status:404});
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
