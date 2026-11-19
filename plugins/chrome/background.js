@@ -3,6 +3,7 @@ const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
+const LAS_WORKER_ORIGIN='https://lunarcus.esotericverse.workers.dev';
 
 const AUTH_KEYS=['locOAuth','locConfig'];
 const MENU_PAGE='loc-page',MENU_SELECTION='loc-selection',MENU_AREA='loc-area',MENU_RECORD='loc-record',MENU_PAUSE='loc-pause',MENU_RESUME='loc-resume',MENU_STOP='loc-stop',MENU_ROOT='lunarcus';
@@ -381,9 +382,9 @@ async function getConfig(){
   const api=new URL(cfg.import_url);
   if(issuer.protocol!=='https:'||api.protocol!=='https:'||
      api.origin!=='https://loc.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
-     cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
-     issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
-    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
+     cfg.resource!==LAS_WORKER_ORIGIN||!cfg.client_id||typeof cfg.client_id!=='string'||
+     issuer.origin!==LAS_WORKER_ORIGIN||issuer.pathname!=='/api/auth')
+    throw oauthError('LAS workers.dev 認證設定不正確，不會改用其他平台');
   const meta=await discoverLocOAuth(issuer);
   for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
    const url=new URL(endpoint);
@@ -485,6 +486,8 @@ let refreshFlight=null;
 async function activeToken(forceRefresh=false){
  const {locOAuth:tokens,locConfig:cfg}=await chrome.storage.local.get(AUTH_KEYS);
  if(!tokens||!cfg)throw oauthError('請先在設定頁連接 LOC');
+ if(cfg.issuer!==LAS_WORKER_ORIGIN+'/api/auth'||cfg.resource!==LAS_WORKER_ORIGIN)
+  throw oauthError('認證入口已更換，請重新連接 LAS；本機 Queue 不會清除');
  if(!forceRefresh&&tokens.access_token&&tokens.expires_at>Date.now())return tokens.access_token;
  if(!tokens.refresh_token)throw oauthError('授權已過期，請重新連接 LOC');
  if(refreshFlight)return refreshFlight;
@@ -589,7 +592,7 @@ async function sendOrderedConversation(scopeid,records,token,config){
    (r.scopeid||'lo3rwang')!==scopeid))
   throw contractError('有序對話批次來源不一致');
  const endpoint=new URL(config.resource||'');
- if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
+ if(endpoint.origin!==LAS_WORKER_ORIGIN||endpoint.pathname!=='/')
   throw contractError('LAS MCP Gateway 位址錯誤');
  const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
    records.map(r=>r.id).sort().join('|'));
