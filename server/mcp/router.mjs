@@ -1,4 +1,5 @@
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
+import {LOC_ISSUER,LOC_MCP} from '../auth/auth.mjs';
 import {businessAction} from './business-actions.mjs';
 import {authorizeMcpBearer} from './access-roles.mjs';
 import {readMemory,privateGalaxyLink,articleDistribution,mcpDatabaseConfiguration} from './loc-mapping.mjs';
@@ -6,11 +7,12 @@ import {checkMcpGatewayQos} from './gateway-qos.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
-export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
-export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
-export function mcpConfig(env={}){
-  return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
-    issuer:LOC_OAUTH_ISSUER};
+export const MCP_RESOURCE=LOC_MCP;
+export const LOC_OAUTH_ISSUER=LOC_ISSUER+'/api/auth';
+export function mcpConfig(){
+  // Fixed resource identity: an old Worker env override must not silently
+  // issue tokens for an unrelated host or revive retired custom domains.
+  return {resource:MCP_RESOURCE,issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
@@ -47,7 +49,7 @@ function unauthorized(config){
 export async function verifyOAuthToken(request,config){
   try{
     const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
-      jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
+      jwksUrl:LOC_OAUTH_ISSUER.replace(/\/api\/auth$/,'')+'/api/auth/jwks',
       verifyOptions:{issuer:config.issuer,audience:config.resource,
         typ:'at+jwt',requiredClaims:['azp']},
       requiredScopes:['openid']
