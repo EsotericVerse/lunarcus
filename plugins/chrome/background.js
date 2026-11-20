@@ -853,9 +853,15 @@ async function flush(force=false){
 }
 
 async function inject(tabId){
+ // The isolated world survives successive context-menu clicks. Avoid
+ // loading extraction libraries repeatedly into the same open page.
+ const loaded=await chrome.scripting.executeScript({
+  target:{tabId},func:()=>globalThis.__locCaptureV2===true
+ });
+ if(loaded?.[0]?.result===true)return;
  await chrome.scripting.executeScript({target:{tabId},files:[
   'vendor/ChatGPTShadowExtract.js',
-   'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
+  'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
  ]});
 }
 async function currentTab(){
