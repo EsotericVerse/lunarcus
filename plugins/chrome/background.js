@@ -78,6 +78,63 @@ async function putEvents(events){
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
 }
+// Cursor iteration keeps one captured text body in memory at a time.
+// Status, badge and the organizer never clone the whole IndexedDB queue.
+async function scanQueue({metadata=false,bytes=false}={}){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).openCursor();
+  const groups=new Set(),rows=metadata?[]:null;
+  let pending=0,blockedReview=0,legacyUnordered=0,totalBytes=0;
+  req.onsuccess=()=>{
+   const cursor=req.result;
+   if(!cursor)return;
+   const row=cursor.value;
+   pending++;
+   groups.add(row.group_id||row.id);
+   if(isUnorderedConversationCapture(row))legacyUnordered++;
+   if(row.kind==='ordered_conversation'&&
+      (row.reviewed!==true||!trustedSourceOrder(row)))blockedReview++;
+   if(bytes)totalBytes+=sizeOf(row);
+   if(rows)rows.push({
+    id:row.id,group_id:row.group_id,scopeid:row.scopeid,
+    kind:row.kind,source_key:row.source_key,
+    captured_at:row.captured_at,source_order:row.source_order,
+    title:row.title,message_id:row.message_id,parent_id:row.parent_id,
+    role:row.role,reviewed:row.reviewed,order_evidence:row.order_evidence,
+    // Only the organizer needs a bounded preview, never the full body.
+    text:row.kind==='ordered_conversation'
+      ?(typeof row.text==='string'?row.text.slice(0,300):null):undefined
+   });
+   cursor.continue();
+  };
+  tx.oncomplete=()=>{db.close();resolve({
+    pending,pendingCaptures:groups.size,blockedReview,legacyUnordered,
+    ...(bytes?{bytes:totalBytes}:{}),...(rows?{rows}:{})
+  });};
+  tx.onabort=()=>{db.close();reject(tx.error)};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
+async function loadQueueRows(ids){
+ if(!Array.isArray(ids)||!ids.length||ids.length>12)
+  throw Error('Queue batch exceeds bounded memory read');
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly'),store=tx.objectStore(STORE);
+  const rows=new Array(ids.length);
+  ids.forEach((id,i)=>{
+   const request=store.get(id);
+   request.onsuccess=()=>{
+    if(!request.result){tx.abort();return;}
+    rows[i]=request.result;
+   };
+  });
+  tx.oncomplete=()=>{db.close();resolve(rows)};
+  tx.onabort=()=>{db.close();reject(Error('Queue content changed during transfer'))};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
 // Local-only ordered-message review. Nothing is sent, deleted or re-ordered
 // in IndexedDB until an explicit review confirmation succeeds.
 function reviewGroups(rows){
