@@ -30,12 +30,14 @@
 
 | LAS 模組 | 主要職責 | 現行程式／入口 |
 | --- | --- | --- |
-| `las:auth` | Better Auth、Google OAuth/OIDC、LAS Session | `app/las/auth/`、`app/las/index.mjs` |
+| `las:auth` | Better Auth、Google OAuth/OIDC、LAS Session | `server/auth/`、`server/index.mjs` |
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
-| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `app/las/mcp/`、`app/las/mcp/server.mjs` |
-| `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `app/las/tunnel/` |
+| `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `server/mcp/`、`server/mcp/server.mjs` |
+| `las:tunnel` | 與其他 CMS/API 的欄位、契約、資料交換映射 | `server/tunnel/` |
 
-產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，兩者是不同的事，不可互相混用。（Cloudflare Access SSO Client ID 曾是第三件事，已於 2026-11-17 隨整個 SSO 登入路徑移除，不要假設它還存在或重建它。）
+- 這張表是入口地圖，不是鎖死的規格；架構搬動時順手更新這張表，開工前仍以當下原始碼為準，對不上就先更新表格再動手。
+
+產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，兩者是不同的事，不可互相混用。
 
 ## 專案邊界：不跨 Repo 操作
 
@@ -49,7 +51,7 @@
 - `auth.lo3rwang.cc` 是既有 LAS Auth issuer；`mcp.lo3rwang.cc` 是 MCP Resource。**兩個 hostname 使用同一個 `lunarcus` Worker**，按 hostname 分流。不要另建 Auth／MCP Worker、平行編譯或重新指定 issuer。
 - LAS 的 PostgreSQL 表格已採 `las_*`，RLS 由使用者設定。應讀取現有 mapping 和 `LAS_DATABASE_URL` 綁定，**不得自行 migration、改表／RLS 或把 RLS 當登入故障的預設原因**。
 - 已存在的環境變數名稱中有 `LOC_*` 兼容鍵，不因產品更名批量刪掉或強迫換 Secret。
-- 登入分：Google OAuth、LAS Session、下游 OAuth Provider；任何「授權」不等於 LOC 文章寫入權。（Cloudflare Access 上游 SSO 曾是第四段，只是把同一個 Google 帳號多繞一手，沒多證明什麼，已於 2026-11-17 移除——不要在故障排查或新功能裡假設還有這一段，也不要重建它。）
+- 登入分：Google OAuth、LAS Session、下游 OAuth Provider；任何「授權」不等於 LOC 文章寫入權。Cloudflare Access 目前整個帳戶都沒有啟用；不要在排錯或新功能裡假設哪個網域、Worker 還掛著 Access，也不要重建它。
 - 登入、Session、Cookie 或權限問題先依使用者實際指稱的物件及現有程式，定位第一個真正失敗的 HTTP／身分／業務節點，並衡量跨頁重用與反覆查詢造成的成本；排錯不等於要求每次切頁或 Query 都重新驗證，也不預設一定要改 OAuth／OIDC／JWKS。建置／正式部署成功不代表真實瀏覽器操作通過。
 - OAuth Client ID、Chrome Extension ID、Session ID、Scope ID 是不同概念；改 Client 名稱時要同步 server discovery、Client config、Chrome 包內 config、測試，不修改其他識別碼。
 
@@ -70,14 +72,7 @@
 
 ## 依本次修改驗證與部署
 
-| 更動 | 對應檢查 |
-| --- | --- |
-| LAS Auth | `npm run check:auth` |
-| Chrome Plugin | `npm run check:extension`；核 ZIP artifact |
-| MCP Gateway／Tunnel | `npm run check:mcp` |
-| Workers syntax/bundle | `npm run auth:dry-run`／`npm run mcp:dry-run`，不會發布 |
-| Agent Skills | `node scripts/check-las-agent-skills.mjs` |
-
+- 驗證方式以當下 `package.json` 的 scripts 與 `.github/workflows` 實際有的檢查為準，文件不重複列出指令名稱，免得跟真正可跑的腳本脫鉤；改了哪個模組就找對應腳本跑，找不到對應腳本代表還沒建，先確認是否需要補，不要照抄舊文件猜一個。
 - 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。現有 `lunarcus` Worker 同時服務 Auth/MCP，不允許重新打開手動獨立 MCP 發布或建立平行管線。Cloudflare 網域／密鑰／Build Watch Paths 只有當次明確授權才可變更。
 - **LAS 先完成自己的正式部署，再獨立判定是否通知 LOC**：Plugins、CMS Data Mapping、內部修改為 `skip`；`review` 不自動通知；確實影響已引用契約才以既有 Cloudflare → LOC GitHub Workflow 路徑驗證發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得以 LOC Pages Deploy Hook 當固定發布流程。
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
@@ -87,7 +82,7 @@
 
 - 此 Repo 有與 LOC **同名且本地可讀**的 15 個頂層 Skills：`auth`、`deployment`、`impeccable`、`mcp-builder`、`media`、`security-audit`、`skill-creator`、`sql`、`superpowers`、`ui-ux-pro-max`、`visualization`、`web`、`writing-guidelines`、`zh-tw-writing`、`caveman`。
 - LAS 另有專業 Skills：`better-auth`、`oauth-oidc`、`cloudflare-workers`、`chrome-extensions`、`mcp-transport`、`mcp-gateway`、`tunnel-data-mapping`、`native-packaging`、`protocol-security`、`protocol-testing`、`plugin-architecture`、`observability`。
-- 以 `.agents/skills/` 為單一來源；`npm install` 的 `prepare` 或手動 `npm run skills:sync` 會為 Claude 建立**逐項 Junction/Symlink** 至 `.claude/skills/`，不複製源文件、不預載所有 Skills，也不刪既有使用者技能目錄。
+- 以 `.agents/skills/` 為單一來源；同步腳本（目前是 `scripts/sync-claude-skills.mjs`）會為 Claude 建立**逐項 Junction/Symlink** 至 `.claude/skills/`，不複製源文件、不預載所有 Skills，也不刪既有使用者技能目錄；實際由 `npm install` hook 還是手動跑，以 `package.json` 現況為準。
 - 以上 27 個都是 LAS `.agents/skills/<name>/SKILL.md` 的**實體檔**；參考資料與官方 docs 只在本地內容不足時從 `.agents/SKILL-LINKS.md` 按需取用。不能以外站連結假稱已在 LAS 安裝。
 - Agent 從本次通訊問題所需的 Skill 出發，按實際需求搭配 HTTP／MCP、OAuth／OIDC、Chrome、Tunnel 或協定測試相關技能；Skills 可獨立使用或組合，數量與順序不固定。它們是專業資源，不自動核發工具權限、不代表背景 agent，也不能代替執行驗證。
 
