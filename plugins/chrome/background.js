@@ -580,36 +580,26 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
-// A 401 can be issued before the Gateway reads any conversation body.
-// Record only fixed error categories, byte count and HTTP metadata; never
-// store OAuth tokens, message text or an untrusted server error message.
-async function orderedMcpFailureEvidence(response,bodyBytes,recordCount){
+// LOC already owns record_ordered import, JWT/Scope permissions and durable
+// receipts. Send reviewed batches directly to that existing Pages endpoint.
+// MCP remains available for standalone tools, not as a bulk-upload relay.
+async function orderedLocFailureEvidence(response,bodyBytes,recordCount){
  const contentType=String(response.headers.get('content-type')||'').split(';',1)[0].toLowerCase();
- let category='unknown';
- if(contentType==='application/json'||contentType.endsWith('+json')){
-  const reply=await response.clone().json().catch(()=>null);
-  if(reply?.error==='unauthorized')category='mcp_oauth_token';
-  else if(response.status===503&&reply?.error==='temporarily_unavailable')
-   category='mcp_jwks_unavailable';
-  else if(reply?.error?.code===-32001){
-   const reason=reply.error.message;
-   category=reason==='Verified LOC OAuth identity required'
-    ?'loc_identity_verification':
-    reason==='LOC MCP role not granted'?'loc_role_denied':
-    reason==='LOC OAuth UserInfo rate limited'?'loc_userinfo_rate':
-    'mcp_role_authorization';
-  }else if(reply?.error?.code===-32600&&response.status===413)category='body_too_large';
- }else if(response.status===401){
-  category='non_json_unauthorized';
- }
- await logDiagnostic('mcp.response',{
+ const data=contentType==='application/json'||contentType.endsWith('+json')
+  ?await response.clone().json().catch(()=>null):null;
+ const message=String(data?.error?.message||'');
+ const category=response.status===401?'loc_oauth_identity':
+  response.status===403?'loc_import_permission':
+  response.status===429?'loc_rate_limit':
+  response.status===413?'loc_payload_limit':
+  response.status===503?'loc_service_unavailable':
+  response.status>=500?'loc_server_error':'loc_import_rejected';
+ await logDiagnostic('loc.ordered.response',{
   status:response.status,category,content_type:contentType,
-  challenge:response.headers.has('www-authenticate'),
   body_bytes:bodyBytes,records:recordCount
  });
  return category;
 }
-// Ordered turns use the fixed LAS Gateway, never the short-import append route.
 async function sendOrderedConversation(scopeid,records,token,config){
  if(!SCOPE.test(scopeid)||!records.length||records.length>100)
   throw contractError('有序對話批次不合法');
@@ -617,53 +607,35 @@ async function sendOrderedConversation(scopeid,records,token,config){
  if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
    (r.scopeid||'lo3rwang')!==scopeid))
   throw contractError('有序對話批次來源不一致');
- const endpoint=new URL(config.resource||'');
- if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
-  throw contractError('LAS MCP Gateway 位址錯誤');
- const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
-   records.map(r=>r.id).sort().join('|'));
- const payload={jsonrpc:'2.0',id,method:'tools/call',params:{
-   name:'galaxy_link',arguments:{
-     action:'record_ordered',scopeid,conversation_id:source,
-     title:records[0].title,updated_at:new Date().toISOString(),
-     records:records.map(r=>({
-       message_id:r.message_id,source_order:r.source_order,
-       parent_id:r.parent_id||null,role:r.role,text:r.text
-     }))
-   }
- }};
+ // Fixed LOC route: never follow a redirect to Auth or workers.dev.
+ const endpoint='https://loc.lo3rwang.cc/api/las-native';
+ const payload={kind:'mcp-conversation',action:'record_ordered',scopeid,
+   conversation_id:source,title:records[0].title,
+   updated_at:new Date().toISOString(),
+   records:records.map(r=>({
+     message_id:r.message_id,source_order:r.source_order,
+     parent_id:r.parent_id||null,role:r.role,text:r.text
+   }))
+ };
  const payloadJson=JSON.stringify(payload);
  let response;
- try{response=await fetch(endpoint.href,{method:'POST',redirect:'error',
+ try{response=await fetch(endpoint,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
      'content-type':'application/json',accept:'application/json'},
    body:payloadJson});}
- catch(error){error.queueEndpoint='MCP';throw error;}
+ catch(error){error.queueEndpoint='LOC';throw error;}
  if(!response.ok){
-   const category=await orderedMcpFailureEvidence(response,
+   const category=await orderedLocFailureEvidence(response,
      encoder.encode(payloadJson).length,records.length);
-   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status+
+   const error=Error('LOC 有序對話匯入失敗 HTTP '+response.status+
      '（'+category+'）');
-   error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
+   error.httpStatus=response.status;error.queueEndpoint='LOC';
+   error.retryAfter=response.headers.get('retry-after')||'';
+   throw error;
  }
  const body=await response.json().catch(()=>null);
- // MCP can return a transport-200 tools/call with isError=true when
- // LOC's business backend is temporarily unavailable. It is not a malformed
- // receipt: retry the unchanged IndexedDB row later, without pausing forever.
- const toolError=body?.result?.isError&&
-   String(body?.result?.content?.[0]?.text||'').trim();
- if(body?.id===id&&toolError==='LOC data service unavailable; please retry later.'){
-  const retry=Error('LAS MCP 下游資料服務暫時無法使用（503）；Queue 保留等待重試');
-  retry.httpStatus=503;
-  retry.queueEndpoint='MCP';
-  throw retry;
- }
- const receipt=body?.result?.structuredContent;
- // LOC returns the *total stored messages* and the count newly appended
- // for this batch. Duplicates legitimately append zero; a stored total below
- // this submitted batch cannot be accepted as a complete receipt.
- if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
-    receipt.scopeid!==scopeid||
+ const receipt=body?.data;
+ if(receipt?.accepted!==true||receipt.scopeid!==scopeid||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
     !Number.isSafeInteger(receipt?.count)||receipt.count<0||
     receipt.count>records.length||
@@ -671,6 +643,10 @@ async function sendOrderedConversation(scopeid,records,token,config){
     !Number.isSafeInteger(receipt?.messages)||
     receipt.messages<records.length)
   throw contractError('LOC 有序對話未確認完整寫入，Queue 原始資料保留');
+ await logDiagnostic('loc.ordered.receipt',{
+   accepted:true,records:records.length,appended:receipt.count,
+   total_messages:receipt.messages,duplicate:receipt.duplicate
+ });
  return receipt;
 }
 async function flush(force=false){
