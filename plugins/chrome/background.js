@@ -169,7 +169,7 @@ function reviewGroups(rows){
 async function approveReviewedConversation(key,expectedIds){
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
     expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
- const rows=await allEvents();
+ const rows=(await scanQueue({metadata:true})).rows;
  const group=reviewGroups(rows).conversations.find(g=>g.key===key);
  if(!group||!group.valid||group.message_count!==expectedIds.length||
    new Set(expectedIds).size!==expectedIds.length||
@@ -308,7 +308,7 @@ async function toEvents(items,scopeid='lo3rwang'){
 }
 function captureTotals(rows){return {pending:rows.length,pendingCaptures:new Set(rows.map(r=>r.group_id||r.id)).size};}
 async function updateQueueBadge(rows=null){
- const totals=captureTotals(rows||await allEvents());
+ const totals=rows?captureTotals(rows):await scanQueue();
  const count=totals.pendingCaptures;
  await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
  await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 次擷取':'LunArcus：Queue 0 次待送'});
@@ -355,7 +355,7 @@ async function acceptItems(items){
  for(let i=0;i<items.length;i+=100)
   events.push(...await toEvents(items.slice(i,i+100),locTargetScope));
  if(!events.length)
-  return {message:summary+'；沒有符合條件的內容入列',queued:(await allEvents()).length,
+  return {message:summary+'；沒有符合條件的內容入列',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
  const inserted=await putEvents(events);
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
@@ -365,12 +365,12 @@ async function acceptItems(items){
   return {message:message+'；Queue 已暫停傳送',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
- const all=await allEvents();
- if(all.length)void flush(false).catch(async error=>{
+ const pendingCount=await queueCount();
+ if(pendingCount)void flush(false).catch(async error=>{
   console.warn('[LunArcus automatic import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
- return {message,queued:all.length,detected,user,assistant,
+ return {message,queued:pendingCount,detected,user,assistant,
   insertedCaptures:inserted.captures,insertedChunks:inserted.chunks,
   empty:inserted.chunks===0};
 }
@@ -718,7 +718,7 @@ async function flush(force=false){
   return inFlight;
  }
  inFlight=(async()=>{
-  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
+  const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
   if(!rows.length&&!ordered.length){
@@ -1207,10 +1207,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),allEvents()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     ...captureTotals(queue),
-     blockedReview:queue.filter(row=>row.kind==='ordered_conversation'&&
-       (row.reviewed!==true||!trustedSourceOrder(row))).length,
-     legacyUnordered:queue.filter(isUnorderedConversationCapture).length,
+     pending:stats.pending,pendingCaptures:stats.pendingCaptures,
+     blockedReview:stats.blockedReview,legacyUnordered:stats.legacyUnordered,
      lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
@@ -1241,7 +1239,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      throw Error('完整訊息僅能在 LunArcus 訊息重整頁讀取');
     const id=String(message.id||'');
     if(!id||id.length>256)throw Error('無效的待送訊息 ID');
-    const rows=await allEvents(),row=rows.find(item=>item.id===id);
+    const [row]=await loadQueueRows([id]).catch(()=>[null]);
     if(!row||row.kind!=='ordered_conversation')
      throw Error('訊息已不在待送 Queue，請重新整理預覽');
     return {id:row.id,source_order:row.source_order,role:row.role,
@@ -1292,7 +1290,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
-   case 'queue.status':{const rows=await allEvents();const s=await chrome.storage.local.get('locImportPaused');return {count:rows.length,bytes:sizeOf(rows),paused:s.locImportPaused===true};}
+   case 'queue.status':{const stats=await scanQueue({bytes:true});const s=await chrome.storage.local.get('locImportPaused');return {count:stats.pending,bytes:stats.bytes,paused:s.locImportPaused===true};}
    case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
    case 'queue.flush':return flush(true);
    case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};
