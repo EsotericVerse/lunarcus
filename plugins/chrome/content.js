@@ -1,7 +1,7 @@
 // LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
-  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set(), pendingWrites:new Set(), emptyReported:false};
+  const state = {mode:'idle', root:null, observer:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set(), pendingWrites:new Set(), emptyReported:false, scanning:false, rescan:false};
   const visible = el => {
     if (!(el instanceof Element)) return false;
     const style=getComputedStyle(el);
@@ -229,23 +229,9 @@
       return modelConversationTurns(region,hostname==='claude.ai'?'claude':'gemini',
         includeAssistant,mode);
     }
-    // Readability is invoked only for a full-page single capture; avoid destroying
-    // the live DOM or re-parsing every MutationObserver notification during recording.
-    if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
-      !socialHost()&& !/(?:chatgpt\.com|claude\.ai|chat\.openai\.com|gemini\.google\.com)$/.test(hostname)){
-      try{
-        const parsed=new Readability(document.cloneNode(true)).parse();
-        if(parsed?.textContent?.trim()?.length>100){
-          const documentFragment=new DOMParser().parseFromString(parsed.content||'','text/html');
-          const hrefs=[...documentFragment.querySelectorAll('a[href]')].slice(0,120)
-            .map(a=>({text:a.textContent?.trim()||'',url:normalizeUrl(a.href)}))
-            .filter(x=>x.url).map(x=>x.text+' <'+x.url+'>').join('\n');
-          const url=normalizeUrl(location.href);
-          return [{key:url,source_key:url,url,title:parsed.title||document.title,
-            content:parsed.textContent.trim()+(hrefs?'\n[連結]\n'+hrefs:'')}];
-        }
-      }catch{ /* Unsupported or dynamic page: use bounded DOM fallback below. */ }
-    }
+    // Never clone the entire live DOM. A heavy SPA can require hundreds
+    // of MB just to duplicate its React-rendered document.
+    // The bounded article/visible DOM projection below is sufficient.
     const articles=[...doc.querySelectorAll('article,[role="article"],[data-testid="post-container"]')]
       .filter(el=>visible(el)&&(mode!=='record'||inViewport(el))&&cleanText(el).length>=25);
     // Threads may render cards as generic DIVs rather than <article>.
@@ -342,31 +328,40 @@
   }
   function scan(){
     if(!state.root||state.mode!=='record')return;
+    if(state.scanning){state.rescan=true;return;}
     if(state.timer)clearTimeout(state.timer);
-    state.timer=setTimeout(()=>{
-      if(state.mode!=='record')return;
-      let items;
-      try{items=extract(state.root,'record',state.includeAssistant);}
-      catch(error){
+    state.timer=setTimeout(async()=>{
+      state.timer=null;
+      if(state.mode!=='record'||state.scanning)return;
+      state.scanning=true;
+      try{
+        const items=extract(state.root,'record',state.includeAssistant);
+        if(!items.length){
+          if(!state.emptyReported){
+            state.emptyReported=true;
+            void reportCapture('錄製中暫無可辨識訊息；不保留大型頁面快照。',false);
+          }
+        }else{
+          // Wait for Queue acknowledgement before admitting another scan.
+          await queuePublish(items);
+        }
+      }catch(error){
         if(!state.emptyReported){
           state.emptyReported=true;
           void reportCapture(String(error?.message||error),false);
         }
-        return;
+      }finally{
+        state.scanning=false;
+        if(state.rescan&&state.mode==='record'){
+          state.rescan=false;
+          scan();
+        }else state.rescan=false;
       }
-      if(!items.length){
-        if(!state.emptyReported){
-          state.emptyReported=true;
-          void reportCapture('錄製已啟動，但目前找不到可辨識的對話訊息；Queue 仍是 0。請確認對話已載入。',false);
-        }
-        return;
-      }
-      void queuePublish(items);
-    },1250);
+    },1500);
   }
   function stopWatching(){
-    state.observer?.disconnect();state.intersection?.disconnect();
-    state.observer=null;state.intersection=null;
+    state.observer?.disconnect();
+    state.observer=null;
     window.removeEventListener('scroll',scan);
     if(state.timer)clearTimeout(state.timer);
     state.timer=null;
@@ -377,15 +372,13 @@
     state.mode='record';
     state.observer=new MutationObserver(scan);
     state.observer.observe(state.root,{childList:true,subtree:true,characterData:true,attributes:false});
-    state.intersection=new IntersectionObserver(scan,{threshold:0});
-    for(const node of state.root.querySelectorAll('article,[role="article"]'))
-      state.intersection.observe(node);
     window.addEventListener('scroll',scan,{passive:true});
     scan();
     return true;
   }
   function stop(){
     stopWatching();state.mode='idle';state.emptyReported=false;
+    state.root=null;state.seen.clear();state.rescan=false;
     state.hover?.remove();state.hover=null;
     document.removeEventListener('mousemove',move,true);
     document.removeEventListener('click',choose,true);
@@ -478,6 +471,16 @@
       document.addEventListener('click',choose,true);
       reply({ok:true});return;
     }
+    if(msg.type==='page.discard'){
+      stop();
+      const outstanding=[...state.pendingWrites];
+      void Promise.allSettled(outstanding).then(()=>{
+        state.pendingWrites.clear();
+        state.sending.clear();
+        reply({ok:true});
+      });
+      return true;
+    }
     if(msg.type==='page.pause'){
       if(state.mode!=='record'){reply({ok:false,mode:state.mode});return;}
       stopWatching();state.mode='paused';reply({ok:true,mode:'paused'});return;
@@ -504,11 +507,11 @@
         // snapshot; a "stop" acknowledgement must not outrun IndexedDB.
         await Promise.all(outstanding);
         if(captureError){
-          reply({ok:false,count:state.seen.size,error:captureError});
+          reply({ok:false,count,error:captureError});
           return;
         }
         const result=items.length?await queuePublish(items):{accepted:0,queued:0};
-        reply({ok:!result.error,count:state.seen.size,queued:result.queued||0,
+        reply({ok:!result.error,count,queued:result.queued||0,
           partial,...(result.error?{error:result.error}:{})});
       })().catch(error=>reply({ok:false,count,error:String(error?.message||error)}));
       return true;
