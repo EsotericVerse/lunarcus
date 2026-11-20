@@ -1203,8 +1203,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
    }
    case 'loc-status':{
-    const [session,queue]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),allEvents()]);
+    const [session,stats]=await Promise.all([
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),scanQueue()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
      pending:stats.pending,pendingCaptures:stats.pendingCaptures,
@@ -1231,7 +1231,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
-    return reviewGroups(await allEvents());
+    return reviewGroups((await scanQueue({metadata:true})).rows);
    }
    case 'conversation.turn':{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
