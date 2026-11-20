@@ -177,7 +177,8 @@
           <div class="panel-topline"><span class="panel-symbol" aria-hidden="true">⇅</span><div><h3>離線 Queue</h3><p>連線異常時會保留尚未送出的資料。</p></div></div>
           <p id="queue" class="activity-text" role="status" aria-live="polite">正在讀取 Queue…</p>
           <button id="flush" class="button button-primary" type="button">手動送出 Queue <span aria-hidden="true">→</span></button>
-          <p class="field-hint">後端錯誤時延後重試；只有取得完整文章 UID 才清除對應紀錄。</p>
+          <button id="clearLocalCaptures" class="button button-ghost" type="button">清空本機擷取暫存</button>
+          <p class="field-hint">清空會永久移除本機待送 Queue、舊對話和去重回執，不影響 LOC 已寫入資料及 OAuth 授權；只有你按下確認才會執行。</p>
         </div>
         <div class="panel activity-panel">
           <div class="panel-topline"><span class="panel-symbol" aria-hidden="true">◷</span><div><h3>最近一次操作</h3><p>成功、失敗與時間資訊都保留可檢視。</p></div></div>
