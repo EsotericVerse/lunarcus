@@ -162,6 +162,21 @@ $('clearDiagnostics').addEventListener('click',async()=>{
  }catch(error){notice.textContent='清理紀錄失敗：'+String(error?.message||error)}
  finally{button.disabled=false}
 });
+$('clearLocalCaptures').addEventListener('click',async()=>{
+ const confirmed=window.confirm('確定清空全部本機擷取 Queue 與去重回執？未送出的對話無法復原，LOC 已寫入資料與 OAuth 不受影響。');
+ if(!confirmed)return;
+ const button=$('clearLocalCaptures');
+ button.disabled=true;
+ try{
+  const result=await call('loc-clear-local-captures');
+  if(result?.cleared!==true)throw Error(result?.error||'本機清理沒有完成');
+  $('organizeGroups')?.replaceChildren();
+  $('organizeSummary').textContent='本機待重整對話已清空';
+  await show();
+  notice.textContent=result.message;
+ }catch(error){notice.textContent='清理失敗：'+String(error?.message||error);}
+ finally{button.disabled=false;}
+});
 $('flush').addEventListener('click',async()=>{
  notice.textContent='正在送出 Queue…';
  try{
