@@ -31,11 +31,25 @@ export async function callLocOperation(body,token,fetchImpl=globalThis.fetch){
         accept:'application/json'},
       body:JSON.stringify(body),signal:AbortSignal.timeout(20000)
     });
-  }catch{
-    throw Object.assign(new Error('LOC data service unavailable'),{httpStatus:503});
+  }catch(error){
+    // Only a fixed error category is logged; never tokens, Request bodies,
+    // user metadata, SQL messages or URLs. A same-zone Worker fetch error
+    // must not be mistaken for a LOC business permission denial.
+    const category=error?.name==='TimeoutError'?'timeout':
+      error?.name==='AbortError'?'aborted':'transport';
+    console.error('LAS LOC tunnel failed',{stage:'fetch',category});
+    throw Object.assign(new Error('LOC data service unavailable'),
+      {httpStatus:503,code:'LOC_TUNNEL_FETCH_UNAVAILABLE'});
   }
   const data=await response.json().catch(()=>null);
   if(!response.ok){
+    const category=response.status>=500?'upstream_server':
+      response.status===401?'identity':response.status===403?'permission':
+      response.status===429?'rate_limit':'upstream_other';
+    console.warn('LAS LOC tunnel response',{
+      stage:'response',status:response.status,category,
+      format:data?.error?'loc_error':'unexpected'
+    });
     const message=response.status>=500?'LOC data service unavailable':
       String(data?.error?.message||'LOC business permission denied');
     throw Object.assign(new Error(message),{httpStatus:response.status});
