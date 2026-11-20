@@ -10,7 +10,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
-let inFlight=null,flushRequested=false;
+let inFlight=null,flushRequested=false,maintenance=false;
 function safeDiagnostic(value){
  let text;
  try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
@@ -134,6 +134,33 @@ async function loadQueueRows(ids){
   tx.onabort=()=>{db.close();reject(Error('Queue content changed during transfer'))};
   tx.onerror=()=>{db.close();reject(tx.error)};
  });
+}
+// One explicit user action removes the local Queue and previous ACK markers.
+// Never touch OAuth, LOC SQL, or remote conversation content.
+async function clearLocalCaptures(){
+ if(maintenance||inFlight)throw Error('請先停止傳送，再清空本機擷取資料');
+ maintenance=true;
+ try{
+  const {locRecorderTabId}=await chrome.storage.local.get('locRecorderTabId');
+  if(Number.isInteger(locRecorderTabId))
+   await chrome.tabs.sendMessage(locRecorderTabId,{type:'page.discard'}).catch(()=>{});
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+   const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+   tx.objectStore(STORE).clear();
+   tx.objectStore(ACK_STORE).clear();
+   tx.oncomplete=()=>{db.close();resolve()};
+   tx.onerror=()=>{db.close();reject(tx.error)};
+   tx.onabort=()=>{db.close();reject(tx.error)};
+  });
+  await chrome.storage.local.remove([
+   'locRecorderTabId','locQueueRetryAfter','locQueueRetryType',
+   'locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus',
+   'locImportPaused',DIAGNOSTIC_KEY
+  ]);
+  await updateQueueBadge();
+  return {cleared:true,message:'本機 Queue 與去重回執已清空；LOC 資料與 OAuth 未變更'};
+ }finally{maintenance=false;}
 }
 // Local-only ordered-message review. Nothing is sent, deleted or re-ordered
 // in IndexedDB until an explicit review confirmation succeeds.
@@ -340,6 +367,7 @@ async function queueCount(){
  });
 }
 async function acceptItems(items){
+ if(maintenance)throw Error('正在清空本機暫存，請稍後重新擷取');
  if(!Array.isArray(items)||items.length>2000)
   throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
  const {locTargetScope='lo3rwang',locImportPaused=false}=
@@ -707,6 +735,7 @@ async function sendOrderedConversation(scopeid,records,token,config){
  return receipt;
 }
 async function flush(force=false){
+ if(maintenance)return {message:'本機暫存維護中',sent:0};
  // A manual send must not inherit an already-running automatic attempt.
  // Await its settlement and then run a fresh forced pass against durable Queue.
  if(inFlight){
@@ -827,7 +856,7 @@ async function flush(force=false){
 
 async function inject(tabId){
  await chrome.scripting.executeScript({target:{tabId},files:[
-  'vendor/Readability.js','vendor/ChatGPTShadowExtract.js',
+  'vendor/ChatGPTShadowExtract.js',
    'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
  ]});
 }
@@ -1223,6 +1252,12 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
       retryEndpoint:session.locQueueRetryEndpoint||'',
       retryStatus:Number(session.locQueueRetryStatus||0),
      consecutiveFailures:Number(session.locQueueFailures||0)};
+   }
+   case 'loc-clear-local-captures':{
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('只有 LunArcus 設定頁能清空本機 Queue');
+    return clearLocalCaptures();
    }
    case 'loc-clear-diagnostics':{
     // Local-only action from the trusted Extension settings document.
