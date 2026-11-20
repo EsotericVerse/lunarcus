@@ -747,40 +747,48 @@ async function flush(force=false){
     groups.get(key).push(row);
    }
    for(const group of groups.values()){
-    // Always send in original source order, not in arrival order.
     group.sort((a,b)=>a.source_order-b.source_order);
-    for(const part of packet(group)){
-     const scopeid=part[0].scopeid||'lo3rwang';
-     try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
-     catch(error){
-      if(error.httpStatus!==401)throw error;
-      token=await activeToken(true);
-      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+    // Hydrate only 8 bodies at a time. Source order comes from the small
+    // IndexedDB metadata index, never a capture timestamp.
+    for(let offset=0;offset<group.length;offset+=8){
+     const hydrated=await loadQueueRows(group.slice(offset,offset+8).map(r=>r.id));
+     for(const part of packet(hydrated)){
+      const scopeid=part[0].scopeid||'lo3rwang';
+      try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
+      catch(error){
+       if(error.httpStatus!==401)throw error;
+       token=await activeToken(true);
+       await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+      }
+      await removeEvents(part);
+      await updateQueueBadge().catch(()=>{});
+      count+=part.length;
      }
-     await removeEvents(part);
-     await updateQueueBadge().catch(()=>{});
-     count+=part.length;
     }
    }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
-    for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
-     const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
-     try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
-     catch(error){
+    const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
+    for(let offset=0;offset<scopeRows.length;offset+=8){
+     const hydrated=await loadQueueRows(scopeRows.slice(offset,offset+8).map(r=>r.id));
+     for(const group of packet(hydrated)){
+      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),
+       write_mode:'append',records:group.map(({scopeid:localScope,...record})=>
+         ({...record,source_key:record.source_key||normalizedUrl(record.url),
+           write_mode:'append',kind:record.kind||'capture'}))};
+      try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
+      catch(error){
        if(error.httpStatus!==401)throw error;
-       // A token can be revoked before its local expiry. Refresh once, then
-       // require the same server-side UID receipt before acknowledging Queue.
        try{token=await activeToken(true)}
        catch{
-         const expired=oauthError('授權已失效，請重新連接 LOC');
-         expired.httpStatus=401;
-         throw expired;
+        const expired=oauthError('授權已失效，請重新連接 LOC');
+        expired.httpStatus=401;throw expired;
        }
        await sendViaAuth(scopeid,batch,token,settings.locConfig);
+      }
+      await removeEvents(group);
+      await updateQueueBadge().catch(()=>{});
+      count+=group.length;
      }
-     await removeEvents(group); // Clear only after complete server-side UID receipts.
-     await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
-     count+=group.length;
     }
    }
    await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']);
