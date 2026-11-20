@@ -38,17 +38,6 @@ function openDb(){
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
  });
 }
-async function allEvents(){
- const db=await openDb();
- return new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readonly');
-  const req=tx.objectStore(STORE).getAll();
-  req.onsuccess=()=>resolve(req.result||[]);
-  req.onerror=()=>reject(req.error);
-  tx.oncomplete=()=>db.close();
-  tx.onerror=()=>reject(tx.error);
- });
-}
 async function putEvents(events){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
@@ -73,7 +62,7 @@ async function putEvents(events){
     };
    };
   }
-  tx.oncomplete=()=>{db.close();resolve({chunks:count,captures:groups.size});};
+  tx.oncomplete=()=>{db.close();resolve({chunks:count,captures:groups.size,groupIds:[...groups]});};
   tx.onerror=()=>{db.close();reject(tx.error);};
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
@@ -379,13 +368,22 @@ async function acceptItems(items){
  const summary=isConversation
   ?'本次頁面辨識 '+detected+' 則對話訊息（使用者 '+user+'／AI '+assistant+'）'
   :'本次頁面辨識 '+detected+' 項擷取內容';
- const events=[];
- for(let i=0;i<items.length;i+=100)
-  events.push(...await toEvents(items.slice(i,i+100),locTargetScope));
- if(!events.length)
+ let chunks=0,projected=0;
+ const groups=new Set();
+ // Do not retain every converted message and its duplicate text in heap.
+ // A large one-click capture writes to IndexedDB in 12-record windows.
+ for(let i=0;i<items.length;i+=12){
+  const events=await toEvents(items.slice(i,i+12),locTargetScope);
+  projected+=events.length;
+  if(!events.length)continue;
+  const receipt=await putEvents(events);
+  chunks+=receipt.chunks;
+  for(const groupId of receipt.groupIds)groups.add(groupId);
+ }
+ if(!projected)
   return {message:summary+'；沒有符合條件的內容入列',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
- const inserted=await putEvents(events);
+ const inserted={chunks,captures:groups.size};
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
  const message=summary+'；新入列 '+inserted.captures+' 項擷取內容／'+
   inserted.chunks+' 筆 Queue 分段（不是對話來源數，也不是 Galaxy 已保存總數）';
