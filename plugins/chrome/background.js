@@ -10,7 +10,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
-let inFlight=null,flushRequested=false;
+let inFlight=null,flushRequested=false,maintenance=false;
 function safeDiagnostic(value){
  let text;
  try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
@@ -38,17 +38,6 @@ function openDb(){
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
  });
 }
-async function allEvents(){
- const db=await openDb();
- return new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readonly');
-  const req=tx.objectStore(STORE).getAll();
-  req.onsuccess=()=>resolve(req.result||[]);
-  req.onerror=()=>reject(req.error);
-  tx.oncomplete=()=>db.close();
-  tx.onerror=()=>reject(tx.error);
- });
-}
 async function putEvents(events){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
@@ -73,10 +62,94 @@ async function putEvents(events){
     };
    };
   }
-  tx.oncomplete=()=>{db.close();resolve({chunks:count,captures:groups.size});};
+  tx.oncomplete=()=>{db.close();resolve({chunks:count,captures:groups.size,groupIds:[...groups]});};
   tx.onerror=()=>{db.close();reject(tx.error);};
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
+}
+// Cursor iteration keeps one captured text body in memory at a time.
+// Status, badge and the organizer never clone the whole IndexedDB queue.
+async function scanQueue({metadata=false,bytes=false}={}){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).openCursor();
+  const groups=new Set(),rows=metadata?[]:null;
+  let pending=0,blockedReview=0,legacyUnordered=0,totalBytes=0;
+  req.onsuccess=()=>{
+   const cursor=req.result;
+   if(!cursor)return;
+   const row=cursor.value;
+   pending++;
+   groups.add(row.group_id||row.id);
+   if(isUnorderedConversationCapture(row))legacyUnordered++;
+   if(row.kind==='ordered_conversation'&&
+      (row.reviewed!==true||!trustedSourceOrder(row)))blockedReview++;
+   if(bytes)totalBytes+=sizeOf(row);
+   if(rows)rows.push({
+    id:row.id,group_id:row.group_id,scopeid:row.scopeid,
+    kind:row.kind,source_key:row.source_key,
+    captured_at:row.captured_at,source_order:row.source_order,
+    title:row.title,message_id:row.message_id,parent_id:row.parent_id,
+    role:row.role,reviewed:row.reviewed,order_evidence:row.order_evidence,
+    // Only the organizer needs a bounded preview, never the full body.
+    text:row.kind==='ordered_conversation'
+      ?(typeof row.text==='string'?row.text.slice(0,300):null):undefined
+   });
+   cursor.continue();
+  };
+  tx.oncomplete=()=>{db.close();resolve({
+    pending,pendingCaptures:groups.size,blockedReview,legacyUnordered,
+    ...(bytes?{bytes:totalBytes}:{}),...(rows?{rows}:{})
+  });};
+  tx.onabort=()=>{db.close();reject(tx.error)};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
+async function loadQueueRows(ids){
+ if(!Array.isArray(ids)||!ids.length||ids.length>12)
+  throw Error('Queue batch exceeds bounded memory read');
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly'),store=tx.objectStore(STORE);
+  const rows=new Array(ids.length);
+  ids.forEach((id,i)=>{
+   const request=store.get(id);
+   request.onsuccess=()=>{
+    if(!request.result){tx.abort();return;}
+    rows[i]=request.result;
+   };
+  });
+  tx.oncomplete=()=>{db.close();resolve(rows)};
+  tx.onabort=()=>{db.close();reject(Error('Queue content changed during transfer'))};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
+// One explicit user action removes the local Queue and previous ACK markers.
+// Never touch OAuth, LOC SQL, or remote conversation content.
+async function clearLocalCaptures(){
+ if(maintenance||inFlight)throw Error('請先停止傳送，再清空本機擷取資料');
+ maintenance=true;
+ try{
+  const {locRecorderTabId}=await chrome.storage.local.get('locRecorderTabId');
+  if(Number.isInteger(locRecorderTabId))
+   await chrome.tabs.sendMessage(locRecorderTabId,{type:'page.discard'}).catch(()=>{});
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+   const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+   tx.objectStore(STORE).clear();
+   tx.objectStore(ACK_STORE).clear();
+   tx.oncomplete=()=>{db.close();resolve()};
+   tx.onerror=()=>{db.close();reject(tx.error)};
+   tx.onabort=()=>{db.close();reject(tx.error)};
+  });
+  await chrome.storage.local.remove([
+   'locRecorderTabId','locQueueRetryAfter','locQueueRetryType',
+   'locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus',
+   'locImportPaused',DIAGNOSTIC_KEY
+  ]);
+  await updateQueueBadge();
+  return {cleared:true,message:'本機 Queue 與去重回執已清空；LOC 資料與 OAuth 未變更'};
+ }finally{maintenance=false;}
 }
 // Local-only ordered-message review. Nothing is sent, deleted or re-ordered
 // in IndexedDB until an explicit review confirmation succeeds.
@@ -112,7 +185,7 @@ function reviewGroups(rows){
 async function approveReviewedConversation(key,expectedIds){
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
     expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
- const rows=await allEvents();
+ const rows=(await scanQueue({metadata:true})).rows;
  const group=reviewGroups(rows).conversations.find(g=>g.key===key);
  if(!group||!group.valid||group.message_count!==expectedIds.length||
    new Set(expectedIds).size!==expectedIds.length||
@@ -251,7 +324,7 @@ async function toEvents(items,scopeid='lo3rwang'){
 }
 function captureTotals(rows){return {pending:rows.length,pendingCaptures:new Set(rows.map(r=>r.group_id||r.id)).size};}
 async function updateQueueBadge(rows=null){
- const totals=captureTotals(rows||await allEvents());
+ const totals=rows?captureTotals(rows):await scanQueue();
  const count=totals.pendingCaptures;
  await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
  await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 次擷取':'LunArcus：Queue 0 次待送'});
@@ -283,6 +356,7 @@ async function queueCount(){
  });
 }
 async function acceptItems(items){
+ if(maintenance)throw Error('正在清空本機暫存，請稍後重新擷取');
  if(!Array.isArray(items)||items.length>2000)
   throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
  const {locTargetScope='lo3rwang',locImportPaused=false}=
@@ -294,13 +368,22 @@ async function acceptItems(items){
  const summary=isConversation
   ?'本次頁面辨識 '+detected+' 則對話訊息（使用者 '+user+'／AI '+assistant+'）'
   :'本次頁面辨識 '+detected+' 項擷取內容';
- const events=[];
- for(let i=0;i<items.length;i+=100)
-  events.push(...await toEvents(items.slice(i,i+100),locTargetScope));
- if(!events.length)
-  return {message:summary+'；沒有符合條件的內容入列',queued:(await allEvents()).length,
+ let chunks=0,projected=0;
+ const groups=new Set();
+ // Do not retain every converted message and its duplicate text in heap.
+ // A large one-click capture writes to IndexedDB in 12-record windows.
+ for(let i=0;i<items.length;i+=12){
+  const events=await toEvents(items.slice(i,i+12),locTargetScope);
+  projected+=events.length;
+  if(!events.length)continue;
+  const receipt=await putEvents(events);
+  chunks+=receipt.chunks;
+  for(const groupId of receipt.groupIds)groups.add(groupId);
+ }
+ if(!projected)
+  return {message:summary+'；沒有符合條件的內容入列',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
- const inserted=await putEvents(events);
+ const inserted={chunks,captures:groups.size};
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
  const message=summary+'；新入列 '+inserted.captures+' 項擷取內容／'+
   inserted.chunks+' 筆 Queue 分段（不是對話來源數，也不是 Galaxy 已保存總數）';
@@ -308,12 +391,12 @@ async function acceptItems(items){
   return {message:message+'；Queue 已暫停傳送',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
- const all=await allEvents();
- if(all.length)void flush(false).catch(async error=>{
+ const pendingCount=await queueCount();
+ if(pendingCount)void flush(false).catch(async error=>{
   console.warn('[LunArcus automatic import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
- return {message,queued:all.length,detected,user,assistant,
+ return {message,queued:pendingCount,detected,user,assistant,
   insertedCaptures:inserted.captures,insertedChunks:inserted.chunks,
   empty:inserted.chunks===0};
 }
@@ -580,36 +663,26 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
-// A 401 can be issued before the Gateway reads any conversation body.
-// Record only fixed error categories, byte count and HTTP metadata; never
-// store OAuth tokens, message text or an untrusted server error message.
-async function orderedMcpFailureEvidence(response,bodyBytes,recordCount){
+// LOC already owns record_ordered import, JWT/Scope permissions and durable
+// receipts. Send reviewed batches directly to that existing Pages endpoint.
+// MCP remains available for standalone tools, not as a bulk-upload relay.
+async function orderedLocFailureEvidence(response,bodyBytes,recordCount){
  const contentType=String(response.headers.get('content-type')||'').split(';',1)[0].toLowerCase();
- let category='unknown';
- if(contentType==='application/json'||contentType.endsWith('+json')){
-  const reply=await response.clone().json().catch(()=>null);
-  if(reply?.error==='unauthorized')category='mcp_oauth_token';
-  else if(response.status===503&&reply?.error==='temporarily_unavailable')
-   category='mcp_jwks_unavailable';
-  else if(reply?.error?.code===-32001){
-   const reason=reply.error.message;
-   category=reason==='Verified LOC OAuth identity required'
-    ?'loc_identity_verification':
-    reason==='LOC MCP role not granted'?'loc_role_denied':
-    reason==='LOC OAuth UserInfo rate limited'?'loc_userinfo_rate':
-    'mcp_role_authorization';
-  }else if(reply?.error?.code===-32600&&response.status===413)category='body_too_large';
- }else if(response.status===401){
-  category='non_json_unauthorized';
- }
- await logDiagnostic('mcp.response',{
+ const data=contentType==='application/json'||contentType.endsWith('+json')
+  ?await response.clone().json().catch(()=>null):null;
+ const message=String(data?.error?.message||'');
+ const category=response.status===401?'loc_oauth_identity':
+  response.status===403?'loc_import_permission':
+  response.status===429?'loc_rate_limit':
+  response.status===413?'loc_payload_limit':
+  response.status===503?'loc_service_unavailable':
+  response.status>=500?'loc_server_error':'loc_import_rejected';
+ await logDiagnostic('loc.ordered.response',{
   status:response.status,category,content_type:contentType,
-  challenge:response.headers.has('www-authenticate'),
   body_bytes:bodyBytes,records:recordCount
  });
  return category;
 }
-// Ordered turns use the fixed LAS Gateway, never the short-import append route.
 async function sendOrderedConversation(scopeid,records,token,config){
  if(!SCOPE.test(scopeid)||!records.length||records.length>100)
   throw contractError('有序對話批次不合法');
@@ -617,53 +690,35 @@ async function sendOrderedConversation(scopeid,records,token,config){
  if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
    (r.scopeid||'lo3rwang')!==scopeid))
   throw contractError('有序對話批次來源不一致');
- const endpoint=new URL(config.resource||'');
- if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/')
-  throw contractError('LAS MCP Gateway 位址錯誤');
- const id=await stableUuid(scopeid+'\\u0000'+source+'\\u0000'+
-   records.map(r=>r.id).sort().join('|'));
- const payload={jsonrpc:'2.0',id,method:'tools/call',params:{
-   name:'galaxy_link',arguments:{
-     action:'record_ordered',scopeid,conversation_id:source,
-     title:records[0].title,updated_at:new Date().toISOString(),
-     records:records.map(r=>({
-       message_id:r.message_id,source_order:r.source_order,
-       parent_id:r.parent_id||null,role:r.role,text:r.text
-     }))
-   }
- }};
+ // Fixed LOC route: never follow a redirect to Auth or workers.dev.
+ const endpoint='https://loc.lo3rwang.cc/api/las-native';
+ const payload={kind:'mcp-conversation',action:'record_ordered',scopeid,
+   conversation_id:source,title:records[0].title,
+   updated_at:new Date().toISOString(),
+   records:records.map(r=>({
+     message_id:r.message_id,source_order:r.source_order,
+     parent_id:r.parent_id||null,role:r.role,text:r.text
+   }))
+ };
  const payloadJson=JSON.stringify(payload);
  let response;
- try{response=await fetch(endpoint.href,{method:'POST',redirect:'error',
+ try{response=await fetch(endpoint,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
      'content-type':'application/json',accept:'application/json'},
    body:payloadJson});}
- catch(error){error.queueEndpoint='MCP';throw error;}
+ catch(error){error.queueEndpoint='LOC';throw error;}
  if(!response.ok){
-   const category=await orderedMcpFailureEvidence(response,
+   const category=await orderedLocFailureEvidence(response,
      encoder.encode(payloadJson).length,records.length);
-   const error=Error('LAS MCP 有序對話寫入失敗 HTTP '+response.status+
+   const error=Error('LOC 有序對話匯入失敗 HTTP '+response.status+
      '（'+category+'）');
-   error.httpStatus=response.status;error.queueEndpoint='MCP';throw error;
+   error.httpStatus=response.status;error.queueEndpoint='LOC';
+   error.retryAfter=response.headers.get('retry-after')||'';
+   throw error;
  }
  const body=await response.json().catch(()=>null);
- // MCP can return a transport-200 tools/call with isError=true when
- // LOC's business backend is temporarily unavailable. It is not a malformed
- // receipt: retry the unchanged IndexedDB row later, without pausing forever.
- const toolError=body?.result?.isError&&
-   String(body?.result?.content?.[0]?.text||'').trim();
- if(body?.id===id&&toolError==='LOC data service unavailable; please retry later.'){
-  const retry=Error('LAS MCP 下游資料服務暫時無法使用（503）；Queue 保留等待重試');
-  retry.httpStatus=503;
-  retry.queueEndpoint='MCP';
-  throw retry;
- }
- const receipt=body?.result?.structuredContent;
- // LOC returns the *total stored messages* and the count newly appended
- // for this batch. Duplicates legitimately append zero; a stored total below
- // this submitted batch cannot be accepted as a complete receipt.
- if(body?.id!==id||body?.result?.isError||receipt?.accepted!==true||
-    receipt.scopeid!==scopeid||
+ const receipt=body?.data;
+ if(receipt?.accepted!==true||receipt.scopeid!==scopeid||
     !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
     !Number.isSafeInteger(receipt?.count)||receipt.count<0||
     receipt.count>records.length||
@@ -671,9 +726,14 @@ async function sendOrderedConversation(scopeid,records,token,config){
     !Number.isSafeInteger(receipt?.messages)||
     receipt.messages<records.length)
   throw contractError('LOC 有序對話未確認完整寫入，Queue 原始資料保留');
+ await logDiagnostic('loc.ordered.receipt',{
+   accepted:true,records:records.length,appended:receipt.count,
+   total_messages:receipt.messages,duplicate:receipt.duplicate
+ });
  return receipt;
 }
 async function flush(force=false){
+ if(maintenance)return {message:'本機暫存維護中',sent:0};
  // A manual send must not inherit an already-running automatic attempt.
  // Await its settlement and then run a fresh forced pass against durable Queue.
  if(inFlight){
@@ -685,7 +745,7 @@ async function flush(force=false){
   return inFlight;
  }
  inFlight=(async()=>{
-  const pending=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
+  const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
   if(!rows.length&&!ordered.length){
@@ -714,40 +774,48 @@ async function flush(force=false){
     groups.get(key).push(row);
    }
    for(const group of groups.values()){
-    // Always send in original source order, not in arrival order.
     group.sort((a,b)=>a.source_order-b.source_order);
-    for(const part of packet(group)){
-     const scopeid=part[0].scopeid||'lo3rwang';
-     try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
-     catch(error){
-      if(error.httpStatus!==401)throw error;
-      token=await activeToken(true);
-      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+    // Hydrate only 8 bodies at a time. Source order comes from the small
+    // IndexedDB metadata index, never a capture timestamp.
+    for(let offset=0;offset<group.length;offset+=8){
+     const hydrated=await loadQueueRows(group.slice(offset,offset+8).map(r=>r.id));
+     for(const part of packet(hydrated)){
+      const scopeid=part[0].scopeid||'lo3rwang';
+      try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
+      catch(error){
+       if(error.httpStatus!==401)throw error;
+       token=await activeToken(true);
+       await sendOrderedConversation(scopeid,part,token,settings.locConfig);
+      }
+      await removeEvents(part);
+      await updateQueueBadge().catch(()=>{});
+      count+=part.length;
      }
-     await removeEvents(part);
-     await updateQueueBadge().catch(()=>{});
-     count+=part.length;
     }
    }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
-    for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
-     const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
-     try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
-     catch(error){
+    const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
+    for(let offset=0;offset<scopeRows.length;offset+=8){
+     const hydrated=await loadQueueRows(scopeRows.slice(offset,offset+8).map(r=>r.id));
+     for(const group of packet(hydrated)){
+      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),
+       write_mode:'append',records:group.map(({scopeid:localScope,...record})=>
+         ({...record,source_key:record.source_key||normalizedUrl(record.url),
+           write_mode:'append',kind:record.kind||'capture'}))};
+      try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
+      catch(error){
        if(error.httpStatus!==401)throw error;
-       // A token can be revoked before its local expiry. Refresh once, then
-       // require the same server-side UID receipt before acknowledging Queue.
        try{token=await activeToken(true)}
        catch{
-         const expired=oauthError('授權已失效，請重新連接 LOC');
-         expired.httpStatus=401;
-         throw expired;
+        const expired=oauthError('授權已失效，請重新連接 LOC');
+        expired.httpStatus=401;throw expired;
        }
        await sendViaAuth(scopeid,batch,token,settings.locConfig);
+      }
+      await removeEvents(group);
+      await updateQueueBadge().catch(()=>{});
+      count+=group.length;
      }
-     await removeEvents(group); // Clear only after complete server-side UID receipts.
-     await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
-     count+=group.length;
     }
    }
    await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']);
@@ -785,9 +853,15 @@ async function flush(force=false){
 }
 
 async function inject(tabId){
+ // The isolated world survives successive context-menu clicks. Avoid
+ // loading extraction libraries repeatedly into the same open page.
+ const loaded=await chrome.scripting.executeScript({
+  target:{tabId},func:()=>globalThis.__locCaptureV2===true
+ });
+ if(loaded?.[0]?.result===true)return;
  await chrome.scripting.executeScript({target:{tabId},files:[
-  'vendor/Readability.js','vendor/ChatGPTShadowExtract.js',
-   'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
+  'vendor/ChatGPTShadowExtract.js',
+  'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
  ]});
 }
 async function currentTab(){
@@ -1170,20 +1244,24 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
    }
    case 'loc-status':{
-    const [session,queue]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),allEvents()]);
+    const [session,stats]=await Promise.all([
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),scanQueue()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     ...captureTotals(queue),
-     blockedReview:queue.filter(row=>row.kind==='ordered_conversation'&&
-       (row.reviewed!==true||!trustedSourceOrder(row))).length,
-     legacyUnordered:queue.filter(isUnorderedConversationCapture).length,
+     pending:stats.pending,pendingCaptures:stats.pendingCaptures,
+     blockedReview:stats.blockedReview,legacyUnordered:stats.legacyUnordered,
      lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
       retryEndpoint:session.locQueueRetryEndpoint||'',
       retryStatus:Number(session.locQueueRetryStatus||0),
      consecutiveFailures:Number(session.locQueueFailures||0)};
+   }
+   case 'loc-clear-local-captures':{
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('只有 LunArcus 設定頁能清空本機 Queue');
+    return clearLocalCaptures();
    }
    case 'loc-clear-diagnostics':{
     // Local-only action from the trusted Extension settings document.
@@ -1200,7 +1278,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
-    return reviewGroups(await allEvents());
+    return reviewGroups((await scanQueue({metadata:true})).rows);
    }
    case 'conversation.turn':{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
@@ -1208,7 +1286,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      throw Error('完整訊息僅能在 LunArcus 訊息重整頁讀取');
     const id=String(message.id||'');
     if(!id||id.length>256)throw Error('無效的待送訊息 ID');
-    const rows=await allEvents(),row=rows.find(item=>item.id===id);
+    const [row]=await loadQueueRows([id]).catch(()=>[null]);
     if(!row||row.kind!=='ordered_conversation')
      throw Error('訊息已不在待送 Queue，請重新整理預覽');
     return {id:row.id,source_order:row.source_order,role:row.role,
@@ -1259,7 +1337,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
-   case 'queue.status':{const rows=await allEvents();const s=await chrome.storage.local.get('locImportPaused');return {count:rows.length,bytes:sizeOf(rows),paused:s.locImportPaused===true};}
+   case 'queue.status':{const stats=await scanQueue({bytes:true});const s=await chrome.storage.local.get('locImportPaused');return {count:stats.pending,bytes:stats.bytes,paused:s.locImportPaused===true};}
    case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
    case 'queue.flush':return flush(true);
    case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};
