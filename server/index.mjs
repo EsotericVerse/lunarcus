@@ -155,7 +155,7 @@ load();
 // under this Worker's workers.dev namespace is preview-only, never an issuer.
 const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const PREVIEW_MCP_PATHS=new Set([
-  '/', '/mcp', '/api/loc-native',
+  '/', '/mcp',
   '/.well-known/oauth-protected-resource',
   '/.well-known/oauth-protected-resource/mcp'
 ]);

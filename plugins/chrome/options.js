@@ -83,7 +83,7 @@ async function show(){
  const legacyBlocked=Number(result.legacyUnordered||0);
  queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
   (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
-  (legacyBlocked?'；'+legacyBlocked+' 筆舊版未排序內容保留':'')+
+  (legacyBlocked?'；'+legacyBlocked+' 筆舊式無序對話不可匯入，可清空本機暫存':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  renderOverviewGuidance(result);
  const last=result.lastAction;
@@ -207,7 +207,7 @@ async function renderOrganizer(){
  const result=await call('conversation.review');
  const groups=Array.isArray(result.conversations)?result.conversations:[];
  summary.textContent=groups.length+' 組對話／'+Number(result.ordered_count||0)+
-  ' 則待送訊息；舊版未排序片段 '+Number(result.legacy_count||0)+' 則（隔離保留）';
+  ' 則待送訊息；不支援的無序對話 '+Number(result.legacy_count||0)+' 則（不會送出）';
  if(!groups.length){
   root.append(organizerElement('p','field-hint','目前沒有待重整的有序對話。'));
   return;

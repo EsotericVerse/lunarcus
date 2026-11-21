@@ -154,9 +154,9 @@ async function clearLocalCaptures(){
 // Local-only ordered-message review. Nothing is sent, deleted or re-ordered
 // in IndexedDB until an explicit review confirmation succeeds.
 function reviewGroups(rows){
- const grouped=new Map(),legacy=[];
+ const grouped=new Map();let unsupportedConversationCount=0;
  for(const row of rows){
-  if(isUnorderedConversationCapture(row)){legacy.push(row);continue;}
+  if(isUnorderedConversationCapture(row)){unsupportedConversationCount++;continue;}
   if(row.kind!=='ordered_conversation')continue;
   const key=(row.scopeid||'lo3rwang')+'|'+row.source_key;
   if(!grouped.has(key))grouped.set(key,[]);
@@ -180,7 +180,7 @@ function reviewGroups(rows){
     preview:String(r.text||'').slice(0,300),reviewed:r.reviewed===true}))
   };
  });
- return {conversations,legacy_count:legacy.length,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
+ return {conversations,legacy_count:unsupportedConversationCount,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
 }
 async function approveReviewedConversation(key,expectedIds){
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
@@ -259,8 +259,8 @@ async function stableUuid(input){
 }
 // Conversation fragments must never be appended to a Galaxy article out of order.
 // The former model has no persisted turn-order/reply graph: fail closed.
-// Existing pending Queue is retained and may contain legacy fragments; flush
-// also blocks them until a verified structured migration is available.
+// Unsupported old captures remain blocked: importing unsorted conversation
+// text as articles would corrupt LOC chronology. User can clear local Queue.
 function isConversationSource(value){
  try{
   const host=new URL(String(value||'')).hostname.toLowerCase();
@@ -753,7 +753,7 @@ async function flush(force=false){
    return {message:unreviewedCount
     ?'有 '+unreviewedCount+' 則對話尚未完成訊息重整，請先在第六鍵「訊息重整」確認'
     :legacyConversationCount
-      ?'已保留 '+legacyConversationCount+' 筆舊版無序對話 Queue；待結構化重建後再送出'
+      ?'有 '+legacyConversationCount+' 筆不支援的舊式對話資料；可於 Queue 清空本機擷取暫存'
       :'Queue 已清空',sent:0};
   }
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
@@ -822,7 +822,7 @@ async function flush(force=false){
    return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
   }catch(e){
    const s=Number(e.httpStatus||0);
-   const endpoint=['LOC','MCP'].includes(e.queueEndpoint)?e.queueEndpoint:'';
+   const endpoint=e.queueEndpoint==='LOC'?'LOC':'';
    await chrome.storage.local.set({locQueueRetryEndpoint:endpoint,
      locQueueRetryStatus:s>=100&&s<=599?s:0});
    if(s===429){
