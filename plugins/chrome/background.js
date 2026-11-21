@@ -324,13 +324,12 @@ async function toEvents(items,scopeid='lo3rwang'){
  }
  return rows;
 }
-function captureTotals(rows){return {pending:rows.length,pendingCaptures:new Set(rows.map(r=>r.group_id||r.id)).size};}
-async function updateQueueBadge(rows=null){
- const totals=rows?captureTotals(rows):await scanQueue();
- const count=totals.pendingCaptures;
+// The toolbar never deserializes saved conversation JSON just to count it.
+async function updateQueueBadge(){
+ const count=await queueCount();
  await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
- await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 次擷取':'LunArcus：Queue 0 次待送'});
- return totals;
+ await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 筆資料':'LunArcus：Queue 0 筆待送'});
+ return {pending:count};
 }
 async function clearLegacyTabBadges(){
  // Older versions wrote '!' / 'OK' to individual tab badges. Those per-tab
@@ -357,7 +356,7 @@ async function queueCount(){
   tx.oncomplete=()=>db.close();
  });
 }
-async function acceptItems(items){
+async function acceptItems(items,{deferFlush=false}={}){
  if(maintenance)throw Error('正在清空本機暫存，請稍後重新擷取');
  if(!Array.isArray(items)||items.length>2000)
   throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
@@ -374,8 +373,8 @@ async function acceptItems(items){
  const groups=new Set();
  // Do not retain every converted message and its duplicate text in heap.
  // A large one-click capture writes to IndexedDB in 12-record windows.
- for(let i=0;i<items.length;i+=12){
-  const events=await toEvents(items.slice(i,i+12),locTargetScope);
+ for(let i=0;i<items.length;i+=4){
+  const events=await toEvents(items.slice(i,i+4),locTargetScope);
   projected+=events.length;
   if(!events.length)continue;
   const receipt=await putEvents(events);
@@ -386,11 +385,12 @@ async function acceptItems(items){
   return {message:summary+'；沒有符合條件的內容入列',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
  const inserted={chunks,captures:groups.size};
- await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
+ if(!deferFlush)
+  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
  const message=summary+'；新入列 '+inserted.captures+' 項擷取內容／'+
   inserted.chunks+' 筆 Queue 分段（不是對話來源數，也不是 Galaxy 已保存總數）';
- if(locImportPaused)
-  return {message:message+'；Queue 已暫停傳送',queued:await queueCount(),
+ if(locImportPaused||deferFlush)
+  return {message:message+(locImportPaused?'；Queue 已暫停傳送':''),queued:await queueCount(),
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const pendingCount=await queueCount();
@@ -1062,23 +1062,29 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
  // Only twelve projected turns exist at once in the service worker,
  // rather than cloning the whole source again into an "items" array.
  let insertedCaptures=0,insertedChunks=0,detected=0,user=0,assistant=0;
- for(let offset=0;offset<result.messages.length;offset+=12){
-  const items=result.messages.slice(offset,offset+12).map(row=>({
+ for(let offset=0;offset<result.messages.length;offset+=4){
+  const items=result.messages.slice(offset,offset+4).map(row=>({
    key:row.message_id,source_key:canonical,url:canonical,
    title:result.title,role:row.role,
    message_id:row.message_id,source_order:row.source_order,
    parent_id:row.parent_id,order_evidence:'source-ordinal',
    text:row.text
   }));
-  const current=await acceptItems(items);
+  const current=await acceptItems(items,{deferFlush:true});
   detected+=current.detected;
   user+=current.user;
   assistant+=current.assistant;
   insertedCaptures+=current.insertedCaptures;
   insertedChunks+=current.insertedChunks;
  }
- const receipt={detected,user,assistant,insertedCaptures,insertedChunks,
-  empty:insertedChunks===0,queued:await queueCount(),
+ // Source projection was a single conversation even when admitted in
+ // several small messages. Trigger at most one upload pass at the end.
+ await updateQueueBadge().catch(()=>{});
+ const {locImportPaused}=await chrome.storage.local.get('locImportPaused');
+ if(insertedChunks&&!locImportPaused)
+  void flush(false).catch(error=>noteAction('自動傳送',false,error?.message||String(error)));
+ const receipt={detected,user,assistant,insertedCaptures:insertedChunks?1:0,
+  insertedChunks,empty:insertedChunks===0,queued:await queueCount(),
   message:'已辨識 '+detected+' 則原始對話訊息，新增 '+insertedChunks+' 筆 Queue'};
  return {...receipt,read_source:'original-message-chain',
   original_count:result.original_count,
