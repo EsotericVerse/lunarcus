@@ -66,17 +66,18 @@ test('LAS Plugins cancels a headerless oversized JSON stream before parsing',asy
 });
 
 test('LAS Plugins does not duplicate each conversation text into content',()=>{
-  assert.doesNotMatch(content,/content:'\\['\\+row\\.role/);
-  assert.match(content,/fingerprint\\(typeof item\\.text==='string'\\?item\\.text:item\\.content\\)/);
-  assert.match(content,/offset<pending\\.length;offset\\+=12/);
+  assert.equal(content.includes("content:'['+row.role"),false);
+  assert.equal(content.includes("fingerprint(typeof item.text==='string'?item.text:item.content)"),true);
+  assert.equal(content.includes('offset<pending.length;offset+=12'),true);
 });
 
 test('LAS Plugins Queue status uses IDB count instead of JSON materialization',()=>{
-  const status=source.slice(source.indexOf("case 'loc-status':{"),source.indexOf("case 'loc-clear-local-captures':{"));
-  assert.match(status,/queueCount\\(\\)/);
-  assert.doesNotMatch(status,/scanQueue\\(/);
+  const status=source.slice(source.indexOf("case 'loc-status':{"),
+    source.indexOf("case 'loc-clear-local-captures':{"));
+  assert.equal(status.includes('queueCount()'),true);
+  assert.equal(status.includes('scanQueue('),false);
   const badge=source.slice(source.indexOf('async function updateQueueBadge('),
     source.indexOf('async function clearLegacyTabBadges('));
-  assert.match(badge,/queueCount\\(\\)/);
-  assert.doesNotMatch(badge,/scanQueue\\(/);
+  assert.equal(badge.includes('queueCount()'),true);
+  assert.equal(badge.includes('scanQueue('),false);
 });
