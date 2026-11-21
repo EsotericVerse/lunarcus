@@ -24,7 +24,7 @@
 
 ## 文件與程式碼同位
 
-模組說明就近放在各模組的 `README.md`，不使用根目錄 `docs/`；部署註記歸 `.github/workflows/README.md`，ISR 計畫歸 `.agents/skills/deployment/SKILL.md`，歷史交接歸私人 Slack 工程封存與 Git Commit 紀錄（非現行依據）。僅修改文件不應額外觸發 Worker Build；必要修改 Cloudflare Watch Paths／Exclude 時應明確取得授權。
+模組說明就近放在各模組的 `README.md`，不使用根目錄 `docs/`；部署註記歸 `.github/workflows/README.md`，ISR 計畫歸 `.agents/skills/deployment/SKILL.md`，歷史交接歸私人 Slack 工程封存與 Git Commit 紀錄（非現行依據）。純文件修改通常不必額外觸發 Worker Build，但不得禁止必要的建置或驗證；需改 Cloudflare Watch Paths／Exclude 等外部設定時，仍須取得當次明確授權。
 
 ## 模組歸屬（Auth／Plugins／MCP／Tunnel）
 
@@ -73,8 +73,8 @@
 ## 依本次修改驗證與部署
 
 - 驗證方式以當下 `package.json` 的 scripts 與 `.github/workflows` 實際有的檢查為準，文件不重複列出指令名稱，免得跟真正可跑的腳本脫鉤；改了哪個模組就找對應腳本跑，找不到對應腳本代表還沒建，先確認是否需要補，不要照抄舊文件猜一個。
-- 自動部署只能按 LAS **現在的** GitHub Actions 和 Cloudflare Builds 設定判斷；Pure docs/Skills 改動不應刻意觸發額外部署。現有 `lunarcus` Worker 同時服務 Auth/MCP，不允許重新打開手動獨立 MCP 發布或建立平行管線。Cloudflare 網域／密鑰／Build Watch Paths 只有當次明確授權才可變更。
-- **LAS 先完成自己的正式部署，再獨立判定是否通知 LOC**：Plugins、CMS Data Mapping、內部修改為 `skip`；`review` 不自動通知；確實影響已引用契約才以既有 Cloudflare → LOC GitHub Workflow 路徑驗證發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得以 LOC Pages Deploy Hook 當固定發布流程。
+- Build、Preview、Deploy 的入口與觸發方式均以當下 LAS `main`、`package.json`、GitHub Actions、Wrangler 與 Cloudflare Builds 的有效設定為準；三者可依需求分別驗證，不強制先正式部署才做 Preview，也不要求每次變更都部署。Pure docs/Skills 變動通常不需要額外部署，必要驗證仍可執行。避免無依據重建常駐 MCP 發布入口或重複管線，但不把合法的本地 Build、Dry Run、分支 Preview 或隔離測試當成禁令。Cloudflare 網域、密鑰、Build Watch Paths 等外部設定只有當次明確授權才可更動。
+- **LAS 先驗證自己的變更，再判斷是否需要跨 Repo 通知**：Build、Preview、PR 合併與正式部署可依本次變更風險及現有流程安排；正式部署不是通知 LOC 或完成局部驗證的固定前置條件。Plugins、CMS Data Mapping、內部修改原則上為 `skip`；`review` 不自動通知；確實影響已引用契約時才依有效且已授權的通知機制發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得把某種過去的 Deploy Hook 當成固定發布流程。
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
 - PR 要附最小充分測試和變更影響；他人正在變動時，先確認最新 `main`，不要用舊分支反向蓋掉。
 
@@ -88,4 +88,4 @@
 
 ## 任務完成
 
-最少回報：修改了哪個 LAS 模組、具體 commit/PR、實跑測試、main/preview/production 實際結果、仍未知的實機證據。**外部設定沒改就說沒改；測試沒跑就說沒跑。** 不要求使用者做 Agent 自己可完成的工作。
+最少回報：修改了哪個 LAS 模組、具體 commit/PR、實跑測試、Build／Preview／main／實際部署各層驗證結果與仍未知的實機證據；未執行的層級標明未驗證／不適用。**外部設定沒改就說沒改；測試沒跑就說沒跑。** 不要求使用者做 Agent 自己可完成的工作。
