@@ -930,10 +930,29 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
   if(!response.ok)return {status:'source-http-'+response.status};
   if(!String(response.headers.get('content-type')||'').includes('json'))
    return {status:'source-not-json'};
-  if(Number(response.headers.get('content-length')||0)>10000000)
+  // A whole ChatGPT conversation JSON can force many live copies across
+  // network decoding, JSON.parse, Chrome MAIN/isolated worlds and IndexedDB.
+  // Refuse oversized sources before parsing; partial DOM capture remains
+  // available without pretending it is the complete conversation.
+  const MAX_SOURCE_JSON_BYTES=2*1024*1024;
+  if(Number(response.headers.get('content-length')||0)>MAX_SOURCE_JSON_BYTES)
    return {status:'source-too-large'};
-  const raw=await response.text();
-  if(raw.length>10000000)return {status:'source-too-large'};
+  if(!response.body)return {status:'source-unavailable'};
+  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});
+  let raw='',bytes=0,complete=false;
+  try{
+   for(;;){
+    const part=await reader.read();
+    if(part.done){complete=true;break;}
+    bytes+=part.value.byteLength;
+    if(bytes>MAX_SOURCE_JSON_BYTES)return {status:'source-too-large'};
+    raw+=decoder.decode(part.value,{stream:true});
+   }
+   raw+=decoder.decode();
+  }finally{
+   if(!complete)await reader.cancel().catch(()=>{});
+   reader.releaseLock();
+  }
   json=JSON.parse(raw);
  }catch{return {status:'source-unavailable'};}
  if(json?.conversation_id&&String(json.conversation_id).toLowerCase()!==threadId.toLowerCase())
@@ -942,9 +961,11 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
     json?.pagination?.has_more||json?.pagination?.next_cursor)
   return {status:'source-paginated'};
  // An App Shell pagination placeholder is not the origin of the full tree.
- if(json?.mapping&&Object.keys(json.mapping).some(key=>
-    /^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key)))
-  return {status:'source-paginated'};
+ if(json?.mapping){
+  for(const key in json.mapping)
+   if(/^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key))
+    return {status:'source-paginated'};
+ }
  let chain;
  if(json?.mapping&&typeof json.mapping==='object'&&typeof json.current_node==='string'){
   const ancestors=[],seen=new Set();
@@ -1038,14 +1059,27 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
     !Array.isArray(result.messages)||!result.messages.length)
   return {source_unavailable:'source-invalid-receipt'};
  const canonical='https://chatgpt.com/c/'+id;
- const items=result.messages.map(row=>({
-  key:row.message_id,source_key:canonical,url:canonical,
-  title:result.title,role:row.role,
-  message_id:row.message_id,source_order:row.source_order,
-  parent_id:row.parent_id,order_evidence:'source-ordinal',
-  text:row.text
- }));
- const receipt=await acceptItems(items);
+ // Only twelve projected turns exist at once in the service worker,
+ // rather than cloning the whole source again into an "items" array.
+ let insertedCaptures=0,insertedChunks=0,detected=0,user=0,assistant=0;
+ for(let offset=0;offset<result.messages.length;offset+=12){
+  const items=result.messages.slice(offset,offset+12).map(row=>({
+   key:row.message_id,source_key:canonical,url:canonical,
+   title:result.title,role:row.role,
+   message_id:row.message_id,source_order:row.source_order,
+   parent_id:row.parent_id,order_evidence:'source-ordinal',
+   text:row.text
+  }));
+  const current=await acceptItems(items);
+  detected+=current.detected;
+  user+=current.user;
+  assistant+=current.assistant;
+  insertedCaptures+=current.insertedCaptures;
+  insertedChunks+=current.insertedChunks;
+ }
+ const receipt={detected,user,assistant,insertedCaptures,insertedChunks,
+  empty:insertedChunks===0,queued:await queueCount(),
+  message:'已辨識 '+detected+' 則原始對話訊息，新增 '+insertedChunks+' 筆 Queue'};
  return {...receipt,read_source:'original-message-chain',
   original_count:result.original_count,
   skipped_nontext:result.skipped};
