@@ -30,7 +30,7 @@ function renderOverviewGuidance(result){
  const description=$('overviewNextDescription');
  const link=$('overviewNextLink');
  const recent=$('overviewRecent');
- const pending=Number(result.pendingCaptures)||0;
+ const pending=Number(result.pending)||0;
  let action=null;
  if(result.error){
   title.textContent='連線狀態需要檢查';
@@ -39,14 +39,14 @@ function renderOverviewGuidance(result){
  }else if(!result.connected){
   title.textContent='先建立 LOC 身分連線';
   description.textContent=pending
-   ?'本機仍有 '+pending+' 次擷取待送。先使用上方「連接 LunArcus Auth」，Queue 會保留原有資料。'
+   ?'本機仍有 '+pending+' 筆資料待送。先使用上方「連接 LunArcus Auth」，Queue 會保留原有資料。'
    :'使用上方「連接 LunArcus Auth」完成授權。擷取時才會加入本機 Queue。';
  }else if(result.paused){
   title.textContent='Queue 暫時保留中';
   description.textContent='自動送出已暫停。請在 Queue 頁查看原因，需要時手動處理；原有資料不會因切頁而清除。';
   action={href:'#activity',label:'查看 Queue 狀態'};
  }else if(pending>0){
-  title.textContent='有 '+pending+' 次擷取等待送出';
+  title.textContent='有 '+pending+' 筆資料等待送出';
   description.textContent='內容已暫存在本機。可以前往 Queue 檢視送出情況與最近一次操作。';
   action={href:'#activity',label:'檢視待送資料'};
  }else{
@@ -68,7 +68,7 @@ async function show(){
  ]);
  status.textContent=result.error||(result.connected?'已連接 LunArcus Auth':'尚未連接 LunArcus Auth');
  setAuthIndicator(Boolean(result.connected));
- $('captureCount').textContent=result.error?'—':String(result.pendingCaptures??0);
+ $('captureCount').textContent='按需';
  $('itemCount').textContent=result.error?'—':String(result.pending??0);
  const destination=result.retryEndpoint==='MCP'?'LAS MCP':
   result.retryEndpoint==='LOC'?'LOC API':'傳送端';
@@ -81,7 +81,7 @@ async function show(){
    new Date(result.nextRetryAt).toLocaleString('zh-TW')):'';
  const reviewBlocked=Number(result.blockedReview||0);
  const legacyBlocked=Number(result.legacyUnordered||0);
- queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
+ queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（群組與時序於訊息重整頁按需查閱）'+
   (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
   (legacyBlocked?'；'+legacyBlocked+' 筆舊式無序對話不可匯入，可清空本機暫存':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
