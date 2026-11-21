@@ -10,7 +10,7 @@ import {createAuthPostgresPool} from './pg-driver.mjs';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
-import {authKaraulRatePolicy} from './auth-qos.mjs';
+import {lasAuthRatePolicy} from './auth-rate.mjs';
 import {extensionClientDiscovery} from './extension-client.mjs';
 import {ensureFirstPartyOAuthClient,isFirstPartyOAuthConsent} from './first-party-client.mjs';
 
@@ -202,7 +202,7 @@ export function createLocAuth(env){
     }}}:{}),
     disabledPaths:['/token'],
     // Karaul owns all LOC Auth QoS policy; Better Auth enforces its decision.
-    rateLimit:authKaraulRatePolicy,
+    rateLimit:lasAuthRatePolicy,
     advanced:{
       useSecureCookies:true,
       // The LOC website receives the opaque session cookie only for explicit
