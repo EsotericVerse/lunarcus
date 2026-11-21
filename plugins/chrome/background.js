@@ -747,6 +747,22 @@ async function flush(force=false){
   return inFlight;
  }
  inFlight=(async()=>{
+  // A disabled/retrying Queue must never deserialize every large saved JSON
+  // entry just to discover that it cannot send anything.
+  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
+  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
+  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
+     (!force||settings.locQueueRetryType==='rate'))
+   return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
+    '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
+  const pendingCount=await queueCount();
+  if(!pendingCount)return {message:'Queue 已清空',sent:0};
+  // Old 500+ row JSON backlogs require an explicit manual decision, not a
+  // five-minute background scan that repeatedly consumes browser memory.
+  if(!force&&pendingCount>256){
+   await chrome.storage.local.set({locImportPaused:true});
+   return {message:'Queue 超過 256 筆，已暫停自動掃描；可清空本機暫存或手動送出',sent:0};
+  }
   const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
@@ -758,12 +774,7 @@ async function flush(force=false){
       ?'有 '+legacyConversationCount+' 筆不支援的舊式對話資料；可於 Queue 清空本機擷取暫存'
       :'Queue 已清空',sent:0};
   }
-  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
-  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
-  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
-     (!force||settings.locQueueRetryType==='rate'))
-    return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
-     '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
+
   let token;
   try{token=await activeToken()}catch(e){await chrome.storage.local.set({locImportPaused:true});throw e}
   if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
@@ -1293,12 +1304,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
    }
    case 'loc-status':{
-    const [session,stats]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),scanQueue()]);
+    // Count IndexedDB keys only; opening Settings must not revive every
+    // saved conversation body or compute its JSON byte size.
+    const [session,count]=await Promise.all([
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),queueCount()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     pending:stats.pending,pendingCaptures:stats.pendingCaptures,
-     blockedReview:stats.blockedReview,legacyUnordered:stats.legacyUnordered,
+     pending:count,pendingCaptures:null,
+     blockedReview:null,legacyUnordered:null,
      lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
@@ -1386,7 +1399,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
-   case 'queue.status':{const stats=await scanQueue({bytes:true});const s=await chrome.storage.local.get('locImportPaused');return {count:stats.pending,bytes:stats.bytes,paused:s.locImportPaused===true};}
+   case 'queue.status':{const count=await queueCount();const s=await chrome.storage.local.get('locImportPaused');return {count,bytes:null,paused:s.locImportPaused===true};}
    case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
    case 'queue.flush':return flush(true);
    case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};
