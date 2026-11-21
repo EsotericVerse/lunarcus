@@ -1,7 +1,7 @@
 // One LunArcus Chrome Extension: one LOC Auth, one queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
-const MAX_BATCH=50;
+const MAX_BATCH=50,MAX_QUEUE_BODY_SCAN=256;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -183,6 +183,8 @@ function reviewGroups(rows){
  return {conversations,legacy_count:unsupportedConversationCount,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
 }
 async function approveReviewedConversation(key,expectedIds){
+ if(await queueCount()>MAX_QUEUE_BODY_SCAN)
+  throw Error('本機 Queue 資料過多；無法安全載入整份舊對話，請先清空本機暫存');
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
     expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
  const rows=(await scanQueue({metadata:true})).rows;
@@ -759,9 +761,12 @@ async function flush(force=false){
   if(!pendingCount)return {message:'Queue 已清空',sent:0};
   // Old 500+ row JSON backlogs require an explicit manual decision, not a
   // five-minute background scan that repeatedly consumes browser memory.
-  if(!force&&pendingCount>256){
-   await chrome.storage.local.set({locImportPaused:true});
-   return {message:'Queue 超過 256 筆，已暫停自動掃描；可清空本機暫存或手動送出',sent:0};
+  if(pendingCount>MAX_QUEUE_BODY_SCAN){
+   if(!force){
+    await chrome.storage.local.set({locImportPaused:true});
+    return {message:'Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆，已暫停自動掃描；請清空本機暫存',sent:0};
+   }
+   throw Error('Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆；為避免大量 JSON 造成記憶體暴增，請先清空本機暫存');
   }
   const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
@@ -1340,6 +1345,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
+    const count=await queueCount();
+    if(count>MAX_QUEUE_BODY_SCAN)
+     return {conversations:[],ordered_count:0,legacy_count:0,oversized_queue:count};
     return reviewGroups((await scanQueue({metadata:true})).rows);
    }
    case 'conversation.turn':{
