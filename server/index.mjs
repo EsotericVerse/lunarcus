@@ -1,4 +1,5 @@
 import mcpWorker from './mcp/server.mjs';
+import {createLAS} from './las.mjs';
 import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth/auth.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
@@ -151,28 +152,16 @@ document.getElementById('add').onclick=async function(){
 };
 load();
 `;
-// Production identities are the two custom domains. A version/branch URL
-// under this Worker's workers.dev namespace is preview-only, never an issuer.
-const LAS_PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
-const PREVIEW_MCP_PATHS=new Set([
+// Preview on workers.dev shares one Worker, not an OAuth issuer.
+// Production dispatch is fixed to the two canonical LAS hostnames.
+const PREVIEW_MCP_PATHS=[
   '/', '/mcp',
   '/.well-known/oauth-protected-resource',
   '/.well-known/oauth-protected-resource/mcp'
-]);
-export default {
-  async fetch(request,env,ctx){
-    let pool;
-    try{
-    const url=new URL(request.url);
-    // Route production by its own hostname. Only on workers.dev preview
-    // use paths to select MCP versus Auth; never rewrite a production host
-    // or redirect it to a preview URL.
-    const preview=LAS_PREVIEW_HOST.test(url.hostname);
-    if(url.hostname==='mcp.lo3rwang.cc'||
-      (preview&&PREVIEW_MCP_PATHS.has(url.pathname)))
-      return mcpWorker.fetch(request,env,ctx);
-    if(url.hostname!=='auth.lo3rwang.cc'&&!preview)
-      return new Response('Not found',{status:404});
+];
+
+async function handleLASAuth({request,env,url,onFinish}){
+  try{
     const origin=request.headers.get('origin');
     const publicProtocol=isPublicProtocolPath(url.pathname);
     if(origin&&!allowed.has(origin)&&!publicProtocol)
@@ -191,7 +180,7 @@ export default {
       // so /login, /health and 404s never open a database connection.
       let built;
       const getAuth=()=>{
-        if(!built){built=createLocAuth(env);pool=built.pool;}
+        if(!built){built=createLocAuth(env);onFinish(()=>built.pool.end().catch(()=>{}));}
         return built.auth;
       };
       if(request.method==='GET'&&(
@@ -270,11 +259,11 @@ export default {
       return new Response(JSON.stringify({error:'LOC Auth fatal'}),{
         status:500,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
-    }finally{
-      if(pool){
-        const closing=pool.end().catch(()=>{});
-        if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(closing);
-      }
-    }
   }
-};
+}
+
+export default createLAS({
+  auth:handleLASAuth,
+  mcp:({request,env,execution})=>mcpWorker.fetch(request,env,execution),
+  previewMcpPaths:PREVIEW_MCP_PATHS
+});
