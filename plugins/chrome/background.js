@@ -276,7 +276,7 @@ async function toEvents(items,scopeid='lo3rwang'){
  if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
  const rows=[];
  for(const item of items){
-  if(!item||typeof item.content!=='string'||!item.content.trim())continue;
+  if(!item)continue;
   if(isConversationSource(item.source_key||item.url)){
    const url=normalizedUrl(item.url||item.source_key);
    const source_key=normalizedUrl(item.source_key||item.url);
@@ -304,6 +304,8 @@ async function toEvents(items,scopeid='lo3rwang'){
       text:item.text,captured_at:new Date().toISOString()});
    continue;
   }
+  // Article captures need content; ordered conversation rows use text only.
+  if(typeof item.content!=='string'||!item.content.trim())continue;
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
   if(url!==source_key)continue;
@@ -362,8 +364,8 @@ async function acceptItems(items){
  const {locTargetScope='lo3rwang',locImportPaused=false}=
   await chrome.storage.local.get(['locTargetScope','locImportPaused']);
  const detected=items.length;
- const user=items.filter(x=>String(x?.content||'').startsWith('[user]\n')).length;
- const assistant=items.filter(x=>String(x?.content||'').startsWith('[assistant]\n')).length;
+ const user=items.filter(x=>x?.role==='user'||String(x?.content||'').startsWith('[user]\n')).length;
+ const assistant=items.filter(x=>x?.role==='assistant'||String(x?.content||'').startsWith('[assistant]\n')).length;
  const isConversation=(user+assistant)>0;
  const summary=isConversation
   ?'本次頁面辨識 '+detected+' 則對話訊息（使用者 '+user+'／AI '+assistant+'）'
@@ -859,10 +861,17 @@ async function inject(tabId){
   target:{tabId},func:()=>globalThis.__locCaptureV2===true
  });
  if(loaded?.[0]?.result===true)return;
- await chrome.scripting.executeScript({target:{tabId},files:[
-  'vendor/ChatGPTShadowExtract.js',
-  'capture-source-model.js','conversation-source-model.js','source-temporal-order.js','content.js'
- ]});
+ const tab=await chrome.tabs.get(tabId);
+ const host=new URL(tab.url).hostname.toLowerCase();
+ // The Shadow DOM extractor is only useful on ChatGPT, never on arbitrary
+ // webpages or social feeds. Load all other source models on demand.
+ const files=[
+  'capture-source-model.js','conversation-source-model.js',
+  'source-temporal-order.js','content.js'
+ ];
+ if(host==='chatgpt.com'||host==='chat.openai.com')
+  files.unshift('vendor/ChatGPTShadowExtract.js');
+ await chrome.scripting.executeScript({target:{tabId},files});
 }
 async function currentTab(){
  const tabs=await chrome.tabs.query({active:true,currentWindow:true});
@@ -1034,7 +1043,7 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
   title:result.title,role:row.role,
   message_id:row.message_id,source_order:row.source_order,
   parent_id:row.parent_id,order_evidence:'source-ordinal',
-  text:row.text,content:'['+row.role+']\n'+row.text
+  text:row.text
  }));
  const receipt=await acceptItems(items);
  return {...receipt,read_source:'original-message-chain',
