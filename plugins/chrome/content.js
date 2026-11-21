@@ -72,8 +72,7 @@
           (row.source_order!=null?'source-ordinal:'+row.source_order:null),
         source_order:row.source_order??null,parent_id:row.parent_id??null,
         sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
-        text:row.content.slice(0,140000),
-        content:'['+row.role+']\n'+row.content.slice(0,140000)
+        text:row.content.slice(0,140000)
       }));
   }
   // Respect the user's reading position. ChatGPT virtualizes older turns,
@@ -93,8 +92,8 @@
       if(!rows.length)
         return {directQueued:true,detected:0,user:0,assistant:0,queuedCaptures:0,
           partial:true,message:'目前沒有已載入的可辨識訊息；頁面未捲動，Queue 未變動。'};
-      const user=rows.filter(row=>row.content.startsWith('[user]\n')).length;
-      const assistant=rows.filter(row=>row.content.startsWith('[assistant]\n')).length;
+      const user=rows.filter(row=>row.role==='user'||row.content?.startsWith('[user]\n')).length;
+      const assistant=rows.filter(row=>row.role==='assistant'||row.content?.startsWith('[assistant]\n')).length;
       const missingAssistant=Boolean(includeAssistant&&user>0&&assistant===0);
       const result=await queuePublish(rows);
       if(result.error)throw Error('目前已載入的對話入列失敗：'+result.error);
@@ -209,8 +208,7 @@
       message_id:row.sourceId|| (row.source_order!=null?'source-ordinal:'+row.source_order:null),
       source_order:row.source_order??null,parent_id:row.parent_id??null,
       sent_at:row.sent_at??null,order_evidence:row.order_evidence||'unavailable',
-      text:row.content.slice(0,140000),
-      content:'['+row.role+']\n'+row.content.slice(0,140000)
+      text:row.content.slice(0,140000)
     }));
   }
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
@@ -287,7 +285,7 @@
   async function publish(items){
     const pending=[];
     for(const item of items){
-      const key=item.source_key+':'+(item.key||'')+':'+fingerprint(item.content);
+      const key=item.source_key+':'+(item.key||'')+':'+fingerprint(typeof item.text==='string'?item.text:item.content);
       if(state.seen.has(key)||state.sending.has(key))continue;
       state.sending.add(key);pending.push({item,key});
     }
@@ -296,8 +294,8 @@
     try{
       // A long conversation must be recorded in 100-turn chunks;
       // partial Queue acknowledgements survive a later failed chunk.
-      for(let offset=0;offset<pending.length;offset+=100){
-        const part=pending.slice(offset,offset+100);
+      for(let offset=0;offset<pending.length;offset+=12){
+        const part=pending.slice(offset,offset+12);
         const result=await chrome.runtime.sendMessage({
           type:'items.captured',items:part.map(({item})=>item)
         });
