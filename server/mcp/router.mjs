@@ -3,7 +3,7 @@ import {createLocAuth} from '../auth/auth.mjs';
 import {businessAction} from './business-actions.mjs';
 import {authorizeMcpBearer} from './access-roles.mjs';
 import {readMemory,privateGalaxyLink,articleDistribution,mcpDatabaseConfiguration} from '../tunnel/loc-mapping.mjs';
-import {checkMcpGatewayQos} from './gateway-qos.mjs';
+import {checkMcpGatewayQos} from './gateway-rate.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
