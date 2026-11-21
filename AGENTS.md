@@ -30,6 +30,7 @@
 
 | LAS 模組 | 主要職責 | 現行程式／入口 |
 | --- | --- | --- |
+| `las:core` | LAS 自有 Framework：Host／Path 路由、Request Context、資源生命週期 | `server/las.mjs`、`server/index.mjs` |
 | `las:auth` | Better Auth、Google OAuth/OIDC、LAS Session | `server/auth/`、`server/index.mjs` |
 | `las:plugins` | Chrome Extension 和後續 Plugins | `plugins/chrome/` |
 | `las:mcp` | MCP 協定、Gateway、Tools、SSE／Streamable HTTP | `server/mcp/`、`server/mcp/server.mjs` |
