@@ -82,6 +82,7 @@ async function show(){
  const reviewBlocked=Number(result.blockedReview||0);
  const legacyBlocked=Number(result.legacyUnordered||0);
  queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（群組與時序於訊息重整頁按需查閱）'+
+   (Number(result.pending||0)>256?'；舊資料過多，已限制掃描，請清空本機擷取暫存':'')+
   (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
   (legacyBlocked?'；'+legacyBlocked+' 筆舊式無序對話不可匯入，可清空本機暫存':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
@@ -205,6 +206,12 @@ async function renderOrganizer(){
  root.replaceChildren();
  feedback.textContent='';
  const result=await call('conversation.review');
+ if(Number(result.oversized_queue)>0){
+  summary.textContent='本機 Queue 過大（'+result.oversized_queue+' 筆），為避免記憶體暴增已停止讀取';
+  root.append(organizerElement('p','field-hint',
+   '此處不會載入整份舊對話。請在 Queue 頁按「清空本機擷取暫存」，釋放舊資料；不影響 LOC 已寫入內容。'));
+  return;
+ }
  const groups=Array.isArray(result.conversations)?result.conversations:[];
  summary.textContent=groups.length+' 組對話／'+Number(result.ordered_count||0)+
   ' 則待送訊息；不支援的無序對話 '+Number(result.legacy_count||0)+' 則（不會送出）';
