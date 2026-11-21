@@ -1,7 +1,7 @@
 // One LunArcus Chrome Extension: one LOC Auth, one queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
-const MAX_BATCH=50;
+const MAX_BATCH=50,MAX_QUEUE_BODY_SCAN=256;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -183,6 +183,8 @@ function reviewGroups(rows){
  return {conversations,legacy_count:unsupportedConversationCount,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
 }
 async function approveReviewedConversation(key,expectedIds){
+ if(await queueCount()>MAX_QUEUE_BODY_SCAN)
+  throw Error('本機 Queue 資料過多；無法安全載入整份舊對話，請先清空本機暫存');
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
     expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
  const rows=(await scanQueue({metadata:true})).rows;
@@ -324,13 +326,12 @@ async function toEvents(items,scopeid='lo3rwang'){
  }
  return rows;
 }
-function captureTotals(rows){return {pending:rows.length,pendingCaptures:new Set(rows.map(r=>r.group_id||r.id)).size};}
-async function updateQueueBadge(rows=null){
- const totals=rows?captureTotals(rows):await scanQueue();
- const count=totals.pendingCaptures;
+// The toolbar never deserializes saved conversation JSON just to count it.
+async function updateQueueBadge(){
+ const count=await queueCount();
  await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
- await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 次擷取':'LunArcus：Queue 0 次待送'});
- return totals;
+ await chrome.action.setTitle?.({title:count?'LunArcus：待送 '+count+' 筆資料':'LunArcus：Queue 0 筆待送'});
+ return {pending:count};
 }
 async function clearLegacyTabBadges(){
  // Older versions wrote '!' / 'OK' to individual tab badges. Those per-tab
@@ -357,7 +358,7 @@ async function queueCount(){
   tx.oncomplete=()=>db.close();
  });
 }
-async function acceptItems(items){
+async function acceptItems(items,{deferFlush=false}={}){
  if(maintenance)throw Error('正在清空本機暫存，請稍後重新擷取');
  if(!Array.isArray(items)||items.length>2000)
   throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
@@ -374,8 +375,8 @@ async function acceptItems(items){
  const groups=new Set();
  // Do not retain every converted message and its duplicate text in heap.
  // A large one-click capture writes to IndexedDB in 12-record windows.
- for(let i=0;i<items.length;i+=12){
-  const events=await toEvents(items.slice(i,i+12),locTargetScope);
+ for(let i=0;i<items.length;i+=4){
+  const events=await toEvents(items.slice(i,i+4),locTargetScope);
   projected+=events.length;
   if(!events.length)continue;
   const receipt=await putEvents(events);
@@ -386,11 +387,12 @@ async function acceptItems(items){
   return {message:summary+'；沒有符合條件的內容入列',queued:await queueCount(),
    detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
  const inserted={chunks,captures:groups.size};
- await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
+ if(!deferFlush)
+  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
  const message=summary+'；新入列 '+inserted.captures+' 項擷取內容／'+
   inserted.chunks+' 筆 Queue 分段（不是對話來源數，也不是 Galaxy 已保存總數）';
- if(locImportPaused)
-  return {message:message+'；Queue 已暫停傳送',queued:await queueCount(),
+ if(locImportPaused||deferFlush)
+  return {message:message+(locImportPaused?'；Queue 已暫停傳送':''),queued:await queueCount(),
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const pendingCount=await queueCount();
@@ -747,6 +749,25 @@ async function flush(force=false){
   return inFlight;
  }
  inFlight=(async()=>{
+  // A disabled/retrying Queue must never deserialize every large saved JSON
+  // entry just to discover that it cannot send anything.
+  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
+  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
+  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
+     (!force||settings.locQueueRetryType==='rate'))
+   return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
+    '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
+  const pendingCount=await queueCount();
+  if(!pendingCount)return {message:'Queue 已清空',sent:0};
+  // Old 500+ row JSON backlogs require an explicit manual decision, not a
+  // five-minute background scan that repeatedly consumes browser memory.
+  if(pendingCount>MAX_QUEUE_BODY_SCAN){
+   if(!force){
+    await chrome.storage.local.set({locImportPaused:true});
+    return {message:'Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆，已暫停自動掃描；請清空本機暫存',sent:0};
+   }
+   throw Error('Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆；為避免大量 JSON 造成記憶體暴增，請先清空本機暫存');
+  }
   const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
@@ -758,12 +779,7 @@ async function flush(force=false){
       ?'有 '+legacyConversationCount+' 筆不支援的舊式對話資料；可於 Queue 清空本機擷取暫存'
       :'Queue 已清空',sent:0};
   }
-  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
-  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
-  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
-     (!force||settings.locQueueRetryType==='rate'))
-    return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
-     '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
+
   let token;
   try{token=await activeToken()}catch(e){await chrome.storage.local.set({locImportPaused:true});throw e}
   if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
@@ -930,10 +946,29 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
   if(!response.ok)return {status:'source-http-'+response.status};
   if(!String(response.headers.get('content-type')||'').includes('json'))
    return {status:'source-not-json'};
-  if(Number(response.headers.get('content-length')||0)>10000000)
+  // A whole ChatGPT conversation JSON can force many live copies across
+  // network decoding, JSON.parse, Chrome MAIN/isolated worlds and IndexedDB.
+  // Refuse oversized sources before parsing; partial DOM capture remains
+  // available without pretending it is the complete conversation.
+  const MAX_SOURCE_JSON_BYTES=2*1024*1024;
+  if(Number(response.headers.get('content-length')||0)>MAX_SOURCE_JSON_BYTES)
    return {status:'source-too-large'};
-  const raw=await response.text();
-  if(raw.length>10000000)return {status:'source-too-large'};
+  if(!response.body)return {status:'source-unavailable'};
+  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});
+  let raw='',bytes=0,complete=false;
+  try{
+   for(;;){
+    const part=await reader.read();
+    if(part.done){complete=true;break;}
+    bytes+=part.value.byteLength;
+    if(bytes>MAX_SOURCE_JSON_BYTES)return {status:'source-too-large'};
+    raw+=decoder.decode(part.value,{stream:true});
+   }
+   raw+=decoder.decode();
+  }finally{
+   if(!complete)await reader.cancel().catch(()=>{});
+   reader.releaseLock();
+  }
   json=JSON.parse(raw);
  }catch{return {status:'source-unavailable'};}
  if(json?.conversation_id&&String(json.conversation_id).toLowerCase()!==threadId.toLowerCase())
@@ -942,9 +977,11 @@ async function readChatgptSourceInPage(threadId,includeAssistant){
     json?.pagination?.has_more||json?.pagination?.next_cursor)
   return {status:'source-paginated'};
  // An App Shell pagination placeholder is not the origin of the full tree.
- if(json?.mapping&&Object.keys(json.mapping).some(key=>
-    /^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key)))
-  return {status:'source-paginated'};
+ if(json?.mapping){
+  for(const key in json.mapping)
+   if(/^(?:paginated[-_:]root|pagination[-_:]root)/i.test(key))
+    return {status:'source-paginated'};
+ }
  let chain;
  if(json?.mapping&&typeof json.mapping==='object'&&typeof json.current_node==='string'){
   const ancestors=[],seen=new Set();
@@ -1038,14 +1075,33 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
     !Array.isArray(result.messages)||!result.messages.length)
   return {source_unavailable:'source-invalid-receipt'};
  const canonical='https://chatgpt.com/c/'+id;
- const items=result.messages.map(row=>({
-  key:row.message_id,source_key:canonical,url:canonical,
-  title:result.title,role:row.role,
-  message_id:row.message_id,source_order:row.source_order,
-  parent_id:row.parent_id,order_evidence:'source-ordinal',
-  text:row.text
- }));
- const receipt=await acceptItems(items);
+ // Only twelve projected turns exist at once in the service worker,
+ // rather than cloning the whole source again into an "items" array.
+ let insertedCaptures=0,insertedChunks=0,detected=0,user=0,assistant=0;
+ for(let offset=0;offset<result.messages.length;offset+=4){
+  const items=result.messages.slice(offset,offset+4).map(row=>({
+   key:row.message_id,source_key:canonical,url:canonical,
+   title:result.title,role:row.role,
+   message_id:row.message_id,source_order:row.source_order,
+   parent_id:row.parent_id,order_evidence:'source-ordinal',
+   text:row.text
+  }));
+  const current=await acceptItems(items,{deferFlush:true});
+  detected+=current.detected;
+  user+=current.user;
+  assistant+=current.assistant;
+  insertedCaptures+=current.insertedCaptures;
+  insertedChunks+=current.insertedChunks;
+ }
+ // Source projection was a single conversation even when admitted in
+ // several small messages. Trigger at most one upload pass at the end.
+ await updateQueueBadge().catch(()=>{});
+ const {locImportPaused}=await chrome.storage.local.get('locImportPaused');
+ if(insertedChunks&&!locImportPaused)
+  void flush(false).catch(error=>noteAction('自動傳送',false,error?.message||String(error)));
+ const receipt={detected,user,assistant,insertedCaptures:insertedChunks?1:0,
+  insertedChunks,empty:insertedChunks===0,queued:await queueCount(),
+  message:'已辨識 '+detected+' 則原始對話訊息，新增 '+insertedChunks+' 筆 Queue'};
  return {...receipt,read_source:'original-message-chain',
   original_count:result.original_count,
   skipped_nontext:result.skipped};
@@ -1253,12 +1309,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
    }
    case 'loc-status':{
-    const [session,stats]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),scanQueue()]);
+    // Count IndexedDB keys only; opening Settings must not revive every
+    // saved conversation body or compute its JSON byte size.
+    const [session,count]=await Promise.all([
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),queueCount()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     pending:stats.pending,pendingCaptures:stats.pendingCaptures,
-     blockedReview:stats.blockedReview,legacyUnordered:stats.legacyUnordered,
+     pending:count,pendingCaptures:null,
+     blockedReview:null,legacyUnordered:null,
      lastAction:session.locLastAction||null,
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
@@ -1287,6 +1345,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
+    const count=await queueCount();
+    if(count>MAX_QUEUE_BODY_SCAN)
+     return {conversations:[],ordered_count:0,legacy_count:0,oversized_queue:count};
     return reviewGroups((await scanQueue({metadata:true})).rows);
    }
    case 'conversation.turn':{
@@ -1346,7 +1407,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
-   case 'queue.status':{const stats=await scanQueue({bytes:true});const s=await chrome.storage.local.get('locImportPaused');return {count:stats.pending,bytes:stats.bytes,paused:s.locImportPaused===true};}
+   case 'queue.status':{const count=await queueCount();const s=await chrome.storage.local.get('locImportPaused');return {count,bytes:null,paused:s.locImportPaused===true};}
    case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
    case 'queue.flush':return flush(true);
    case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};
