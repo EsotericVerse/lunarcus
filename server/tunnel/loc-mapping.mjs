@@ -20,8 +20,8 @@ export async function callLocOperation(body,token,fetchImpl=globalThis.fetch){
   if(typeof token!=='string'||!token)throw invalid('LOC OAuth bearer token required');
   if(!body||!Object.hasOwn(body,'kind')||!SCOPE.test(String(body.scopeid||'')))
     throw invalid('Invalid fixed LOC operation');
-  const allowed=new Set(['mcp-authorize','mcp-public-read','mcp-article-stat',
-    'mcp-read','mcp-search','mcp-scope-status','mcp-conversation']);
+  const allowed=new Set(['mcp-public-read','mcp-article-stat',
+    'mcp-read','mcp-search','mcp-conversation']);
   if(!allowed.has(body.kind))throw invalid('Unsupported LAS mapped LOC operation');
   let response;
   try{
@@ -55,16 +55,6 @@ export async function callLocOperation(body,token,fetchImpl=globalThis.fetch){
     throw Object.assign(new Error(message),{httpStatus:response.status});
   }
   return data?.data??{};
-}
-export async function assertLocMcpRole(token,subject,fetchImpl=globalThis.fetch){
-  // Only LOC's existing active api.manage reader may decide roles.
-  // The verified bearer subject is bound to OAuth UserInfo inside LOC.
-  if(typeof subject!=='string'||!subject)
-    throw Object.assign(new Error('Verified OAuth subject required'),{httpStatus:401});
-  const result=await callLocOperation({kind:'mcp-authorize',scopeid:'lo3rwang'},token,fetchImpl);
-  if(result.authorized!==true)
-    throw Object.assign(new Error('LOC MCP role not granted'),{httpStatus:403});
-  return result;
 }
 export async function readMemory(args={},env={}){
   const scopeid=scope(args.scopeid);
