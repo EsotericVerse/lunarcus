@@ -14,11 +14,7 @@ export async function businessAction(name,args,token,env={},fetchImpl=globalThis
   const scope=String(a.scopeid||'');
   if(!SCOPE.test(scope))throw invalid('Invalid LOC Scope');
   let payload;
-  if(name==='scope_storage'){
-    if(Object.keys(a).some(key=>key!=='scopeid'))
-      throw invalid('Only a LOC Scope identifier is accepted');
-    payload={kind:'mcp-scope-status',scopeid:scope};
-  }else if(name==='galaxy_link'){
+  if(name==='galaxy_link'){
     if(!['check','record','record_ordered'].includes(a.action))
       throw invalid('Unsupported Galaxy Link action');
     if(a.source!==undefined)throw invalid('Galaxy Link source is fixed to mcp');
