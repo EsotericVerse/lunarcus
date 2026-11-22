@@ -1,7 +1,6 @@
 import {verifyJwsAccessToken,getDpopJktFromPayload} from 'better-auth/oauth2';
 import {createLocAuth} from '../auth/auth.mjs';
 import {businessAction} from './business-actions.mjs';
-import {authorizeMcpBearer} from './access-roles.mjs';
 import {readMemory,privateGalaxyLink,articleDistribution,mcpDatabaseConfiguration} from '../tunnel/loc-mapping.mjs';
 import {checkMcpGatewayQos} from './gateway-rate.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
@@ -119,16 +118,13 @@ function rpcError(id,code,message,httpStatus=200,headers={}){
   return response({jsonrpc:'2.0',id,error:{code,message}},httpStatus,headers);
 }
 const TOOLS=[
-  {name:'loc_connection_status',description:'Check LOC MCP and LOC OAuth connectivity (read only).',
+  {name:'loc_connection_status',description:'Report verified LAS OAuth and configured LOC tunnel; not a database or Scope permission probe.',
     inputSchema:mcpToolJsonSchema('loc_connection_status'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'read_memory',description:'Read a PUBLIC LOC Galaxy article by exact, case-sensitive UID; supports content paging with offset/max_chars.',
     inputSchema:mcpToolJsonSchema('read_memory'),
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
-  {name:'scope_storage',description:'Read the LOC business Scope status. Scope database URL registration has been retired; database selection is managed by the LOC business backend.',
-    inputSchema:mcpToolJsonSchema('scope_storage'),
-    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! The business data service handles authorization and persistence.',
     inputSchema:mcpToolJsonSchema('galaxy_link')},
   {name:'article_distribution',description:'Get monthly published LOC article-count statistics for a calendar year or rolling 12 months. No SQL or article text; chart-ready numbers.',
@@ -174,38 +170,27 @@ export async function handleMcp(request,env={}){
       String(request.headers.get('accept')||'').toLowerCase()
         .split(',').some(type=>type.trim().split(';',1)[0]==='text/event-stream');
     if(stream){
-      // Authorize before opening the 200 SSE response so 401/403/429/503
-      // retain their original HTTP status and WWW-Authenticate semantics.
-      try{await authorizeMcpBearer(match[1],identity.subject,env);}
-      catch(error){return mcpRoleFailure(payload.id,error,config);}
+      // The signed OAuth bearer has already been verified. A business tool
+      // is authorized by LOC's published JS rights as part of the *actual*
+      // operation, not through a second role-probe HTTP/SQL request.
+      // MCP tool errors are returned in the JSON-RPC/SSE result.
       return streamMcpSseResponse(()=>
-        dispatchMcpPayload(payload,identity,match[1],config,env,true),payload.id);
+        dispatchMcpPayload(payload,identity,match[1],config,env),payload.id);
     }
     return dispatchMcpPayload(payload,identity,match[1],config,env);
   });
 }
-function mcpRoleFailure(id,error,config){
-  const status=[401,403,429].includes(error?.httpStatus)?error.httpStatus:503;
-  return rpcError(id,-32001,status===403?'LOC MCP role not granted':
-    status===401?'Verified LOC OAuth identity required':
-    status===429?'LOC OAuth UserInfo rate limited':
-    'LOC MCP role service unavailable',status,
-    status===401?{'WWW-Authenticate':oauthChallenge(config)}:{});
-}
-async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerified=false){
-  // A valid SSO token identifies a user, but does not grant MCP capacity.
-  // api.manage is the sole existing role registry; no MCP application step.
-  if((payload.method==='tools/list'||payload.method==='tools/call')&&!roleVerified){
-    try{await authorizeMcpBearer(bearer,identity.subject,env);}
-    catch(error){return mcpRoleFailure(payload.id,error,config);}
-  }
+async function dispatchMcpPayload(payload,identity,bearer,config,env){
+  // The listed tool schemas are metadata, not permission grants.
+  // LOC enforces its own JS Manage grants after verifying bearer identity,
+  // within each operation that actually accesses Galaxy or Anchor data.
   switch(payload.method){
     case 'initialize':{
       const proposed=payload.params?.protocolVersion;
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public Galaxy reads use the scoped ZenStack Galaxy ZModel with Kysely visibility filters. Private Galaxy reads use that scoped model after permission checks, while writes retain Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
+        instructions:'Public Galaxy reads use the scoped ZenStack Galaxy ZModel with Kysely visibility filters. Private Galaxy reads use that scoped model after permission checks, while writes retain Kysely after Better Auth identity validation and LOC published JS Manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -226,9 +211,10 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerifie
         return result(payload.id,{isError:true,content:[{type:'text',
           text:PR_SEARCH_WARNING}]});
       if(name==='loc_connection_status')return toolResponse(payload.id,{
-        connected:true,provider:'loc',subject:identity.subject,
-        resource:config.resource,galaxyPublicReadEnabled:true,
+        connected:true,oauthVerified:true,provider:'loc',subject:identity.subject,
+        resource:config.resource,galaxyPublicReadSupported:true,
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
+        businessAuthorization:'checked-by-LOC-published-JS-per-operation',
         nativeDatabase:mcpDatabaseConfiguration(env),
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
