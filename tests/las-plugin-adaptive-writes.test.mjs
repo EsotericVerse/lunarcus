@@ -95,3 +95,22 @@ test('LAS fails closed for an individual oversized row',async()=>{
   await assert.rejects(adaptive(rows,state.options),/單筆資料超過 LOC 寫入上限/);
   assert.equal(state.sent.length,0);
 });
+
+test('long conversation approvals and previews do not materialize every full turn',()=>{
+  const opts=readFileSync(new URL('../plugins/chrome/options.js',import.meta.url),'utf8');
+  assert.match(code,/const MAX_REVIEW_ROWS=10000/);
+  assert.match(code,/for\(let offset=0;offset<group\.messages\.length;offset\+=QUEUE_HYDRATE_ROWS\)/);
+  assert.match(opts,/group\.messages\.slice\(visible,visible\+100\)/);
+  assert.match(opts,/details\.addEventListener\('toggle'/);
+  assert.doesNotMatch(code,/pendingCount>MAX_QUEUE_BODY_SCAN/);
+});
+
+test('adaptive accounting measures actual UTF-8 not UTF-16 text length',async()=>{
+  const rows=Array.from({length:22},(_,i)=>({
+    id:String(i).padStart(8,'0'),content:'月'.repeat(35000)
+  }));
+  const state=config(rows);
+  await adaptive(rows,state.options);
+  assert.ok(state.sent.length>=5,'multi-byte text must reduce batch density');
+  assert.ok(state.sent.every(x=>x.length<=4));
+});
