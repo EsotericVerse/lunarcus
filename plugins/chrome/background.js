@@ -1,7 +1,11 @@
 // One LunArcus Chrome Extension: one LOC Auth, one queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
-const MAX_BATCH=50,MAX_QUEUE_BODY_SCAN=256;
+const MAX_QUEUE_BODY_SCAN=256;
+// LOC writes are byte-bounded. 480 KB is the adaptive target, not a row cap.
+const WRITE_TARGET_BYTES=480000,SHORT_WRITE_MAX_BYTES=601024,
+ ORDERED_WRITE_MAX_BYTES=700000,SHORT_WRITE_MAX_ROWS=50,
+ ORDERED_WRITE_MAX_ROWS=100,QUEUE_HYDRATE_ROWS=8;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -405,17 +409,50 @@ async function acceptItems(items,{deferFlush=false}={}){
   empty:inserted.chunks===0};
 }
 
-function packet(rows){
- const out=[];let current=[];
- for(const row of rows){
-  const next=[...current,row];
-  // Add enough headroom for JSON batch envelope.
-  if(current.length&&(next.length>MAX_BATCH||sizeOf({id:'00000000-0000-4000-8000-000000000000',write_mode:'append',records:next})>590000)){
-   out.push(current);current=[row];
-  }else current=next;
+// LAS Plugins follows LOC's byte-first adaptive write policy, subject to
+// each native API's stricter row and transport ceilings. Only the current
+// batch and eight newly hydrated IndexedDB entries can hold full text.
+// On failed acknowledgement, the original Queue rows remain untouched.
+async function writeAdaptiveQueueBatches(entries,{project,send,maxRows,maxBytes,
+  targetBytes=WRITE_TARGET_BYTES,hydrate=loadQueueRows}={}){
+ if(!Array.isArray(entries)||typeof project!=='function'||
+    typeof send!=='function'||!Number.isSafeInteger(maxRows)||maxRows<1||
+    !Number.isSafeInteger(maxBytes)||maxBytes<=1024)
+  throw Error('LAS 寫入批次設定無效');
+ let rowLimit=Math.min(maxRows,QUEUE_HYDRATE_ROWS),current=[],bytes=512;
+ let completed=0,batches=0;
+ const deliver=async()=>{
+  if(!current.length)return;
+  const taken=current;
+  // Update adaptive row count only after LOC acknowledges the write.
+  await send(taken.map(x=>x.row),taken.map(x=>x.record));
+  completed+=taken.length;batches++;
+  const average=Math.ceil((bytes-512)/taken.length);
+  if(average*rowLimit>targetBytes){
+   while(rowLimit>1&&average*rowLimit>targetBytes)
+    rowLimit=Math.max(1,Math.floor(rowLimit/2));
+  }else if(rowLimit<maxRows&&average*Math.min(maxRows,rowLimit*2)<=targetBytes)
+   rowLimit=Math.min(maxRows,rowLimit*2);
+  current=[];bytes=512;
+ };
+ for(let offset=0;offset<entries.length;offset+=QUEUE_HYDRATE_ROWS){
+  const ids=entries.slice(offset,offset+QUEUE_HYDRATE_ROWS).map(x=>x.id);
+  const hydrated=await hydrate(ids);
+  for(const row of hydrated){
+   const record=project(row);
+   const measured=sizeOf(record)+1;
+   if(measured+512>maxBytes)
+    throw Error('單筆資料超過 LOC 寫入上限，Queue 保留');
+   if(current.length&&(current.length>=rowLimit||
+      bytes+measured>targetBytes||bytes+measured>maxBytes))
+    await deliver();
+   current.push({row,record});
+   bytes+=measured;
+   if(current.length>=rowLimit)await deliver();
+  }
  }
- if(current.length)out.push(current);
- return out;
+ await deliver();
+ return {completed,batches};
 }
 
 function encode64(bytes){
@@ -617,6 +654,8 @@ async function sendViaAuth(scopeid,batch,token,config){
  const endpoint=new URL(config.import_url||'');
  if(endpoint.origin!=='https://loc.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC 網站短匯入位址錯誤');
  // The Scope is validated by LOC data authorization, not the Auth server.
+ if(sizeOf(batch)>SHORT_WRITE_MAX_BYTES)
+  throw contractError('LOC 短匯入批次超過 600 KB，Queue 保留');
  let reply;
  try{reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});}
  catch(error){error.queueEndpoint='LOC';throw error;}
@@ -705,6 +744,8 @@ async function sendOrderedConversation(scopeid,records,token,config){
    }))
  };
  const payloadJson=JSON.stringify(payload);
+ if(encoder.encode(payloadJson).byteLength>ORDERED_WRITE_MAX_BYTES)
+  throw contractError('LOC 有序對話批次超過寫入位元組上限，Queue 保留');
  let response;
  try{response=await fetch(endpoint,{method:'POST',redirect:'error',
    cache:'no-store',headers:{authorization:'Bearer '+token,
@@ -759,15 +800,8 @@ async function flush(force=false){
     '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
   const pendingCount=await queueCount();
   if(!pendingCount)return {message:'Queue 已清空',sent:0};
-  // Old 500+ row JSON backlogs require an explicit manual decision, not a
-  // five-minute background scan that repeatedly consumes browser memory.
-  if(pendingCount>MAX_QUEUE_BODY_SCAN){
-   if(!force){
-    await chrome.storage.local.set({locImportPaused:true});
-    return {message:'Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆，已暫停自動掃描；請清空本機暫存',sent:0};
-   }
-   throw Error('Queue 超過 '+MAX_QUEUE_BODY_SCAN+' 筆；為避免大量 JSON 造成記憶體暴增，請先清空本機暫存');
-  }
+  // Large Queues are not loaded as a single JSON document: scan only
+  // metadata, then hydrate bounded sets and submit adaptive byte batches.
   const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
@@ -793,11 +827,13 @@ async function flush(force=false){
    }
    for(const group of groups.values()){
     group.sort((a,b)=>a.source_order-b.source_order);
-    // Hydrate only 8 bodies at a time. Source order comes from the small
-    // IndexedDB metadata index, never a capture timestamp.
-    for(let offset=0;offset<group.length;offset+=8){
-     const hydrated=await loadQueueRows(group.slice(offset,offset+8).map(r=>r.id));
-     for(const part of packet(hydrated)){
+    await writeAdaptiveQueueBatches(group,{
+     maxRows:ORDERED_WRITE_MAX_ROWS,maxBytes:ORDERED_WRITE_MAX_BYTES,
+     project:r=>({
+      message_id:r.message_id,source_order:r.source_order,
+      parent_id:r.parent_id||null,role:r.role,text:r.text
+     }),
+     send:async(part,records)=>{
       const scopeid=part[0].scopeid||'lo3rwang';
       try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
       catch(error){
@@ -806,20 +842,24 @@ async function flush(force=false){
        await sendOrderedConversation(scopeid,part,token,settings.locConfig);
       }
       await removeEvents(part);
-      await updateQueueBadge().catch(()=>{});
       count+=part.length;
      }
-    }
+    });
    }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
-    for(let offset=0;offset<scopeRows.length;offset+=8){
-     const hydrated=await loadQueueRows(scopeRows.slice(offset,offset+8).map(r=>r.id));
-     for(const group of packet(hydrated)){
-      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),
-       write_mode:'append',records:group.map(({scopeid:localScope,...record})=>
-         ({...record,source_key:record.source_key||normalizedUrl(record.url),
-           write_mode:'append',kind:record.kind||'capture'}))};
+    await writeAdaptiveQueueBatches(scopeRows,{
+     maxRows:SHORT_WRITE_MAX_ROWS,maxBytes:SHORT_WRITE_MAX_BYTES,
+     project:({scopeid:localScope,...record})=>({
+      ...record,source_key:record.source_key||normalizedUrl(record.url),
+      write_mode:'append',kind:record.kind||'capture'
+     }),
+     send:async(part,records)=>{
+      const batch={id:await stableUuid(part.map(r=>r.id).sort().join('|')),
+       write_mode:'append',records};
+      // Measure the exact HTTP envelope before performing the write.
+      if(sizeOf({kind:'short-import',scopeid,batch})>SHORT_WRITE_MAX_BYTES)
+       throw Error('LOC 短匯入批次超過安全位元組上限，Queue 保留');
       try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
       catch(error){
        if(error.httpStatus!==401)throw error;
@@ -830,12 +870,12 @@ async function flush(force=false){
        }
        await sendViaAuth(scopeid,batch,token,settings.locConfig);
       }
-      await removeEvents(group);
-      await updateQueueBadge().catch(()=>{});
-      count+=group.length;
+      await removeEvents(part);
+      count+=part.length;
      }
-    }
+    });
    }
+   await updateQueueBadge().catch(()=>{});
    await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']);
    return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
   }catch(e){
