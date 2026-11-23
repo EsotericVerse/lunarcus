@@ -3,10 +3,11 @@ const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 // Only on-demand organizer metadata has a separate bounded display ceiling.
 const MAX_REVIEW_ROWS=10000;
-// LOC writes are byte-bounded. 480 KB is the adaptive target, not a row cap.
-const WRITE_TARGET_BYTES=480000,SHORT_WRITE_MAX_BYTES=601024,
- ORDERED_WRITE_MAX_BYTES=700000,SHORT_WRITE_MAX_ROWS=50,
- ORDERED_WRITE_MAX_ROWS=100,QUEUE_HYDRATE_ROWS=8;
+// LOC Plugins batch by total text characters, with UTF-8 transport bytes as
+// the hard safety boundary. No arbitrary 50/100-record cap.
+const WRITE_TARGET_CHARS=240000,WRITE_TARGET_BYTES=480000,
+ SHORT_WRITE_MAX_BYTES=601024,ORDERED_WRITE_MAX_BYTES=700000,
+ QUEUE_HYDRATE_ROWS=8;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
 const AUTH_KEYS=['locOAuth','locConfig'];
@@ -423,42 +424,39 @@ async function acceptItems(items,{deferFlush=false}={}){
 // each native API's stricter row and transport ceilings. Only the current
 // batch and eight newly hydrated IndexedDB entries can hold full text.
 // On failed acknowledgement, the original Queue rows remain untouched.
-async function writeAdaptiveQueueBatches(entries,{project,send,maxRows,maxBytes,
-  targetBytes=WRITE_TARGET_BYTES,hydrate=loadQueueRows}={}){
+async function writeAdaptiveQueueBatches(entries,{project,send,maxBytes,
+ targetChars=WRITE_TARGET_CHARS,targetBytes=WRITE_TARGET_BYTES,
+ hydrate=loadQueueRows}={}){
  if(!Array.isArray(entries)||typeof project!=='function'||
-    typeof send!=='function'||!Number.isSafeInteger(maxRows)||maxRows<1||
-    !Number.isSafeInteger(maxBytes)||maxBytes<=1024)
+    typeof send!=='function'||!Number.isSafeInteger(maxBytes)||
+    maxBytes<=1024||!Number.isSafeInteger(targetChars)||targetChars<1)
   throw Error('LAS 寫入批次設定無效');
- let rowLimit=Math.min(maxRows,QUEUE_HYDRATE_ROWS),current=[],bytes=512;
+ let current=[],bytes=512,characters=0;
  let completed=0,batches=0;
  const deliver=async()=>{
   if(!current.length)return;
   const taken=current;
-  // Update adaptive row count only after LOC acknowledges the write.
   await send(taken.map(x=>x.row),taken.map(x=>x.record));
   completed+=taken.length;batches++;
-  const average=Math.ceil((bytes-512)/taken.length);
-  if(average*rowLimit>targetBytes){
-   while(rowLimit>1&&average*rowLimit>targetBytes)
-    rowLimit=Math.max(1,Math.floor(rowLimit/2));
-  }else if(rowLimit<maxRows&&average*Math.min(maxRows,rowLimit*2)<=targetBytes)
-   rowLimit=Math.min(maxRows,rowLimit*2);
-  current=[];bytes=512;
+  current=[];bytes=512;characters=0;
  };
  for(let offset=0;offset<entries.length;offset+=QUEUE_HYDRATE_ROWS){
   const ids=entries.slice(offset,offset+QUEUE_HYDRATE_ROWS).map(x=>x.id);
   const hydrated=await hydrate(ids);
   for(const row of hydrated){
    const record=project(row);
-   const measured=sizeOf(record)+1;
-   if(measured+512>maxBytes)
+   // Count actual user content, not arbitrary records or envelope metadata.
+   const text=typeof record.text==='string'?record.text:
+     typeof record.content==='string'?record.content:'';
+   const nextChars=text.length,nextBytes=sizeOf(record)+1;
+   if(nextBytes+512>maxBytes)
     throw Error('單筆資料超過 LOC 寫入上限，Queue 保留');
-   if(current.length&&(current.length>=rowLimit||
-      bytes+measured>targetBytes||bytes+measured>maxBytes))
+   if(current.length&&(characters+nextChars>targetChars||
+      bytes+nextBytes>targetBytes||bytes+nextBytes>maxBytes))
     await deliver();
    current.push({row,record});
-   bytes+=measured;
-   if(current.length>=rowLimit)await deliver();
+   bytes+=nextBytes;characters+=nextChars;
+   if(characters>=targetChars||bytes>=targetBytes)await deliver();
   }
  }
  await deliver();
@@ -737,7 +735,7 @@ async function orderedLocFailureEvidence(response,bodyBytes,recordCount){
  return category;
 }
 async function sendOrderedConversation(scopeid,records,token,config){
- if(!SCOPE.test(scopeid)||!records.length||records.length>100)
+ if(!SCOPE.test(scopeid)||!records.length)
   throw contractError('有序對話批次不合法');
  const source=records[0].source_key;
  if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
@@ -838,7 +836,7 @@ async function flush(force=false){
    for(const group of groups.values()){
     group.sort((a,b)=>a.source_order-b.source_order);
     await writeAdaptiveQueueBatches(group,{
-     maxRows:ORDERED_WRITE_MAX_ROWS,maxBytes:ORDERED_WRITE_MAX_BYTES,
+     maxBytes:ORDERED_WRITE_MAX_BYTES,
      project:r=>({
       message_id:r.message_id,source_order:r.source_order,
       parent_id:r.parent_id||null,role:r.role,text:r.text
@@ -859,7 +857,7 @@ async function flush(force=false){
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
     await writeAdaptiveQueueBatches(scopeRows,{
-     maxRows:SHORT_WRITE_MAX_ROWS,maxBytes:SHORT_WRITE_MAX_BYTES,
+     maxBytes:SHORT_WRITE_MAX_BYTES,
      project:({scopeid:localScope,...record})=>({
       ...record,source_key:record.source_key||normalizedUrl(record.url),
       write_mode:'append',kind:record.kind||'capture'
