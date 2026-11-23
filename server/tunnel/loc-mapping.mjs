@@ -64,19 +64,21 @@ export async function readMemory(args={},env={}){
 }
 export async function privateGalaxyLink(args={},token,subject,env={}){
   const scopeid=scope(args.scopeid);
-  if(args.source!==undefined)throw invalid('Galaxy Link source is fixed to mcp');
+  if(args.source!==undefined)throw invalid('Galaxy source is determined by LOC, not a request parameter');
   const action=String(args.action||'');
   if(action==='read'){
     if(!UID.test(String(args.uid||'')))throw invalid('Invalid case-sensitive UID');
-    const site=args.site??'mcp';
-    if(!['mcp','LOC'].includes(site)||site==='LOC'&&scopeid!=='lo3rwang')
-      throw invalid('Unsupported private Galaxy site');
+    const site=args.site;
+    if(site!==undefined&&!['web','Github','ChatGPT','Claude','Gemini','LOC'].includes(site)||
+       site==='LOC'&&scopeid!=='lo3rwang')
+      throw invalid('Unsupported private Galaxy From site');
     const offset=args.offset??0,maxChars=args.max_chars??20000;
     if(!Number.isInteger(offset)||offset<0||offset>1000000||
        !Number.isInteger(maxChars)||maxChars<1||maxChars>40000)
       throw invalid('Invalid read paging');
     const value=await callLocOperation({kind:'mcp-read',scopeid,
-      uid:args.uid,site},token,env?.lasFetch||globalThis.fetch);
+      uid:args.uid,...(site===undefined?{}:{site})},
+      token,env?.lasFetch||globalThis.fetch);
     const row=Array.isArray(value)?value[0]:null;
     if(!row)return {found:false,scopeid,uid:args.uid};
     const content=String(row.content||'');
