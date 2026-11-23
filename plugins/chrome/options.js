@@ -209,7 +209,7 @@ async function renderOrganizer(){
  if(Number(result.oversized_queue)>0){
   summary.textContent='本機 Queue 過大（'+result.oversized_queue+' 筆），為避免記憶體暴增已停止讀取';
   root.append(organizerElement('p','field-hint',
-   '此處不會載入整份舊對話。請在 Queue 頁按「清空本機擷取暫存」，釋放舊資料；不影響 LOC 已寫入內容。'));
+   '僅訊息重整預覽超過顯示安全上限；正常已確認內容仍會動態分批傳送。舊資料可由使用者自行決定是否清空。'));
   return;
  }
  const groups=Array.isArray(result.conversations)?result.conversations:[];
@@ -228,28 +228,44 @@ async function renderOrganizer(){
   const details=organizerElement('details','organize-details');
   details.append(organizerElement('summary',null,'檢視排序後的訊息（'+group.message_count+'）'));
   const list=organizerElement('ol','organize-timeline');
-  for(const turn of group.messages){
-   const item=organizerElement('li');
-   item.append(organizerElement('div','organize-turn-heading',
-      '#'+turn.source_order+' · '+(turn.role==='user'?'使用者':'AI 回覆')),
-     organizerElement('p','organize-turn-text',turn.preview));
-   const expand=organizerElement('button','button button-ghost organize-turn-expand','閱讀完整訊息');
-   expand.type='button';
-   expand.addEventListener('click',async()=>{
-    expand.disabled=true;
-    try{
-     const message=await call('conversation.turn',{id:turn.id});
-     const full=organizerElement('pre','organize-turn-full',message.text);
-     item.querySelector('.organize-turn-full')?.remove();
-     item.append(full);
-     expand.textContent='重新讀取完整訊息';
-    }catch(error){$('organizeNotice').textContent=String(error?.message||error);}
-    finally{expand.disabled=false;}
-   });
-   item.append(expand);
-   list.append(item);
-  }
-  details.append(list);section.append(details);
+  const more=organizerElement('button','button button-ghost','顯示更多訊息');
+  more.type='button';
+  let visible=0;
+  const appendPage=()=>{
+   const slice=group.messages.slice(visible,visible+100);
+   for(const turn of slice){
+    const item=organizerElement('li');
+    item.append(organizerElement('div','organize-turn-heading',
+       '#'+turn.source_order+' · '+(turn.role==='user'?'使用者':'AI 回覆')),
+      organizerElement('p','organize-turn-text',turn.preview));
+    const expand=organizerElement('button','button button-ghost organize-turn-expand','閱讀完整訊息');
+    expand.type='button';
+    expand.addEventListener('click',async()=>{
+     expand.disabled=true;
+     try{
+      const message=await call('conversation.turn',{id:turn.id});
+      const full=organizerElement('pre','organize-turn-full',message.text);
+      item.querySelector('.organize-turn-full')?.remove();
+      item.append(full);
+      expand.textContent='重新讀取完整訊息';
+     }catch(error){$('organizeNotice').textContent=String(error?.message||error);}
+     finally{expand.disabled=false;}
+    });
+    item.append(expand);
+    list.append(item);
+   }
+   visible+=slice.length;
+   more.hidden=visible>=group.messages.length;
+   more.textContent='顯示更多訊息（'+visible+'／'+group.message_count+'）';
+  };
+  // Build no message DOM until the group is opened; render 100 at a time
+  // to avoid reproducing full-conversation browser memory spikes.
+  details.addEventListener('toggle',()=>{
+   if(details.open&&visible===0)appendPage();
+  });
+  more.addEventListener('click',appendPage);
+  more.hidden=true;
+  details.append(list,more);section.append(details);
   const button=organizerElement('button','button button-primary',
    group.ready?'已整理，送出 Queue':'確認時序並送出');
   button.type='button';
