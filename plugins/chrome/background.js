@@ -1,7 +1,8 @@
 // One LunArcus Chrome Extension: one LOC Auth, one queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
-const MAX_QUEUE_BODY_SCAN=256;
+// Only on-demand organizer metadata has a separate bounded display ceiling.
+const MAX_REVIEW_ROWS=10000;
 // LOC writes are byte-bounded. 480 KB is the adaptive target, not a row cap.
 const WRITE_TARGET_BYTES=480000,SHORT_WRITE_MAX_BYTES=601024,
  ORDERED_WRITE_MAX_BYTES=700000,SHORT_WRITE_MAX_ROWS=50,
@@ -187,7 +188,7 @@ function reviewGroups(rows){
  return {conversations,legacy_count:unsupportedConversationCount,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
 }
 async function approveReviewedConversation(key,expectedIds){
- if(await queueCount()>MAX_QUEUE_BODY_SCAN)
+ if(await queueCount()>MAX_REVIEW_ROWS)
   throw Error('本機 Queue 資料過多；無法安全載入整份舊對話，請先清空本機暫存');
  if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
     expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
@@ -197,26 +198,35 @@ async function approveReviewedConversation(key,expectedIds){
    new Set(expectedIds).size!==expectedIds.length||
    group.messages.some(m=>!expectedIds.includes(m.id)))
   throw Error('待送內容已改變，請重新預覽時序；沒有確認任何資料');
- const db=await openDb();
- return new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-  let changed=0;
-  for(const entry of group.messages){
-   const req=store.get(entry.id);
-   req.onsuccess=()=>{
-    const item=req.result;
-    if(!item||item.kind!=='ordered_conversation'||
-       (item.scopeid||'lo3rwang')+'|'+item.source_key!==key||
-       item.source_order!==entry.source_order||item.message_id!==entry.message_id){
+ // Approval is allowed for a long conversation, but never clone every
+ // full JSON body into one IndexedDB transaction. A partially approved group
+ // remains blocked until every verified original turn has been approved.
+ let changed=0;
+ for(let offset=0;offset<group.messages.length;offset+=QUEUE_HYDRATE_ROWS){
+  const chunk=group.messages.slice(offset,offset+QUEUE_HYDRATE_ROWS);
+  const db=await openDb();
+  changed+=await new Promise((resolve,reject)=>{
+   const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+   let accepted=0;
+   for(const entry of chunk){
+    const req=store.get(entry.id);
+    req.onsuccess=()=>{
+     const item=req.result;
+     if(!item||item.kind!=='ordered_conversation'||
+        (item.scopeid||'lo3rwang')+'|'+item.source_key!==key||
+        item.source_order!==entry.source_order||
+        item.message_id!==entry.message_id){
       tx.abort();return;
-    }
-    if(item.reviewed!==true){item.reviewed=true;store.put(item);changed++;}
-   };
-  }
-  tx.oncomplete=()=>{db.close();resolve({approved:changed,ready:true});};
-  tx.onabort=()=>{db.close();reject(Error('Queue 已異動，請重新預覽；沒有送出'))};
-  tx.onerror=()=>{db.close();reject(tx.error)};
- });
+     }
+     if(item.reviewed!==true){item.reviewed=true;store.put(item);accepted++;}
+    };
+   }
+   tx.oncomplete=()=>{db.close();resolve(accepted);};
+   tx.onabort=()=>{db.close();reject(Error('Queue 已異動，請重新預覽；沒有送出'))};
+   tx.onerror=()=>{db.close();reject(tx.error)};
+  });
+ }
+ return {approved:changed,ready:true};
 }
 async function removeEvents(records){
  const db=await openDb();
@@ -1386,7 +1396,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
      throw Error('訊息預覽僅允許在 LunArcus 設定頁開啟');
     const count=await queueCount();
-    if(count>MAX_QUEUE_BODY_SCAN)
+    if(count>MAX_REVIEW_ROWS)
      return {conversations:[],ordered_count:0,legacy_count:0,oversized_queue:count};
     return reviewGroups((await scanQueue({metadata:true})).rows);
    }
