@@ -24,7 +24,7 @@ export const MCP_TOOL_INPUTS=Object.freeze({
   }),
   galaxy_link:z.strictObject({
     action,scopeid:SCOPE_ID,uid:UID.optional(),
-    site:z.enum(['mcp','LOC']).optional(),
+    site:z.enum(['web','Github','ChatGPT','Claude','Gemini','LOC']).optional(),
     query:z.string().min(2).max(100).optional(),
     limit:z.int().min(1).max(5).optional(),
     user_requested:z.boolean().optional(),
