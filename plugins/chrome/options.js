@@ -82,7 +82,7 @@ async function show(){
  const reviewBlocked=Number(result.blockedReview||0);
  const legacyBlocked=Number(result.legacyUnordered||0);
  queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（群組與時序於訊息重整頁按需查閱）'+
-   (Number(result.pending||0)>256?'；舊資料過多，已限制掃描，請清空本機擷取暫存':'')+
+   (Number(result.pending||0)>256?'；寫入依大小動態分批，不會因 Queue 筆數過多而停止傳送':'')+
   (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
   (legacyBlocked?'；'+legacyBlocked+' 筆舊式無序對話不可匯入，可清空本機暫存':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
