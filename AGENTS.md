@@ -74,7 +74,8 @@
 ## 依本次修改驗證與部署
 
 - 驗證方式以當下 `package.json` 的 scripts 與 `.github/workflows` 實際有的檢查為準，文件不重複列出指令名稱，免得跟真正可跑的腳本脫鉤；改了哪個模組就找對應腳本跑，找不到對應腳本代表還沒建，先確認是否需要補，不要照抄舊文件猜一個。
-- Build、Preview、Deploy 的入口與觸發方式均以當下 LAS `main`、`package.json`、GitHub Actions、Wrangler 與 Cloudflare Builds 的有效設定為準；三者可依需求分別驗證，不強制先正式部署才做 Preview，也不要求每次變更都部署。Pure docs/Skills 變動通常不需要額外部署，必要驗證仍可執行。避免無依據重建常駐 MCP 發布入口或重複管線，但不把合法的本地 Build、Dry Run、分支 Preview 或隔離測試當成禁令。Cloudflare 網域、密鑰、Build Watch Paths 等外部設定只有當次明確授權才可更動。
+- **版本控制與部署依實際需要選擇**：依變更範圍、風險與協作狀況選擇 Git 流程：範圍明確、低風險的小修可依既有權限與分支保護直接提交 main；功能開發、較大調整、需要隔離或多人協作的改動，使用分支及 PR。Draft 適合尚未完成的工作；完成必要驗證、符合合併條件且無具體阻礙時，轉為 Ready 並自行完成正常合併，不把 Draft 或 Preview 當作交付終點。使用者有指定流程時依其要求。Build／Preview／Deploy 各按實際需要安排；Preview 可能重新 Build，正式部署也可能需要獨立產物，不因已有 Preview 而跳過必要建置，也不為節省額度而排斥分支、PR 或必要驗證。依目前可用資源安排有意義的提交、並行建置與發布，避免同一用途的重複觸發，不要求固定次數、固定順序或每次都跑完整流程。Preview 由 Agent 按需使用，不以作者親自查看 Preview 作為正常合併的固定前提；交付以 main 和實際生效狀態為準。
+- Build、Preview、Deploy 的入口與觸發方式均以當下 LAS `main`、`package.json`、GitHub Actions、Wrangler 與 Cloudflare Builds 的有效設定為準。純文件／Skills 變動可依既有機制跳過無必要部署；避免重建常駐 MCP 發布入口或重複管線。Cloudflare 網域、密鑰、Build Watch Paths 等外部設定只有當次明確授權才可更動。
 - **LAS 先驗證自己的變更，再判斷是否需要跨 Repo 通知**：Build、Preview、PR 合併與正式部署可依本次變更風險及現有流程安排；正式部署不是通知 LOC 或完成局部驗證的固定前置條件。Plugins、CMS Data Mapping、內部修改原則上為 `skip`；`review` 不自動通知；確實影響已引用契約時才依有效且已授權的通知機制發送一次，同版去重。不得每次 LAS 更新就要求 LOC 重新 Build，也不得把某種過去的 Deploy Hook 當成固定發布流程。
 - 預覽成功≠主線成功；合併後檢查 `main` commit、對應 deployment 版本、相關端點和真實功能。未測過 Chrome 或 SSO 就明說「未驗證」。
 - PR 要附最小充分測試和變更影響；他人正在變動時，先確認最新 `main`，不要用舊分支反向蓋掉。
