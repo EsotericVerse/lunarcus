@@ -78,9 +78,19 @@ export function googleSocialConfig(env={}){
   return clientId&&clientSecret?{clientId,clientSecret}:null;
 }
 
+// Hyperdrive is required for every Better Auth SQL operation. A legacy
+// LAS_DATABASE_URL Secret may remain bound during rollout, but cannot bypass
+// this check or silently restore direct Neon connections.
+export function lasAuthConnectionString(env={}){
+  const value=env?.LAS_HYPERDRIVE?.connectionString;
+  if(typeof value!=='string'||!value.trim())
+    throw new Error('LAS_HYPERDRIVE binding is required for Auth PostgreSQL');
+  return value;
+}
+
 export function checkLocAuthEnvironment(env){
   const data={
-    connectionString:env?.LAS_DATABASE_URL,
+    connectionString:lasAuthConnectionString(env),
     secret:env?.LOC_CONTROL_ENCRYPTION_KEY,
     namespace:'public'
   };
@@ -96,11 +106,11 @@ export function checkLocAuthEnvironment(env){
 
 export function createLocAuth(env){
   checkLocAuthEnvironment(env);
-  // Built-in Kysely PostgreSQL adapter, backed by native pg.Client/TCP.
-  // Match LOC Web's request-scoped transport: each acquisition opens and
-  // releases its own TLS connection, never sharing a socket across requests.
+  // Built-in Kysely PostgreSQL adapter using request-scoped pg.Client
+  // connections to Cloudflare Hyperdrive. Hyperdrive owns the origin TLS
+  // connection pool, not the Worker or an old database URL Secret.
   // No hand-written Auth storage, SQL, session, PKCE or OAuth state handling.
-  const pool=createAuthPostgresPool(env.LAS_DATABASE_URL);
+  const pool=createAuthPostgresPool(lasAuthConnectionString(env));
   // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
@@ -158,7 +168,7 @@ export function createLocAuth(env){
         // OAuth clientDiscovery serves the bundled first-party client before
         // it exists in SQL. The persistent Consent row has a real FK to the
         // OAuth Client table; register only this fixed public client, using
-        // the existing request-scoped LAS_DATABASE_URL connection.
+        // the existing request-scoped Hyperdrive connection.
         if(ctx.path==='/oauth2/consent'&&isFirstPartyOAuthConsent(ctx.body))
           await ensureFirstPartyOAuthClient(pool);
         return;

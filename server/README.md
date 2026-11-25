@@ -12,7 +12,8 @@ LAS is its own small protocol-oriented application framework. Its core is
   resources it actually opens. LAS releases them once the handler finishes,
   using Cloudflare `waitUntil` when available.
 - `server/index.mjs` registers Auth and MCP. `server/auth/` retains Better
-  Auth and its request-scoped PostgreSQL connection; `server/mcp/` retains
+  Auth and its request-scoped PostgreSQL client over `LAS_HYPERDRIVE`;
+  `server/mcp/` retains
   JSON-RPC/SSE and MCP resource verification; `server/tunnel/` sends fixed
   LOC API calls without copying LOC's business model.
 - The Chrome Extension remains an independent Manifest V3 client in
@@ -27,3 +28,10 @@ Run `npm test` and `npm run build` before merging routing changes.
 Tests cover actual Auth/MCP host dispatch, workers.dev preview isolation,
 protocol metadata, lazy health responses and request cleanup. Cloudflare
 deployment and real OAuth/MCP/Chrome execution still require their own checks.
+
+LAS Auth PostgreSQL runs only through the Cloudflare `LAS_HYPERDRIVE` binding,
+which points to the existing `las-postgres` Hyperdrive configuration.
+The Worker must not fall back to `LAS_DATABASE_URL`; keep the old Secret
+untouched until a deployed Worker binding, JWKS/Session OAuth operation and
+Hyperdrive metrics have all been verified. Database SQL schema, OAuth
+signing keys and LAS-owned public tables are unchanged.

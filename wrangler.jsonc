@@ -12,6 +12,14 @@
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
+  // Auth's only PostgreSQL transport. Existing LAS_DATABASE_URL Secret is
+  // retained during validation but is never used as an implicit fallback.
+  "hyperdrive": [
+    {
+      "binding": "LAS_HYPERDRIVE",
+      "id": "f80d2201f6344ccaa105d3fe47c8b518"
+    }
+  ],
   "observability": {
     "enabled": true,
     "redact_query_string": true,

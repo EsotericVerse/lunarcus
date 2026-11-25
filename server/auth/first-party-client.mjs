@@ -3,7 +3,7 @@ import {firstPartyOAuthClient} from './extension-client.mjs';
 // A first-party public client returned by Better Auth clientDiscovery can be
 // accepted for /authorize even if it has no persisted las_oauth_client row.
 // Its Consent row, however, has a real FK to las_oauth_client.clientId.
-// Register this one bundled client through the existing LAS_DATABASE_URL
+// Register this one bundled client through the existing LAS_HYPERDRIVE
 // connection, only on an authenticated first-party consent request.
 // Do not rename/delete legacy clients or any associated refresh tokens.
 export function isFirstPartyOAuthConsent(body){
