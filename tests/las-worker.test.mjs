@@ -32,3 +32,28 @@ test('LAS MCP metadata and unrelated hosts are isolated',async()=>{
   }
   assert.equal((await get('https://unrelated.esotericverse.workers.dev/health')).status,404);
 });
+
+test('LAS Hyperdrive keeps direct TLS policy separate and uses only its binding',async()=>{
+  const {authDatabaseConnection,createAuthPostgresPool}=await import('../server/auth/pg-driver.mjs');
+  const direct='postgresql://direct.invalid/db';
+  const pooled='postgresql://hyperdrive.invalid/db';
+  assert.deepEqual(authDatabaseConnection({LAS_DATABASE_URL:direct}),{connectionString:direct,hyperdrive:false});
+  assert.deepEqual(authDatabaseConnection({LAS_DATABASE_URL:direct,LAS_HYPERDRIVE:{connectionString:pooled}}),{connectionString:pooled,hyperdrive:true});
+  assert.equal(authDatabaseConnection({LAS_DATABASE_URL:direct,LAS_HYPERDRIVE:{}}).connectionString,undefined);
+  let options;
+  class Client{
+    constructor(config){options=config;}
+    on(){}
+    async connect(){}
+    async end(){}
+  }
+  const directPool=createAuthPostgresPool(direct,Client,{attempts:1});
+  await directPool.connect();
+  assert.deepEqual(options.ssl,{rejectUnauthorized:true});
+  await directPool.end();
+  const pooledPool=createAuthPostgresPool(pooled,Client,{attempts:1,hyperdrive:true});
+  await pooledPool.connect();
+  assert.equal(options.connectionString,pooled);
+  assert.equal(Object.hasOwn(options,'ssl'),false);
+  await pooledPool.end();
+});
