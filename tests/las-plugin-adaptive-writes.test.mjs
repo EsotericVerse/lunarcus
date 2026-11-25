@@ -78,3 +78,38 @@ test('long conversation review is cursor-bounded and DOM paginated',()=>{
  assert.match(options,/group\.messages\.slice\(visible,visible\+100\)/);
  assert.doesNotMatch(code,/pendingCount>MAX_QUEUE_BODY_SCAN/);
 });
+
+test('LAS ordered writes use canonical LOC Worker route without following redirects',async()=>{
+ const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
+ const start=src.indexOf('async function sendOrderedConversation(');
+ const end=src.indexOf('\nasync function flush(',start);
+ assert.ok(start>0&&end>start);
+ const calls=[];
+ const receipt={accepted:true,uid:'ABCDEFGH',scopeid:'lo3rwang',
+  count:1,messages:1,duplicate:false};
+ const send=vm.runInNewContext('('+src.slice(start,end)+')',{
+  SCOPE:/^[a-z][a-z0-9]{0,14}$/,encoder:new TextEncoder(),
+  ORDERED_WRITE_MAX_BYTES:601024,
+  contractError:message=>Error(message),
+  logDiagnostic:async()=>{},orderedLocFailureEvidence:async()=>{throw Error('Unexpected failure')},
+  fetch:async(url,options)=>{calls.push({url,options});return new Response(
+   JSON.stringify({data:receipt}),{status:200,headers:{'content-type':'application/json'}});},
+  Response,TextEncoder,JSON,Date,Error,Number,String
+ });
+ const source='https://chatgpt.com/c/1234';
+ const rows=[{kind:'ordered_conversation',scopeid:'lo3rwang',source_key:source,
+  message_id:'turn1',source_order:0,parent_id:null,role:'user',text:'A'}];
+ const returned=await send('lo3rwang',rows,'test-token',{});
+ assert.equal(returned.accepted,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native/');
+ assert.equal(calls[0].options.redirect,'error');
+ assert.equal(JSON.parse(calls[0].options.body).conversation_id,source);
+});
+test('LAS short import uses canonical slash URL even with cached legacy config',()=>{
+ const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
+ const config=JSON.parse(readFileSync(new URL('../plugins/chrome/oauth-config.json',import.meta.url),'utf8'));
+ assert.equal(config.import_url,'https://loc.lo3rwang.cc/api/loc-native/');
+ assert.match(src,/endpoint\.pathname='\/api\/loc-native\/'/);
+ assert.match(src,/!\['\/api\/loc-native','\/api\/loc-native\/'\]\.includes\(endpoint\.pathname\)/);
+});

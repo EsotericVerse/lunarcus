@@ -512,10 +512,13 @@ async function getConfig(){
   const issuer=new URL(cfg.issuer);
   const api=new URL(cfg.import_url);
   if(issuer.protocol!=='https:'||api.protocol!=='https:'||
-     api.origin!=='https://loc.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
+     api.origin!=='https://loc.lo3rwang.cc'||
+     !['/api/loc-native','/api/loc-native/'].includes(api.pathname)||
      cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
      issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
     throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
+  // Canonical Next.js trailing-slash API URL; do not follow redirects.
+  api.pathname='/api/loc-native/';
   const meta=await discoverLocOAuth(issuer);
   for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
    const url=new URL(endpoint);
@@ -660,7 +663,11 @@ async function sendViaAuth(scopeid,batch,token,config){
  if(!SCOPE.test(scopeid))throw Error('Invalid Scope');
  if(scopeid!=='lo3rwang'&&config.supports_scope_routing!==true)throw contractError('多 Scope 認證尚未啟用；Queue 保留，禁止錯誤寫入');
  const endpoint=new URL(config.import_url||'');
- if(endpoint.origin!=='https://loc.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC 網站短匯入位址錯誤');
+ if(endpoint.origin!=='https://loc.lo3rwang.cc'||
+    !['/api/loc-native','/api/loc-native/'].includes(endpoint.pathname))
+  throw contractError('LOC 網站短匯入位址錯誤');
+ // Existing cached settings also point to the slash route without redirecting.
+ endpoint.pathname='/api/loc-native/';
  // The Scope is validated by LOC data authorization, not the Auth server.
  if(sizeOf(batch)>SHORT_WRITE_MAX_BYTES)
   throw contractError('LOC 短匯入批次超過 600 KB，Queue 保留');
@@ -742,7 +749,7 @@ async function sendOrderedConversation(scopeid,records,token,config){
    (r.scopeid||'lo3rwang')!==scopeid))
   throw contractError('有序對話批次來源不一致');
  // Fixed LOC route: never follow a redirect to Auth or workers.dev.
- const endpoint='https://loc.lo3rwang.cc/api/las-native';
+ const endpoint='https://loc.lo3rwang.cc/api/las-native/';
  const payload={kind:'mcp-conversation',action:'record_ordered',scopeid,
    conversation_id:source,title:records[0].title,
    updated_at:new Date().toISOString(),
