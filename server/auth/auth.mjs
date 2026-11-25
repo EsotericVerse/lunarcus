@@ -6,7 +6,7 @@ import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
 import {oauthProvider} from '@better-auth/oauth-provider';
 import {createKyselyDialect} from '../../vendor/loc-dialect/index.mjs';
-import {createAuthPostgresPool} from './pg-driver.mjs';
+import {createAuthPostgresPool,authDatabaseConnection} from './pg-driver.mjs';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
@@ -80,7 +80,7 @@ export function googleSocialConfig(env={}){
 
 export function checkLocAuthEnvironment(env){
   const data={
-    connectionString:env?.LAS_DATABASE_URL,
+    connectionString:authDatabaseConnection(env).connectionString,
     secret:env?.LOC_CONTROL_ENCRYPTION_KEY,
     namespace:'public'
   };
@@ -100,7 +100,8 @@ export function createLocAuth(env){
   // Match LOC Web's request-scoped transport: each acquisition opens and
   // releases its own TLS connection, never sharing a socket across requests.
   // No hand-written Auth storage, SQL, session, PKCE or OAuth state handling.
-  const pool=createAuthPostgresPool(env.LAS_DATABASE_URL);
+  const {connectionString,hyperdrive}=authDatabaseConnection(env);
+  const pool=createAuthPostgresPool(connectionString,undefined,{hyperdrive});
   // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
