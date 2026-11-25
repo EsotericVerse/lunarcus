@@ -2,6 +2,12 @@
   "$schema": "https://unpkg.com/wrangler@4.157.0/config-schema.json",
   "name": "lunarcus",
   "main": "./server/index.mjs",
+  "hyperdrive": [
+    {
+      "binding": "LAS_HYPERDRIVE",
+      "id": "f80d2201f6344ccaa105d3fe47c8b518"
+    }
+  ],
   "compatibility_date": "2026-10-31",
   "compatibility_flags": [
     "nodejs_compat",
