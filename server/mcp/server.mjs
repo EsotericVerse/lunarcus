@@ -2,6 +2,7 @@
 import {handleMcp,preflight,protectedResourceMetadata}
   from './router.mjs';
 import {LAS_HOSTS,isLASPreviewHost,createLASRoutes} from '../las.mjs';
+import {handlePluginImportStream} from './plugin-import-stream.mjs';
 
 function error(status,message){
   return new Response(JSON.stringify({error:message}),{
@@ -16,6 +17,7 @@ const dispatch=createLASRoutes([
   ],({request,env})=>request.method==='OPTIONS'?preflight():
     request.method==='GET'?protectedResourceMetadata(env):
     error(405,'Method not allowed')],
+  [['/api/plugins/import/stream'],({request,env})=>handlePluginImportStream(request,env)],
   [['/','/mcp'],({request,env})=>handleMcp(request,env)]
 ],{notFound:()=>error(404,'Not found')});
 

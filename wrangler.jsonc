@@ -20,6 +20,27 @@
       "id": "f80d2201f6344ccaa105d3fe47c8b518"
     }
   ],
+  "containers": [
+    {
+      "class_name": "PluginImportContainer",
+      "image": "./containers/plugin-import/Dockerfile",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LAS_PLUGIN_IMPORT",
+        "class_name": "PluginImportContainer"
+      }
+    ]
+  },
+  "exports": {
+    "PluginImportContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
   "observability": {
     "enabled": true,
     "redact_query_string": true,
