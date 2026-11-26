@@ -68,8 +68,8 @@ test('LAS rejects unauthenticated MCP traffic before exposing tools',async()=>{
 test('LAS prefers the direct LOC Worker service binding over public hostname fetch',async()=>{
   const calls=[];
   const service={fetch:async(url,init)=>{
-    calls.push({url,method:init.method,body:JSON.parse(init.body),
-      bearer:init.headers.authorization});
+    calls.push({url,method:init.method,redirect:init.redirect,
+      body:JSON.parse(init.body),bearer:init.headers.authorization});
     return new Response(JSON.stringify({data:{accepted:true}}),{
       status:200,headers:{'content-type':'application/json'}
     });
@@ -82,6 +82,7 @@ test('LAS prefers the direct LOC Worker service binding over public hostname fet
   assert.deepEqual(answer,{accepted:true});
   assert.equal(calls.length,1);
   assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native');
+  assert.equal(calls[0].redirect,'manual');
   assert.equal(calls[0].bearer,'Bearer signed-token');
   assert.equal(calls[0].body.kind,'mcp-conversation');
 });
