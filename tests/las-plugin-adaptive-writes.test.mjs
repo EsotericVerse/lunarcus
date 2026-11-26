@@ -71,41 +71,63 @@ test('single oversized row fails before attempting a write',async()=>{
  await assert.rejects(adaptive(input,state.options),/單筆資料超過 LOC 寫入上限/);
  assert.equal(state.sent.length,0);
 });
-test('long conversation review is cursor-bounded and DOM paginated',()=>{
+test('conversation preview stays bounded and no longer gates Queue delivery',()=>{
  const options=readFileSync(new URL('../plugins/chrome/options.js',import.meta.url),'utf8');
  assert.match(code,/const MAX_REVIEW_ROWS=10000/);
- assert.match(code,/for\(let offset=0;offset<group\.messages\.length;offset\+=QUEUE_HYDRATE_ROWS\)/);
- assert.match(options,/group\.messages\.slice\(visible,visible\+100\)/);
- assert.doesNotMatch(code,/pendingCount>MAX_QUEUE_BODY_SCAN/);
+ assert.match(code,/const metadata=group\\.rows\\.slice\\(offset,offset\\+QUEUE_HYDRATE_ROWS\\)/);
+ assert.match(options,/group\\.messages\\.slice\\(visible,visible\\+100\\)/);
+ assert.match(code,/trustedSourceOrder\\(row\\)&&!blocked\\.has/);
+ assert.doesNotMatch(code,/row\\.reviewed!==true\\|\\|!trustedSourceOrder/);
+ assert.doesNotMatch(code,/async function sendOrderedConversation\\(/);
 });
 
-test('LAS ordered writes use canonical LOC Worker route without following redirects',async()=>{
+test('ordered conversations stream from IndexedDB to LAS Container, not JSON batches',async()=>{
  const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
- const start=src.indexOf('async function sendOrderedConversation(');
- const end=src.indexOf('\nasync function flush(',start);
+ const start=src.indexOf('function queueConversationGroups(');
+ const end=src.indexOf('\\nasync function flush(',start);
  assert.ok(start>0&&end>start);
- const calls=[];
- const receipt={accepted:true,uid:'ABCDEFGH',scopeid:'lo3rwang',
-  count:1,messages:1,duplicate:false};
- const send=vm.runInNewContext('('+src.slice(start,end)+')',{
-  SCOPE:/^[a-z][a-z0-9]{0,14}$/,encoder:new TextEncoder(),
-  ORDERED_WRITE_MAX_BYTES:601024,
-  contractError:message=>Error(message),
-  logDiagnostic:async()=>{},orderedLocFailureEvidence:async()=>{throw Error('Unexpected failure')},
-  fetch:async(url,options)=>{calls.push({url,options});return new Response(
-   JSON.stringify({data:receipt}),{status:200,headers:{'content-type':'application/json'}});},
-  Response,TextEncoder,JSON,Date,Error,Number,String
+ const calls=[],fullRows=new Map();
+ const source='https://chatgpt.com/c/12345678-1234-4234-8234-123456789abc';
+ const metadata=[
+  {id:'q2',kind:'ordered_conversation',scopeid:'lo3rwang',source_key:source,title:'Test',
+   order_evidence:'source-ordinal',source_order:2,message_id:'m2',role:'assistant',text:'second'},
+  {id:'q1',kind:'ordered_conversation',scopeid:'lo3rwang',source_key:source,title:'Test',
+   order_evidence:'source-ordinal',source_order:1,message_id:'m1',role:'user',text:'first'}
+ ];
+ for(const row of metadata)fullRows.set(row.id,row);
+ const ctx={
+  QUEUE_HYDRATE_ROWS:8,encoder:new TextEncoder(),
+  crypto:{randomUUID:()=>'d7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4'},
+  ReadableStream,Uint8Array,TextEncoder,TextDecoder,URL,Map,String,Array,JSON,Date,Error,
+  trustedSourceOrder:r=>r.order_evidence==='source-ordinal'||r.order_evidence==='source-conversation-turn',
+  loadQueueRows:async ids=>ids.map(id=>fullRows.get(id)),
+  contractError:m=>Error(m),logDiagnostic:async()=>{},
+  fetch:async(url,options)=>{
+   calls.push({url,options});
+   const reader=options.body.getReader(),decoder=new TextDecoder();let text='';
+   for(;;){const part=await reader.read();if(part.done)break;text+=decoder.decode(part.value,{stream:true});}
+   text+=decoder.decode();
+   const frames=text.trim().split(String.fromCharCode(10)).map(line=>JSON.parse(line));
+   calls[0].frames=frames;
+   return new Response(JSON.stringify({accepted:true,upload_id:frames[0].upload_id,
+    conversations:1,records:2,batches:1,appended:2}),{status:200});
+  }
+ };
+ const api=vm.runInNewContext(src.slice(start,end)+';({sendConversationStream})',ctx);
+ const receipt=await api.sendConversationStream(metadata,'token',{
+  conversation_stream_url:'https://mcp.lo3rwang.cc/api/plugins/import/stream'
  });
- const source='https://chatgpt.com/c/1234';
- const rows=[{kind:'ordered_conversation',scopeid:'lo3rwang',source_key:source,
-  message_id:'turn1',source_order:0,parent_id:null,role:'user',text:'A'}];
- const returned=await send('lo3rwang',rows,'test-token',{});
- assert.equal(returned.accepted,true);
+ assert.equal(receipt.accepted,true);
  assert.equal(calls.length,1);
- assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native/');
+ assert.equal(calls[0].url,'https://mcp.lo3rwang.cc/api/plugins/import/stream');
  assert.equal(calls[0].options.redirect,'error');
- assert.equal(JSON.parse(calls[0].options.body).conversation_id,source);
+ assert.equal(calls[0].options.duplex,'half');
+ assert.equal(calls[0].options.headers['content-type'],'application/x-ndjson');
+ assert.deepEqual(calls[0].frames.filter(x=>x.type==='message').map(x=>x.source_order),[2,1]);
+ assert.equal(calls[0].frames[0].type,'start');
+ assert.equal(calls[0].frames.at(-1).type,'finish');
 });
+
 test('LAS short import uses canonical slash URL even with cached legacy config',()=>{
  const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
  const config=JSON.parse(readFileSync(new URL('../plugins/chrome/oauth-config.json',import.meta.url),'utf8'));

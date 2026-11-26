@@ -6,7 +6,7 @@ const MAX_REVIEW_ROWS=10000;
 // LOC Plugins batch by total text characters, with UTF-8 transport bytes as
 // the hard safety boundary. No arbitrary 50/100-record cap.
 const WRITE_TARGET_CHARS=240000,WRITE_TARGET_BYTES=480000,
- SHORT_WRITE_MAX_BYTES=601024,ORDERED_WRITE_MAX_BYTES=700000,
+ SHORT_WRITE_MAX_BYTES=601024,
  QUEUE_HYDRATE_ROWS=8;
 const CONFIG_URL=chrome.runtime.getURL('oauth-config.json');
 
@@ -726,9 +726,8 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
-// LOC already owns record_ordered import, JWT/Scope permissions and durable
-// receipts. Send reviewed batches directly to that existing Pages endpoint.
-// MCP remains available for standalone tools, not as a bulk-upload relay.
+// Stream Queue rows to LAS Container for ordering. The Worker retains OAuth
+// and sends bounded, acknowledged record_ordered transactions to LOC.
 function queueConversationGroups(entries){
  const separator=String.fromCharCode(0),groups=new Map();
  for(const row of entries){

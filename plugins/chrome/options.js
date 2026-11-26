@@ -82,9 +82,9 @@ async function show(){
  $('flush').textContent=circuit?'手動試送一次':'立即送出 Queue';
  const reviewBlocked=Number(result.blockedReview||0);
  const legacyBlocked=Number(result.legacyUnordered||0);
- queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（群組與時序於訊息重整頁按需查閱）'+
+ queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（對話分組與來源時序由 LAS Container 整理）'+
    (Number(result.pending||0)>256?'；寫入依大小動態分批，不會因 Queue 筆數過多而停止傳送':'')+
-  (reviewBlocked?'；'+reviewBlocked+' 則待確認時序（第六鍵）':'')+
+  (reviewBlocked?'；'+reviewBlocked+' 則缺少可靠來源序號（對話頁）':'')+
   (legacyBlocked?'；'+legacyBlocked+' 筆舊式無序對話不可匯入，可清空本機暫存':'')+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  renderOverviewGuidance(result);
@@ -216,7 +216,7 @@ async function renderOrganizer(){
  summary.textContent=groups.length+' 組對話／'+Number(result.ordered_count||0)+
   ' 則待送訊息；不支援的無序對話 '+Number(result.legacy_count||0)+' 則（不會送出）';
  if(!groups.length){
-  root.append(organizerElement('p','field-hint','目前沒有待重整的有序對話。'));
+  root.append(organizerElement('p','field-hint','目前沒有待送的有序對話。'));
   return;
  }
  for(const group of groups){
