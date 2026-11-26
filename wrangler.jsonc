@@ -7,6 +7,13 @@
     "nodejs_compat",
     "global_fetch_strictly_public"
   ],
+  "assets": {
+    "directory": "./public",
+    "binding": "LAS_ASSETS",
+    "run_worker_first": [
+      "/.well-known/security.txt"
+    ]
+  },
   "keep_vars": true,
   "previews": {},
   "version_metadata": {
