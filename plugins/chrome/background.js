@@ -16,7 +16,8 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
-let inFlight=null,flushRequested=false,maintenance=false;
+const QUEUE_WINDOW_MS=600000,QUEUE_ALARM='lunarcus-queue-window',CIRCUIT_KEY='locQueueCircuit';
+let inFlight=null,maintenance=false;
 function safeDiagnostic(value){
  let text;
  try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
@@ -32,6 +33,44 @@ async function logDiagnostic(event,detail=''){
   logs.push({at:new Date().toISOString(),event:String(event),detail:safeDiagnostic(detail)});
   await chrome.storage.local.set({[DIAGNOSTIC_KEY]:logs.slice(-MAX_DIAGNOSTICS)});
  }catch{}
+}
+// Fail closed after the first import failure, even across Chrome restarts.
+async function readCircuit(){
+ const s=await chrome.storage.local.get(CIRCUIT_KEY);
+ return s[CIRCUIT_KEY]?.open===true?s[CIRCUIT_KEY]:null;
+}
+async function cancelQueueTimer(){
+ await chrome.alarms.clear(QUEUE_ALARM);
+ await chrome.storage.local.remove('locQueueNextSendAt');
+}
+async function scheduleQueueTimer(){
+ const s=await chrome.storage.local.get([CIRCUIT_KEY,'locImportPaused','locOAuth','locQueueNextSendAt']);
+ if(s[CIRCUIT_KEY]?.open===true||s.locImportPaused===true||
+    !s.locOAuth?.refresh_token)return false;
+ const prior=Number(s.locQueueNextSendAt||0);
+ const when=prior>Date.now()?prior:Date.now()+QUEUE_WINDOW_MS;
+ await chrome.storage.local.set({locQueueNextSendAt:when});
+ await chrome.alarms.create(QUEUE_ALARM,{when});
+ return true;
+}
+async function tripCircuit(error){
+ const status=Number(error?.httpStatus||0);
+ const category=status===401||status===403?'identity':
+  status===429?'rate_limit':status>=500?'server':
+  status>=400?'request':error?.code==='LOC_IMPORT_CONTRACT'?'contract':'network';
+ const circuit={open:true,status:status>=100&&status<=599?status:0,
+  category,since:new Date().toISOString()};
+ await chrome.storage.local.set({[CIRCUIT_KEY]:circuit,locImportPaused:true,
+  locQueueRetryStatus:circuit.status,locQueueRetryType:'circuit',
+  locQueueRetryAfter:0});
+ await cancelQueueTimer();
+ await logDiagnostic('queue.circuit.open',{status:circuit.status,category});
+}
+async function resetCircuitAfterReceipt(){
+ await chrome.storage.local.remove([CIRCUIT_KEY,'locImportPaused',
+  'locQueueRetryType','locQueueRetryAfter','locQueueRetryEndpoint',
+  'locQueueRetryStatus','locQueueFailures']);
+ await logDiagnostic('queue.circuit.closed',{reason:'verified_receipt'});
 }
 function openDb(){
  return new Promise((resolve,reject)=>{
@@ -151,8 +190,9 @@ async function clearLocalCaptures(){
   await chrome.storage.local.remove([
    'locRecorderTabId','locQueueRetryAfter','locQueueRetryType',
    'locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus',
-   'locImportPaused',DIAGNOSTIC_KEY
+   'locImportPaused',CIRCUIT_KEY,'locQueueNextSendAt',DIAGNOSTIC_KEY
   ]);
+  await cancelQueueTimer();
   await updateQueueBadge();
   return {cleared:true,message:'本機 Queue 與去重回執已清空；LOC 資料與 OAuth 未變更'};
  }finally{maintenance=false;}
@@ -411,10 +451,7 @@ async function acceptItems(items,{deferFlush=false}={}){
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const pendingCount=await queueCount();
- if(pendingCount)void flush(false).catch(async error=>{
-  console.warn('[LunArcus automatic import]',String(error));
-  await noteAction('自動傳送',false,error?.message||String(error));
- });
+ if(pendingCount&&inserted.chunks)await scheduleQueueTimer();
  return {message,queued:pendingCount,detected,user,assistant,
   insertedCaptures:inserted.captures,insertedChunks:inserted.chunks,
   empty:inserted.chunks===0};
@@ -794,25 +831,14 @@ async function sendOrderedConversation(scopeid,records,token,config){
 }
 async function flush(force=false){
  if(maintenance)return {message:'本機暫存維護中',sent:0};
- // A manual send must not inherit an already-running automatic attempt.
- // Await its settlement and then run a fresh forced pass against durable Queue.
- if(inFlight){
-  if(force){
-   try{await inFlight}catch{}
-   return flush(true);
-  }
-  flushRequested=true;
-  return inFlight;
- }
+ // One click never repeats a failed concurrent request.
+ if(inFlight)return inFlight;
  inFlight=(async()=>{
-  // A disabled/retrying Queue must never deserialize every large saved JSON
-  // entry just to discover that it cannot send anything.
-  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
-  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
-  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
-     (!force||settings.locQueueRetryType==='rate'))
-   return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
-    '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
+  if(await readCircuit()&&!force)
+   return {message:'自動傳送已停止，請手動試送一次',sent:0};
+  const settings=await chrome.storage.local.get(['locImportPaused','locConfig']);
+  if(!force&&settings.locImportPaused)
+   return {message:'已暫停自動傳送',sent:0};
   const pendingCount=await queueCount();
   if(!pendingCount)return {message:'Queue 已清空',sent:0};
   // Large Queues are not loaded as a single JSON document: scan only
@@ -830,8 +856,8 @@ async function flush(force=false){
   }
 
   let token;
-  try{token=await activeToken()}catch(e){await chrome.storage.local.set({locImportPaused:true});throw e}
-  if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
+  try{token=await activeToken()}catch(e){await tripCircuit(e);throw e}
+  if(!settings.locConfig?.import_url){const e=contractError('LOC 匯入設定不存在');await tripCircuit(e);throw e}
   let count=0;
   try{
    const groups=new Map();
@@ -850,12 +876,8 @@ async function flush(force=false){
      }),
      send:async(part,records)=>{
       const scopeid=part[0].scopeid||'lo3rwang';
-      try{await sendOrderedConversation(scopeid,part,token,settings.locConfig)}
-      catch(error){
-       if(error.httpStatus!==401)throw error;
-       token=await activeToken(true);
-       await sendOrderedConversation(scopeid,part,token,settings.locConfig);
-      }
+      // A bad destination or revoked grant never triggers another POST.
+      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
       await removeEvents(part);
       count+=part.length;
      }
@@ -875,54 +897,23 @@ async function flush(force=false){
       // Measure the exact HTTP envelope before performing the write.
       if(sizeOf({kind:'short-import',scopeid,batch})>SHORT_WRITE_MAX_BYTES)
        throw Error('LOC 短匯入批次超過安全位元組上限，Queue 保留');
-      try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
-      catch(error){
-       if(error.httpStatus!==401)throw error;
-       try{token=await activeToken(true)}
-       catch{
-        const expired=oauthError('授權已失效，請重新連接 LOC');
-        expired.httpStatus=401;throw expired;
-       }
-       await sendViaAuth(scopeid,batch,token,settings.locConfig);
-      }
+      await sendViaAuth(scopeid,batch,token,settings.locConfig);
       await removeEvents(part);
       count+=part.length;
      }
     });
    }
    await updateQueueBadge().catch(()=>{});
-   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']);
+   if(count>0)await resetCircuitAfterReceipt();
+   await cancelQueueTimer();
+   if(await queueCount())await scheduleQueueTimer();
    return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
   }catch(e){
-   const s=Number(e.httpStatus||0);
-   const endpoint=e.queueEndpoint==='LOC'?'LOC':'';
-   await chrome.storage.local.set({locQueueRetryEndpoint:endpoint,
-     locQueueRetryStatus:s>=100&&s<=599?s:0});
-   if(s===429){
-     const v=String(e.retryAfter||'');
-     const ms=/^\d+$/.test(v)?Number(v)*1000:(Date.parse(v)||0)-Date.now();
-     await chrome.storage.local.set({locQueueRetryType:'rate',
-       locQueueRetryAfter:Date.now()+(Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});
-    }else if(s>=500||(s===0&&e.code!=='LOC_IMPORT_CONTRACT')){
-     const failures=Math.min(8,Math.max(0,Number(settings.locQueueFailures||0))+1);
-     const delay=Math.min(3600000,60000*2**Math.min(failures,6));
-     await chrome.storage.local.set({locQueueFailures:failures,
-       locQueueRetryType:s===0?'network':'server',locQueueRetryAfter:Date.now()+delay});
-    }else if(e.code==='LOC_IMPORT_CONTRACT'||[400,401,403,404,409,410,413,415,422].includes(s))
-     await chrome.storage.local.set({locImportPaused:true});
+   // Never continue this batch or any future automatic retry.
+   await tripCircuit(e);
    throw e;
   }
- })().finally(()=>{
-  const again=flushRequested;
-  flushRequested=false;
-  inFlight=null;
-  // A capture may arrive while a previous snapshot is being sent.
-  // Drain that new work immediately instead of waiting for the retry alarm.
-  if(again)void flush(false).catch(async error=>{
-   console.warn('[LunArcus automatic import]',String(error));
-   await noteAction('自動傳送',false,error?.message||String(error));
-  });
- });return inFlight;
+ })().finally(()=>{inFlight=null;});return inFlight;
 }
 
 async function inject(tabId){
@@ -1153,7 +1144,7 @@ async function captureChatgptOriginalSequence(tab,includeAssistant){
  await updateQueueBadge().catch(()=>{});
  const {locImportPaused}=await chrome.storage.local.get('locImportPaused');
  if(insertedChunks&&!locImportPaused)
-  void flush(false).catch(error=>noteAction('自動傳送',false,error?.message||String(error)));
+  await scheduleQueueTimer();
  const receipt={detected,user,assistant,insertedCaptures:insertedChunks?1:0,
   insertedChunks,empty:insertedChunks===0,queued:await queueCount(),
   message:'已辨識 '+detected+' 則原始對話訊息，新增 '+insertedChunks+' 筆 Queue'};
@@ -1294,12 +1285,15 @@ function installMenu(){
 chrome.runtime.onInstalled.addListener(async()=>{
  installMenu();
  await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
- await chrome.alarms.create('lunarcus-retry',{periodInMinutes:5});
+ await chrome.alarms.clear('lunarcus-retry');
+ if(await queueCount())await scheduleQueueTimer();
  await clearLegacyTabBadges().catch(()=>{});
  await updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
 chrome.runtime.onStartup?.addListener(()=>{
  installMenu();
+ void chrome.alarms.clear('lunarcus-retry');
+ void queueCount().then(n=>n&&scheduleQueueTimer()).catch(()=>{});
  void updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
 chrome.contextMenus.onShown?.addListener((_info,tab)=>{
@@ -1342,20 +1336,17 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
  });
 });
 chrome.alarms.onAlarm.addListener(e=>{
- if(e.name==='lunarcus-retry')void flush(false).catch(async err=>{
-   console.warn('[LunArcus Queue]',String(err));
-   await noteAction('自動重試',false,err?.message||String(err));
-  });
+ if(e.name===QUEUE_ALARM)void flush(false).catch(async error=>{
+  await noteAction('自動傳送中止',false,error?.message||String(error));
+ });
 });
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
  (async()=>{
   switch(message?.action){
    case 'loc-connect':{
     const result=await connectLoc();
-    // When an offline Queue reconnects, send every pending capture now.
-    if(result?.connected)void flush(false).catch(async error=>{
-      await noteAction('自動傳送',false,error?.message||String(error));
-    });
+    // A new OAuth login cannot silently clear a failed import circuit.
+    if(result?.connected&&await queueCount())await scheduleQueueTimer();
     return result;
    }
    case 'loc-disconnect':return disconnectLoc();
@@ -1367,7 +1358,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     // Count IndexedDB keys only; opening Settings must not revive every
     // saved conversation body or compute its JSON byte size.
     const [session,count]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),queueCount()]);
+     chrome.storage.local.get([...AUTH_KEYS,CIRCUIT_KEY,'locQueueNextSendAt','locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),queueCount()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
      pending:count,pendingCaptures:null,
@@ -1377,7 +1368,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      retryReason:session.locQueueRetryType||'',
       retryEndpoint:session.locQueueRetryEndpoint||'',
       retryStatus:Number(session.locQueueRetryStatus||0),
-     consecutiveFailures:Number(session.locQueueFailures||0)};
+     consecutiveFailures:Number(session.locQueueFailures||0),
+     circuit:session[CIRCUIT_KEY]||null,nextSendAt:Number(session.locQueueNextSendAt||0)};
    }
    case 'loc-clear-local-captures':{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
@@ -1462,7 +1454,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
-   case 'queue.status':{const count=await queueCount();const s=await chrome.storage.local.get('locImportPaused');return {count,bytes:null,paused:s.locImportPaused===true};}
+   case 'queue.status':{const count=await queueCount();const s=await chrome.storage.local.get(['locImportPaused',CIRCUIT_KEY,'locQueueNextSendAt']);return {count,bytes:null,paused:s.locImportPaused===true,circuit:s[CIRCUIT_KEY]||null,nextSendAt:Number(s.locQueueNextSendAt||0)};}
    case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
    case 'queue.flush':return flush(true);
    case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};

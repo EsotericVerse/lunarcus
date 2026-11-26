@@ -74,11 +74,12 @@ async function show(){
   result.retryEndpoint==='LOC'?'LOC API':'傳送端';
  const code=Number(result.retryStatus||0);
  const failure=code?'HTTP '+code:'網路連線中斷';
- const cooldown=result.nextRetryAt>Date.now()?
-  ('；'+(result.retryReason==='rate'?'流量管制':
-    result.retryReason==='network'?'網路連線失敗':'暫時服務異常')+
-   '（'+destination+'／'+failure+'），自動重試延後至 '+
-   new Date(result.nextRetryAt).toLocaleString('zh-TW')):'';
+ const circuit=result.circuit?.open===true;
+ const cooldown=circuit?'；因 '+(code?'HTTP '+code:'連線／回執錯誤')+
+  ' 已停止自動傳送，不會再自動連線；可手動試送一次'
+  :result.nextSendAt>Date.now()?'；預定於 '+
+   new Date(result.nextSendAt).toLocaleString('zh-TW')+' 批次送出':'';
+ $('flush').textContent=circuit?'手動試送一次':'立即送出 Queue';
  const reviewBlocked=Number(result.blockedReview||0);
  const legacyBlocked=Number(result.legacyUnordered||0);
  queue.textContent='待送 Queue：'+(result.pending??0)+' 筆資料（群組與時序於訊息重整頁按需查閱）'+
