@@ -173,7 +173,7 @@ $('clearLocalCaptures').addEventListener('click',async()=>{
   const result=await call('loc-clear-local-captures');
   if(result?.cleared!==true)throw Error(result?.error||'本機清理沒有完成');
   $('organizeGroups')?.replaceChildren();
-  $('organizeSummary').textContent='本機待重整對話已清空';
+  $('organizeSummary').textContent='本機待送對話已清空';
   await show();
   notice.textContent=result.message;
  }catch(error){notice.textContent='清理失敗：'+String(error?.message||error);}
@@ -273,7 +273,7 @@ async function renderOrganizer(){
  }
 }
 $('organizeRefresh').addEventListener('click',async()=>{
- $('organizeNotice').textContent='正在整理本機訊息…';
+ $('organizeNotice').textContent='正在更新對話預覽…';
  try{await renderOrganizer();}
  catch(error){$('organizeNotice').textContent=String(error?.message||error);}
 });

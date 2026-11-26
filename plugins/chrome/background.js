@@ -61,6 +61,7 @@ async function tripCircuit(error){
  const circuit={open:true,status:status>=100&&status<=599?status:0,
   category,since:new Date().toISOString()};
  await chrome.storage.local.set({[CIRCUIT_KEY]:circuit,locImportPaused:true,
+  locQueueRetryEndpoint:error?.queueEndpoint==='MCP'?'MCP':'LOC',
   locQueueRetryStatus:circuit.status,locQueueRetryType:'circuit',
   locQueueRetryAfter:0});
  await cancelQueueTimer();
@@ -1384,7 +1385,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'conversation.turn':{
     const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
     if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
-     throw Error('完整訊息僅能在 LunArcus 訊息重整頁讀取');
+     throw Error('完整訊息僅能在 LunArcus 對話頁讀取');
     const id=String(message.id||'');
     if(!id||id.length>256)throw Error('無效的待送訊息 ID');
     const [row]=await loadQueueRows([id]).catch(()=>[null]);
