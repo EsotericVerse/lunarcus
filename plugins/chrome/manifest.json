@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LunArcus",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "LunArcus Chrome Extension：OAuth PKCE、網頁與對話擷取、NDJSON Stream Queue",
   "permissions": [
     "contextMenus",
