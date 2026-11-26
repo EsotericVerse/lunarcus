@@ -73,6 +73,7 @@ async function handle(request,response){
  let header=null,active=null,conversations=0,records=0,started=false,finished=false;
  try{
   for await(const frame of readNdjson(request)){
+   if(finished)throw fail('trailing_frame','Data received after final frame');
    if(!header){
     header=validateStart(frame);
     response.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8',
@@ -115,7 +116,7 @@ async function handle(request,response){
      throw fail('upload_count_mismatch','Final stream counts do not match');
     await writeFrame(response,{type:'finish',upload_id:header.upload_id,
      conversation_count:conversations,record_count:records});
-    finished=true;break;
+    finished=true;continue;
    }
    throw fail('unknown_frame','Unknown NDJSON frame type');
   }
