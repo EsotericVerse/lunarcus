@@ -65,7 +65,8 @@ async function tripCircuit(error){
   locQueueRetryStatus:circuit.status,locQueueRetryType:'circuit',
   locQueueRetryAfter:0});
  await cancelQueueTimer();
- await logDiagnostic('queue.circuit.open',{status:circuit.status,category});
+ await logDiagnostic('queue.circuit.open',{status:circuit.status,category,
+  code:String(error?.code||'').slice(0,80)});
 }
 // Upgrade old versions without reviving an endpoint that already failed.
 async function migrateLegacyFailure(){
@@ -791,6 +792,19 @@ function createQueueConversationBody(entries,uploadId,groups){
   async cancel(reason){await iterator.return?.(reason);}
  });
 }
+function streamFailureInfo(receipt){
+ let nested=null;
+ if(typeof receipt?.detail==='string'){
+  try{nested=JSON.parse(receipt.detail)}catch{}
+ }
+ const code=receipt?.code||receipt?.error?.code||nested?.error?.code||
+  (typeof receipt?.error==='string'?receipt.error:'');
+ const message=receipt?.message||receipt?.error?.message||nested?.error?.message||'';
+ return {
+  code:typeof code==='string'?code.slice(0,80):'',
+  message:typeof message==='string'?message.replace(/[\\r\\n]+/g,' ').slice(0,140):''
+ };
+}
 async function sendConversationStream(entries,token,config){
  if(!entries.length)return {accepted:true,records:0,conversations:0};
  const groups=queueConversationGroups(entries),uploadId=crypto.randomUUID();
@@ -809,10 +823,17 @@ async function sendConversationStream(entries,token,config){
  }catch(error){error.queueEndpoint='MCP';throw error;}
  const receipt=await response.json().catch(()=>null);
  if(!response.ok){
+  const failure=streamFailureInfo(receipt);
   const error=Error('LAS Stream 匯入失敗 HTTP '+response.status+
-   (receipt?.message?' — '+String(receipt.message).slice(0,160):''));
-  error.httpStatus=response.status;error.queueEndpoint='MCP';
+   (failure.code?' ['+failure.code+']':'')+
+   (failure.message?' — '+failure.message:''));
+  error.httpStatus=response.status;
+  error.code=failure.code||'LAS_STREAM_HTTP_ERROR';
+  error.queueEndpoint='MCP';
   error.retryAfter=response.headers?.get?.('retry-after')||'';
+  await logDiagnostic('las.plugin.stream.error',{
+   status:response.status,code:error.code
+  });
   throw error;
  }
  if(receipt?.accepted!==true||receipt.upload_id!==uploadId||

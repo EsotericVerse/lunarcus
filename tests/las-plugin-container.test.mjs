@@ -41,3 +41,13 @@ test('Container enforces per-message and per-conversation limits',()=>{
  assert.throws(()=>normalizeConversation(validateConversation(conversation),rows.concat(rows[0])),
   /Duplicate message ID/);
 });
+
+test('Container rejection codes are exposed without returning raw payloads',async()=>{
+ const {containerFailureCode}=await import('../server/mcp/plugin-import-stream.mjs');
+ assert.equal(containerFailureCode('{"error":{"code":"invalid_header","message":"Invalid stream header"}}'),
+  'invalid_header');
+ assert.equal(containerFailureCode('{"error":{"code":"invalid_message"}}'),'invalid_message');
+ assert.equal(containerFailureCode('not-json'),'container_rejected_stream');
+ assert.equal(containerFailureCode('{"error":{"code":"token secret"}}'),'container_rejected_stream');
+});
+

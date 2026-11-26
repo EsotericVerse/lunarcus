@@ -17,6 +17,14 @@ function json(body,status=200,origin='*',extra={}){
   ...headers(origin),'content-type':'application/json; charset=utf-8',...extra
  }});
 }
+export function containerFailureCode(detail){
+ try{
+  const parsed=JSON.parse(String(detail||''));
+  const code=parsed?.error?.code||parsed?.code;
+  return typeof code==='string'&&/^[a-z0-9_]{1,80}$/i.test(code)
+   ?code:'container_rejected_stream';
+ }catch{return 'container_rejected_stream';}
+}
 export async function handlePluginImportStream(request,env={}){
  const origin=request.headers.get('origin')||'';
  const allowedOrigin=origin?origin: '*';
@@ -61,7 +69,9 @@ export async function handlePluginImportStream(request,env={}){
   const upstream=await container.containerFetch(forwarded);
   if(!upstream.ok){
    const detail=await readBoundedText(upstream.body,8192).catch(()=> '');
-   return json({error:'container_rejected_stream',detail:detail.slice(0,300)},upstream.status,allowedOrigin);
+   const code=containerFailureCode(detail);
+   console.warn('LAS plugin Container rejected stream',{status:upstream.status,code});
+   return json({error:'container_rejected_stream',code},upstream.status,allowedOrigin);
   }
   const receipt=await consumeSortedImportStream(upstream,{
    writeConversation:args=>businessAction('galaxy_link',{
