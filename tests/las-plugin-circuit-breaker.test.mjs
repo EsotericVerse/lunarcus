@@ -48,7 +48,8 @@ test('no immediate capture, periodic retry, or second 401 write',()=>{
  assert.doesNotMatch(code,/periodInMinutes:5/);
  assert.doesNotMatch(code,/if\(pendingCount\)void flush\(false\)/);
  assert.doesNotMatch(code,/await activeToken\(true\)/);
- assert.doesNotMatch(code,/return flush\(true\)/);
+ // Explicit user actions may call flush(true); only automatic recursion is banned.
+ assert.doesNotMatch(code,/try\{await inFlight\}catch\{\}/);
  assert.match(code,/if\(await readCircuit\(\)&&!force\)/);
  assert.match(code,/await tripCircuit\(e\)/);
 });
