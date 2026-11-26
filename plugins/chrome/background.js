@@ -66,6 +66,12 @@ async function tripCircuit(error){
  await cancelQueueTimer();
  await logDiagnostic('queue.circuit.open',{status:circuit.status,category});
 }
+// Upgrade old versions without reviving an endpoint that already failed.
+async function migrateLegacyFailure(){
+ const s=await chrome.storage.local.get([CIRCUIT_KEY,'locQueueRetryType','locQueueRetryStatus']);
+ if(!s[CIRCUIT_KEY]?.open&&['network','server','rate'].includes(s.locQueueRetryType))
+  await tripCircuit({httpStatus:Number(s.locQueueRetryStatus||0)});
+}
 async function resetCircuitAfterReceipt(){
  await chrome.storage.local.remove([CIRCUIT_KEY,'locImportPaused',
   'locQueueRetryType','locQueueRetryAfter','locQueueRetryEndpoint',
@@ -1286,6 +1292,7 @@ chrome.runtime.onInstalled.addListener(async()=>{
  installMenu();
  await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
  await chrome.alarms.clear('lunarcus-retry');
+ await migrateLegacyFailure();
  if(await queueCount())await scheduleQueueTimer();
  await clearLegacyTabBadges().catch(()=>{});
  await updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
@@ -1293,7 +1300,8 @@ chrome.runtime.onInstalled.addListener(async()=>{
 chrome.runtime.onStartup?.addListener(()=>{
  installMenu();
  void chrome.alarms.clear('lunarcus-retry');
- void queueCount().then(n=>n&&scheduleQueueTimer()).catch(()=>{});
+ void migrateLegacyFailure().then(()=>queueCount())
+  .then(n=>n&&scheduleQueueTimer()).catch(()=>{});
  void updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
 chrome.contextMenus.onShown?.addListener((_info,tab)=>{
@@ -1360,7 +1368,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const [session,count]=await Promise.all([
      chrome.storage.local.get([...AUTH_KEYS,CIRCUIT_KEY,'locQueueNextSendAt','locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locQueueRetryEndpoint','locQueueRetryStatus']),queueCount()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
-     configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
+     configured:Boolean(session.locConfig),paused:session.locImportPaused===true||session[CIRCUIT_KEY]?.open===true,
      pending:count,pendingCaptures:null,
      blockedReview:null,legacyUnordered:null,
      lastAction:session.locLastAction||null,

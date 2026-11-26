@@ -14,7 +14,7 @@ function setup(){
   clear:async n=>calls.push({clear:n})}};
  const ctx=vm.createContext({chrome,Date,logDiagnostic:async()=>{},
   QUEUE_ALARM:'lunarcus-queue-window',QUEUE_WINDOW_MS:600000,CIRCUIT_KEY:'locQueueCircuit'});
- vm.runInContext(helpers+';globalThis.f={readCircuit,scheduleQueueTimer,tripCircuit,resetCircuitAfterReceipt};',ctx);
+ vm.runInContext(helpers+';globalThis.f={readCircuit,scheduleQueueTimer,tripCircuit,migrateLegacyFailure,resetCircuitAfterReceipt};',ctx);
  return {data,calls,...ctx.f};
 }
 test('one fixed ten-minute Queue window is not postponed by new capture',async()=>{
@@ -52,4 +52,17 @@ test('no immediate capture, periodic retry, or second 401 write',()=>{
  assert.doesNotMatch(code,/try\{await inFlight\}catch\{\}/);
  assert.match(code,/if\(await readCircuit\(\)&&!force\)/);
  assert.match(code,/await tripCircuit\(e\)/);
+});
+
+test('legacy server and network retry state migrates into stopped circuit',async()=>{
+ for(const reason of ['server','network','rate']){
+  const x=setup();
+  x.data.locQueueRetryType=reason;
+  x.data.locQueueRetryStatus=500;
+  x.data.locOAuth={refresh_token:'TEST'};
+  await x.migrateLegacyFailure();
+  assert.equal(x.data.locQueueCircuit.open,true);
+  assert.equal(await x.scheduleQueueTimer(),false);
+  assert.equal(x.calls.some(c=>c.name==='lunarcus-queue-window'),false);
+ }
 });
