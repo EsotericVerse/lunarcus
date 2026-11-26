@@ -81,3 +81,30 @@ test('LAS routes dispatch exact paths and reject duplicates',async()=>{
     [['/mcp'],()=>{}]
   ]),/Duplicate LAS route/);
 });
+test('LAS serves RFC 9116 security.txt on both production hosts from static assets',async()=>{
+  const body=[
+    'Contact: https://github.com/EsotericVerse/lunarcus/security/advisories/new',
+    'Canonical: https://auth.lo3rwang.cc/.well-known/security.txt',
+    'Canonical: https://mcp.lo3rwang.cc/.well-known/security.txt',
+    'Expires: 2027-11-25T00:00:00Z',
+    'Preferred-Languages: zh-TW, en',
+    ''
+  ].join('\\n');
+  const routed=[];
+  const assets={async fetch(request){
+    routed.push(new URL(request.url).pathname);
+    return new Response(body,{headers:{'content-type':'text/plain'}});
+  }};
+  const app=createLAS({
+    auth:async()=>new Response('auth'),
+    mcp:async()=>new Response('mcp')
+  });
+  for(const host of [urls.auth,urls.mcp]){
+    const response=await app.fetch(new Request(host+'/.well-known/security.txt'),{LAS_ASSETS:assets});
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('content-type'),'text/plain; charset=utf-8');
+    assert.equal(response.headers.get('x-content-type-options'),'nosniff');
+    assert.equal(await response.text(),body);
+  }
+  assert.deepEqual(routed,['/.well-known/security.txt','/.well-known/security.txt']);
+});
