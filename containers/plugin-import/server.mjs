@@ -14,9 +14,9 @@ async function* readNdjson(request){
   if(Buffer.byteLength(buffer,'utf8')>LIMITS.maxLineBytes)
    throw fail('line_too_large','NDJSON frame exceeds the line limit',413);
   let newline;
-  while((newline=buffer.indexOf('\\n'))>=0){
+  while((newline=buffer.indexOf('\n'))>=0){
    let line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
-   if(line.endsWith('\\r'))line=line.slice(0,-1);
+   if(line.endsWith('\r'))line=line.slice(0,-1);
    if(!line.trim())throw fail('empty_line','Empty NDJSON frame');
    if(Buffer.byteLength(line,'utf8')>LIMITS.maxLineBytes)
     throw fail('line_too_large','NDJSON frame exceeds the line limit',413);
@@ -36,7 +36,7 @@ async function* readNdjson(request){
 }
 async function writeFrame(response,frame){
  if(response.destroyed||response.writableEnded)throw fail('client_closed','Stream consumer disconnected',499);
- if(!response.write(JSON.stringify(frame)+'\\n')){
+ if(!response.write(JSON.stringify(frame)+'\n')){
   await new Promise((resolve,reject)=>{
    const cleanup=()=>{response.off('drain',drain);response.off('close',close);response.off('error',error);};
    const drain=()=>{cleanup();resolve();};
@@ -55,7 +55,7 @@ function jsonError(response,error){
    message:status>=500?'Container processing unavailable':String(error?.message||'Invalid stream')}}));
  }else if(!response.writableEnded){
   response.write(JSON.stringify({type:'error',code:error?.code||'invalid_stream',
-   message:status>=500?'Container processing unavailable':String(error?.message||'Invalid stream')})+'\\n');
+   message:status>=500?'Container processing unavailable':String(error?.message||'Invalid stream')})+'\n');
   response.end();
  }
 }

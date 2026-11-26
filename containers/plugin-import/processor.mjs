@@ -34,14 +34,14 @@ export function validateConversation(frame){
 export function validateMessage(frame){
  const id=String(frame?.message_id||''),parent=frame?.parent_id??null;
  if(frame?.type!=='message'||!id||id.length>256||
-    /[\\u0000-\\u001f\\u007f]/.test(id)||
+    /[\u0000-\u001f\u007f]/.test(id)||
     !Number.isSafeInteger(frame.source_order)||frame.source_order<0||
     frame.source_order>1000000||
     !['user','assistant'].includes(frame.role)||
     typeof frame.text!=='string'||!frame.text.trim()||
     frame.text.length>LIMITS.maxMessageChars||
     parent!==null&&(typeof parent!=='string'||parent.length>256||
-      /[\\u0000-\\u001f\\u007f]/.test(parent)))
+      /[\u0000-\u001f\u007f]/.test(parent)))
   throw invalid('invalid_message','Invalid conversation message');
  return {message_id:id,source_order:frame.source_order,
   parent_id:parent,role:frame.role,text:frame.text};
