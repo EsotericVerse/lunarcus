@@ -1,7 +1,7 @@
 // LOC MCP business actions: validate and map tool arguments only.
 // The single LAS Tunnel transport owns POST, bearer, timeout and errors.
 // LOC remains the authority for Scope rights and Galaxy business behavior.
-import {callLocOperation} from '../tunnel/loc-mapping.mjs';
+import {callLocOperation,locTransport} from '../tunnel/loc-mapping.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PR=/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i;
 function invalid(message){
@@ -36,6 +36,6 @@ export async function businessAction(name,args,token,env={},fetchImpl=globalThis
   }else{
     throw invalid('Obsolete Auth-owned MCP action is not supported');
   }
-  const value=await callLocOperation(payload,token,fetchImpl);
+  const value=await callLocOperation(payload,token,locTransport(env,fetchImpl));
   return value||{};
 }

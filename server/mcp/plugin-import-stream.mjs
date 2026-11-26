@@ -85,7 +85,7 @@ export async function handlePluginImportStream(request,env={}){
   const status=Number(error?.httpStatus);
   const safeStatus=status>=400&&status<=599?status:502;
   console.warn('LAS plugin stream import stopped',{
-   stage:error?.code?.startsWith('loc_')?'loc-write':'container-stream',
+   stage:/^loc_/i.test(String(error?.code||''))?'loc-write':'container-stream',
    status:safeStatus,code:String(error?.code||'stream_failed').slice(0,64)
   });
   const extra=error?.retryAfter?{'retry-after':String(error.retryAfter)}:{};

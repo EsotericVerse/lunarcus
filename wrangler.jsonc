@@ -23,6 +23,12 @@
       "id": "f80d2201f6344ccaa105d3fe47c8b518"
     }
   ],
+  "services": [
+    {
+      "binding": "LOC_SERVICE",
+      "service": "lunacodex"
+    }
+  ],
   "containers": [
     {
       "class_name": "PluginImportContainer",

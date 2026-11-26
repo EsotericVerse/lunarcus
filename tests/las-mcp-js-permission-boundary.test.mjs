@@ -63,3 +63,25 @@ test('LAS rejects unauthenticated MCP traffic before exposing tools',async()=>{
   assert.equal(response.status,401);
   assert.match(response.headers.get('www-authenticate')||'',/Bearer/);
 });
+
+test('LAS prefers the direct LOC Worker service binding over public hostname fetch',async()=>{
+  const calls=[];
+  const service={fetch:async(url,init)=>{
+    calls.push({url,method:init.method,body:JSON.parse(init.body),
+      bearer:init.headers.authorization});
+    return new Response(JSON.stringify({data:{accepted:true}}),{
+      status:200,headers:{'content-type':'application/json'}
+    });
+  }};
+  const fallback=async()=>{throw Error('Public hostname fetch must not be used');};
+  const answer=await businessAction('galaxy_link',{
+    scopeid:'lo3rwang',action:'check',conversation_id:'conversation-2',
+    updated_at:'2026-11-26T00:00:00.000Z'
+  },'signed-token',{LOC_SERVICE:service},fallback);
+  assert.deepEqual(answer,{accepted:true});
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native');
+  assert.equal(calls[0].bearer,'Bearer signed-token');
+  assert.equal(calls[0].body.kind,'mcp-conversation');
+});
+

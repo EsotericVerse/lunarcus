@@ -11,6 +11,12 @@ function scope(value,defaultValue='lo3rwang'){
   if(!SCOPE.test(String(id)))throw invalid('Invalid LOC Scope');
   return id;
 }
+export function locTransport(env={},fallback=globalThis.fetch){
+  const service=env?.LOC_SERVICE;
+  if(service&&typeof service.fetch==='function')
+    return (input,init)=>service.fetch(input,init);
+  return typeof env?.lasFetch==='function'?env.lasFetch:fallback;
+}
 export function mcpDatabaseConfiguration(){
   // The Gateway never receives the LOC business DB credential.
   return {owner:'loc',verification:'delegated-to-loc',
@@ -60,7 +66,7 @@ export async function readMemory(args={},env={}){
   const scopeid=scope(args.scopeid);
   if(!UID.test(String(args.uid||'')))throw invalid('Invalid case-sensitive UID');
   const token=env?.lasOAuthToken;
-  return callLocOperation({kind:'mcp-public-read',scopeid,args},token,env?.lasFetch||globalThis.fetch);
+  return callLocOperation({kind:'mcp-public-read',scopeid,args},token,locTransport(env));
 }
 export async function privateGalaxyLink(args={},token,subject,env={}){
   const scopeid=scope(args.scopeid);
@@ -78,7 +84,7 @@ export async function privateGalaxyLink(args={},token,subject,env={}){
       throw invalid('Invalid read paging');
     const value=await callLocOperation({kind:'mcp-read',scopeid,
       uid:args.uid,...(site===undefined?{}:{site})},
-      token,env?.lasFetch||globalThis.fetch);
+      token,locTransport(env));
     const row=Array.isArray(value)?value[0]:null;
     if(!row)return {found:false,scopeid,uid:args.uid};
     const content=String(row.content||'');
@@ -95,7 +101,7 @@ export async function privateGalaxyLink(args={},token,subject,env={}){
       !Number.isInteger(limit)||limit<1||limit>5)
       throw invalid('Invalid private Galaxy search');
     const rows=await callLocOperation({kind:'mcp-search',scopeid,query,limit,
-      user_requested:true},token,env?.lasFetch||globalThis.fetch);
+      user_requested:true},token,locTransport(env));
     return {scopeid,results:Array.isArray(rows)?rows.map(row=>({
       uid:row.uid,title:row.title,createtime:row.createtime
     })):[]};
@@ -104,5 +110,5 @@ export async function privateGalaxyLink(args={},token,subject,env={}){
 }
 export async function articleDistribution(args={},env={}){
   return callLocOperation({kind:'mcp-article-stat',scopeid:'loc',args},
-    env?.lasOAuthToken,env?.lasFetch||globalThis.fetch);
+    env?.lasOAuthToken,locTransport(env));
 }
