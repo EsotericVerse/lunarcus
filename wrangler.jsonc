@@ -35,12 +35,12 @@
       }
     ]
   },
-  "exports": {
-    "PluginImportContainer": {
-      "type": "durable-object",
-      "storage": "sqlite"
+  "migrations": [
+    {
+      "tag": "las-plugin-import-container-v1",
+      "new_sqlite_classes": ["PluginImportContainer"]
     }
-  },
+  ],
   "observability": {
     "enabled": true,
     "redact_query_string": true,

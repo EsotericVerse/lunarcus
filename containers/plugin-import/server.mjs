@@ -11,8 +11,6 @@ async function* readNdjson(request){
   bytes+=chunk.byteLength;
   if(bytes>LIMITS.maxUploadBytes)throw fail('upload_too_large','Upload exceeds the stream limit',413);
   buffer+=decoder.decode(chunk,{stream:true});
-  if(Buffer.byteLength(buffer,'utf8')>LIMITS.maxLineBytes)
-   throw fail('line_too_large','NDJSON frame exceeds the line limit',413);
   let newline;
   while((newline=buffer.indexOf('\n'))>=0){
    let line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
