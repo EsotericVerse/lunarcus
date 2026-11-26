@@ -6,7 +6,7 @@ export const LAS_HOSTS=Object.freeze({
   mcp:'mcp.lo3rwang.cc'
 });
 
-const PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\\.esotericverse\\.workers\\.dev$/i;
+const PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
 const SECURITY_PATH='/.well-known/security.txt';
 
 export function isLASPreviewHost(hostname){
