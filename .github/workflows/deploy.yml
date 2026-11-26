@@ -29,10 +29,6 @@ jobs:
           cache: npm
       - name: Install LAS dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Build isolated LAS import container
-        run: docker build --pull -f containers/plugin-import/Dockerfile -t las-plugin-import:ci containers/plugin-import
-      - name: Build isolated LAS import container
-        run: docker build --pull -f containers/plugin-import/Dockerfile -t las-plugin-import:ci .
       - name: Verify MCP protocol boundaries
         run: npm test
       - name: Bundle LAS Worker without publishing
