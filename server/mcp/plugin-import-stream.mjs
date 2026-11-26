@@ -58,7 +58,7 @@ export async function handlePluginImportStream(request,env={}){
    method:'POST',headers:{'content-type':'application/x-ndjson'},
    body:request.body,signal:request.signal
   });
-  const upstream=await container.fetch(forwarded);
+  const upstream=await container.containerFetch(forwarded);
   if(!upstream.ok){
    const detail=await readBoundedText(upstream.body,8192).catch(()=> '');
    return json({error:'container_rejected_stream',detail:detail.slice(0,300)},upstream.status,allowedOrigin);
