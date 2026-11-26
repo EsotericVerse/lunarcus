@@ -75,7 +75,7 @@ test('conversation preview stays bounded and no longer gates Queue delivery',()=
  const options=readFileSync(new URL('../plugins/chrome/options.js',import.meta.url),'utf8');
  assert.ok(code.includes('const MAX_REVIEW_ROWS=10000'));
  assert.ok(code.includes('const metadata=group.rows.slice(offset,offset+QUEUE_HYDRATE_ROWS)'));
- assert.match(options,/group\\.messages\\.slice\\(visible,visible\\+100\\)/);
+ assert.ok(options.includes('group.messages.slice(visible,visible+100)'));
  assert.ok(code.includes('trustedSourceOrder(row)&&!blocked.has'));
  assert.ok(!code.includes('row.reviewed!==true||!trustedSourceOrder'));
  assert.ok(!code.includes('async function sendOrderedConversation('));
