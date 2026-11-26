@@ -146,7 +146,7 @@ test('conversation request body emits all frames when total payload is below 64 
  for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);}
  const bytes=chunks.reduce((n,x)=>n+x.byteLength,0);
  const raw=Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8');
- const frames=raw.trim().split('\\n').map(JSON.parse);
+ const frames=raw.trim().split(String.fromCharCode(10)).map(JSON.parse);
  assert.ok(bytes>0);
  assert.deepEqual(frames.map(x=>x.type),
   ['start','conversation','message','message','conversation_end','finish']);
@@ -176,7 +176,7 @@ test('conversation request body flushes the final partial chunk after a 64 KiB f
  const reader=body.getReader(),chunks=[];
  for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);}
  const raw=Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8');
- const frames=raw.trim().split('\\n').map(JSON.parse);
+ const frames=raw.trim().split(String.fromCharCode(10)).map(JSON.parse);
  assert.equal(frames.filter(x=>x.type==='message')[0].text.length,70000);
  assert.equal(frames.at(-1).type,'finish');
 });
