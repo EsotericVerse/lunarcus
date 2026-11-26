@@ -7,7 +7,6 @@ export const LAS_HOSTS=Object.freeze({
 });
 
 const PREVIEW_HOST=/^(?:[a-z0-9-]+-)?lunarcus\.esotericverse\.workers\.dev$/i;
-const SECURITY_PATH='/.well-known/security.txt';
 
 export function isLASPreviewHost(hostname){
   return PREVIEW_HOST.test(hostname);
@@ -32,22 +31,6 @@ export function createLAS({auth,mcp,previewMcpPaths=[]}){
   return {
     async fetch(request,env={},execution){
       const url=new URL(request.url);
-      // The same LAS Worker serves two production hosts. Serve the same
-      // repository-owned disclosure file on each host before Auth/MCP dispatch.
-      // It is intentionally not exposed on workers.dev preview URLs.
-      if((request.method==='GET'||request.method==='HEAD')&&
-        url.pathname===SECURITY_PATH&&
-        (url.hostname===LAS_HOSTS.auth||url.hostname===LAS_HOSTS.mcp)){
-        if(typeof env.LAS_ASSETS?.fetch!=='function')
-          return new Response('Security disclosure asset unavailable',{status:503,
-            headers:{'content-type':'text/plain; charset=utf-8','cache-control':'no-store'}});
-        const asset=await env.LAS_ASSETS.fetch(request);
-        const headers=new Headers(asset.headers);
-        headers.set('content-type','text/plain; charset=utf-8');
-        headers.set('cache-control','public, max-age=3600');
-        headers.set('x-content-type-options','nosniff');
-        return new Response(asset.body,{status:asset.status,statusText:asset.statusText,headers});
-      }
       const preview=isLASPreviewHost(url.hostname);
       // Production is strictly host-based. Preview is isolated on workers.dev:
       // only explicitly registered paths are MCP; everything else is Auth.
