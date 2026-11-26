@@ -776,17 +776,22 @@ function createQueueConversationBody(entries,uploadId,groups){
  return new ReadableStream({
   async pull(controller){
    try{
-    const parts=[];let bytes=0;
+    const parts=[];let bytes=0,done=false;
     while(bytes<65536){
      const next=await iterator.next();
-     if(next.done){controller.close();return;}
+     if(next.done){done=true;break;}
      const chunk=encoder.encode(JSON.stringify(next.value)+String.fromCharCode(10));
      parts.push(chunk);bytes+=chunk.byteLength;
      if(bytes>=65536)break;
     }
-    const merged=new Uint8Array(bytes);let offset=0;
-    for(const part of parts){merged.set(part,offset);offset+=part.byteLength;}
-    controller.enqueue(merged);
+    // Flush the final partial chunk before closing. Otherwise every upload
+    // smaller than 64 KiB, and the tail of larger uploads, is silently lost.
+    if(bytes){
+     const merged=new Uint8Array(bytes);let offset=0;
+     for(const part of parts){merged.set(part,offset);offset+=part.byteLength;}
+     controller.enqueue(merged);
+    }
+    if(done)controller.close();
    }catch(error){controller.error(error);}
   },
   async cancel(reason){await iterator.return?.(reason);}

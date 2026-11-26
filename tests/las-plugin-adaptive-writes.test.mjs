@@ -122,3 +122,62 @@ test('LAS short import uses canonical slash URL even with cached legacy config',
  assert.match(src,/endpoint\.pathname='\/api\/loc-native\/'/);
  assert.match(src,/!\['\/api\/loc-native','\/api\/loc-native\/'\]\.includes\(endpoint\.pathname\)/);
 });
+test('conversation request body emits all frames when total payload is below 64 KiB',async()=>{
+ const start=code.indexOf('function queueConversationGroups(');
+ const end=code.indexOf(String.fromCharCode(10)+'async function flush(',start);
+ const fullRows=new Map();
+ const source='https://chatgpt.com/c/12345678-1234-4234-8234-123456789abc';
+ const metadata=[1,2].map(n=>({id:'small-'+n,kind:'ordered_conversation',
+  scopeid:'lo3rwang',source_key:source,title:'Small',
+  order_evidence:'source-ordinal',source_order:n,message_id:'m'+n,
+  parent_id:null,role:n%2?'user':'assistant',text:'preview'}));
+ for(const row of metadata)fullRows.set(row.id,{...row,text:'short message '+row.id});
+ const ctx={QUEUE_HYDRATE_ROWS:8,encoder:new TextEncoder(),ReadableStream,
+  Map,String,Array,JSON,Date,Error,URL,
+  trustedSourceOrder:r=>r.order_evidence==='source-ordinal',
+  loadQueueRows:async ids=>ids.map(id=>fullRows.get(id)),
+  contractError:m=>Error(m)};
+ const api=vm.runInNewContext(code.slice(start,end)+
+  ';({queueConversationGroups,createQueueConversationBody})',ctx);
+ const groups=api.queueConversationGroups(metadata);
+ const body=api.createQueueConversationBody(metadata,
+  'd7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4',groups);
+ const reader=body.getReader(),chunks=[];
+ for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);}
+ const bytes=chunks.reduce((n,x)=>n+x.byteLength,0);
+ const raw=Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8');
+ const frames=raw.trim().split('\\n').map(JSON.parse);
+ assert.ok(bytes>0);
+ assert.deepEqual(frames.map(x=>x.type),
+  ['start','conversation','message','message','conversation_end','finish']);
+ assert.equal(frames.at(-1).type,'finish');
+});
+
+test('conversation request body flushes the final partial chunk after a 64 KiB frame',async()=>{
+ const start=code.indexOf('function queueConversationGroups(');
+ const end=code.indexOf(String.fromCharCode(10)+'async function flush(',start);
+ const fullRows=new Map();
+ const source='https://chatgpt.com/c/12345678-1234-4234-8234-123456789abc';
+ const metadata=[{id:'large-1',kind:'ordered_conversation',
+  scopeid:'lo3rwang',source_key:source,title:'Large',
+  order_evidence:'source-ordinal',source_order:1,message_id:'m1',
+  parent_id:null,role:'user',text:'preview'}];
+ fullRows.set('large-1',{...metadata[0],text:'x'.repeat(70000)});
+ const ctx={QUEUE_HYDRATE_ROWS:8,encoder:new TextEncoder(),ReadableStream,
+  Map,String,Array,JSON,Date,Error,URL,
+  trustedSourceOrder:r=>r.order_evidence==='source-ordinal',
+  loadQueueRows:async ids=>ids.map(id=>fullRows.get(id)),
+  contractError:m=>Error(m)};
+ const api=vm.runInNewContext(code.slice(start,end)+
+  ';({queueConversationGroups,createQueueConversationBody})',ctx);
+ const groups=api.queueConversationGroups(metadata);
+ const body=api.createQueueConversationBody(metadata,
+  'd7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4',groups);
+ const reader=body.getReader(),chunks=[];
+ for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);}
+ const raw=Buffer.concat(chunks.map(x=>Buffer.from(x))).toString('utf8');
+ const frames=raw.trim().split('\\n').map(JSON.parse);
+ assert.equal(frames.filter(x=>x.type==='message')[0].text.length,70000);
+ assert.equal(frames.at(-1).type,'finish');
+});
+
