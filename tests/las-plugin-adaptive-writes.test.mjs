@@ -78,13 +78,13 @@ test('conversation preview stays bounded and no longer gates Queue delivery',()=
  assert.match(options,/group\\.messages\\.slice\\(visible,visible\\+100\\)/);
  assert.match(code,/trustedSourceOrder\\(row\\)&&!blocked\\.has/);
  assert.doesNotMatch(code,/row\\.reviewed!==true\\|\\|!trustedSourceOrder/);
- assert.doesNotMatch(code,/async function sendOrderedConversation\\(/);
+ assert.equal(code.includes('async function sendOrderedConversation('),false);
 });
 
 test('ordered conversations stream from IndexedDB to LAS Container, not JSON batches',async()=>{
  const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
  const start=src.indexOf('function queueConversationGroups(');
- const end=src.indexOf('\\nasync function flush(',start);
+ const end=src.indexOf(String.fromCharCode(10)+'async function flush(',start);
  assert.ok(start>0&&end>start);
  const calls=[],fullRows=new Map();
  const source='https://chatgpt.com/c/12345678-1234-4234-8234-123456789abc';
