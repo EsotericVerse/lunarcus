@@ -32,7 +32,7 @@ export async function callLocOperation(body,token,fetchImpl=globalThis.fetch){
   let response;
   try{
     response=await fetchImpl(LOC_NATIVE,{
-      method:'POST',redirect:'error',cache:'no-store',
+      method:'POST',redirect:'manual',cache:'no-store',
       headers:{authorization:'Bearer '+token,'content-type':'application/json',
         accept:'application/json'},
       body:JSON.stringify(body),signal:AbortSignal.timeout(20000)

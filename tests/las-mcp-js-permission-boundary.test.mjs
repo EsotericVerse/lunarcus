@@ -37,8 +37,8 @@ test('LAS never forwards retired operations, even with a token',async()=>{
 test('LAS sends business tool to LOC exactly once without a role probe',async()=>{
   const calls=[];
   const fetchImpl=async (url,init)=>{
-    calls.push({url,method:init.method,body:JSON.parse(init.body),
-      bearer:init.headers.authorization});
+    calls.push({url,method:init.method,redirect:init.redirect,
+      body:JSON.parse(init.body),bearer:init.headers.authorization});
     return new Response(JSON.stringify({data:{found:false}}),{
       status:200,headers:{'content-type':'application/json'}
     });
@@ -50,6 +50,7 @@ test('LAS sends business tool to LOC exactly once without a role probe',async()=
   assert.deepEqual(answer,{found:false});
   assert.equal(calls.length,1);
   assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native');
+  assert.equal(calls[0].redirect,'manual');
   assert.equal(calls[0].bearer,'Bearer signed-token');
   assert.equal(calls[0].body.kind,'mcp-conversation');
 });
