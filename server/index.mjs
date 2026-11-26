@@ -1,4 +1,3 @@
-export {PluginImportContainer} from './containers/plugin-import-container.mjs';
 import mcpWorker from './mcp/server.mjs';
 import {createLAS} from './las.mjs';
 import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth/auth.mjs';

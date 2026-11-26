@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/wrangler@4.157.0/config-schema.json",
   "name": "lunarcus",
-  "main": "./server/index.mjs",
+  "main": "./server/worker.mjs",
   "compatibility_date": "2026-10-31",
   "compatibility_flags": [
     "nodejs_compat",

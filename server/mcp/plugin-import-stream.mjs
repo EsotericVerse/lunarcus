@@ -1,4 +1,3 @@
-import {getContainer} from '@cloudflare/containers';
 import {mcpConfig,verifyOAuthToken} from './router.mjs';
 import {checkMcpGatewayQos} from './gateway-rate.mjs';
 import {businessAction} from './business-actions.mjs';
@@ -51,6 +50,7 @@ export async function handlePluginImportStream(request,env={}){
   {'retry-after':String(Math.max(1,Math.ceil(qos.retryAfterMs/1000)))});
  if(!env.LAS_PLUGIN_IMPORT)return json({error:'container_binding_unavailable'},503,allowedOrigin);
  try{
+  const {getContainer}=await import('@cloudflare/containers');
   // Credentials stay in the Worker. Only the NDJSON body crosses into the
   // isolated CPU/memory container; it has no internet egress or DB secrets.
   const container=getContainer(env.LAS_PLUGIN_IMPORT,'las-plugin-import-v1');
