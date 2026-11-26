@@ -802,7 +802,7 @@ function streamFailureInfo(receipt){
  const message=receipt?.message||receipt?.error?.message||nested?.error?.message||'';
  return {
   code:typeof code==='string'?code.slice(0,80):'',
-  message:typeof message==='string'?message.replace(/[\\r\\n]+/g,' ').slice(0,140):''
+  message:typeof message==='string'?message.split(String.fromCharCode(13)).join(' ').split(String.fromCharCode(10)).join(' ').slice(0,140):''
  };
 }
 async function sendConversationStream(entries,token,config){
