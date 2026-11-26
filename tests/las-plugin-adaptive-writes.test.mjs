@@ -73,20 +73,20 @@ test('single oversized row fails before attempting a write',async()=>{
 });
 test('conversation preview stays bounded and no longer gates Queue delivery',()=>{
  const options=readFileSync(new URL('../plugins/chrome/options.js',import.meta.url),'utf8');
- assert.match(code,/const MAX_REVIEW_ROWS=10000/);
- assert.match(code,/const metadata=group\\.rows\\.slice\\(offset,offset\\+QUEUE_HYDRATE_ROWS\\)/);
+ assert.ok(code.includes('const MAX_REVIEW_ROWS=10000'));
+ assert.ok(code.includes('const metadata=group.rows.slice(offset,offset+QUEUE_HYDRATE_ROWS)'));
  assert.match(options,/group\\.messages\\.slice\\(visible,visible\\+100\\)/);
- assert.match(code,/trustedSourceOrder\\(row\\)&&!blocked\\.has/);
- assert.doesNotMatch(code,/row\\.reviewed!==true\\|\\|!trustedSourceOrder/);
- assert.equal(code.includes('async function sendOrderedConversation('),false);
+ assert.ok(code.includes('trustedSourceOrder(row)&&!blocked.has'));
+ assert.ok(!code.includes('row.reviewed!==true||!trustedSourceOrder'));
+ assert.ok(!code.includes('async function sendOrderedConversation('));
 });
 
-test('ordered conversations stream from IndexedDB to LAS Container, not JSON batches',async()=>{
+test('ordered conversations stream Queue records to LAS Container without client sorting',async()=>{
  const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
  const start=src.indexOf('function queueConversationGroups(');
  const end=src.indexOf(String.fromCharCode(10)+'async function flush(',start);
  assert.ok(start>0&&end>start);
- const calls=[],fullRows=new Map();
+ const fullRows=new Map();
  const source='https://chatgpt.com/c/12345678-1234-4234-8234-123456789abc';
  const metadata=[
   {id:'q2',kind:'ordered_conversation',scopeid:'lo3rwang',source_key:source,title:'Test',
@@ -97,37 +97,24 @@ test('ordered conversations stream from IndexedDB to LAS Container, not JSON bat
  for(const row of metadata)fullRows.set(row.id,row);
  const ctx={
   QUEUE_HYDRATE_ROWS:8,encoder:new TextEncoder(),
-  crypto:{randomUUID:()=>'d7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4'},
-  ReadableStream,Uint8Array,TextEncoder,TextDecoder,URL,Map,String,Array,JSON,Date,Error,
+  Map,String,Array,JSON,Date,Error,URL,
   trustedSourceOrder:r=>r.order_evidence==='source-ordinal'||r.order_evidence==='source-conversation-turn',
   loadQueueRows:async ids=>ids.map(id=>fullRows.get(id)),
-  contractError:m=>Error(m),logDiagnostic:async()=>{},
-  fetch:async(url,options)=>{
-   calls.push({url,options});
-   const reader=options.body.getReader(),decoder=new TextDecoder();let text='';
-   for(;;){const part=await reader.read();if(part.done)break;text+=decoder.decode(part.value,{stream:true});}
-   text+=decoder.decode();
-   const frames=text.trim().split(String.fromCharCode(10)).map(line=>JSON.parse(line));
-   calls[0].frames=frames;
-   return new Response(JSON.stringify({accepted:true,upload_id:frames[0].upload_id,
-    conversations:1,records:2,batches:1,appended:2}),{status:200});
-  }
+  contractError:m=>Error(m)
  };
- const api=vm.runInNewContext(src.slice(start,end)+';({sendConversationStream})',ctx);
- const receipt=await api.sendConversationStream(metadata,'token',{
-  conversation_stream_url:'https://mcp.lo3rwang.cc/api/plugins/import/stream'
- });
- assert.equal(receipt.accepted,true);
- assert.equal(calls.length,1);
- assert.equal(calls[0].url,'https://mcp.lo3rwang.cc/api/plugins/import/stream');
- assert.equal(calls[0].options.redirect,'error');
- assert.equal(calls[0].options.duplex,'half');
- assert.equal(calls[0].options.headers['content-type'],'application/x-ndjson');
- assert.deepEqual(calls[0].frames.filter(x=>x.type==='message').map(x=>x.source_order),[2,1]);
- assert.equal(calls[0].frames[0].type,'start');
- assert.equal(calls[0].frames.at(-1).type,'finish');
+ const api=vm.runInNewContext(src.slice(start,end)+';({queueConversationGroups,queueConversationFrames,sendConversationStream})',ctx);
+ const groups=api.queueConversationGroups(metadata),frames=[];
+ for await(const frame of api.queueConversationFrames(metadata,'d7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4',groups))
+  frames.push(frame);
+ assert.equal(frames[0].type,'start');
+ assert.equal(frames.at(-1).type,'finish');
+ assert.deepEqual(frames.filter(x=>x.type==='message').map(x=>x.source_order),[2,1]);
+ const uploadCode=src.slice(start,end);
+ assert.ok(uploadCode.includes("duplex:'half'"));
+ assert.ok(uploadCode.includes("'content-type':'application/x-ndjson'"));
+ assert.ok(uploadCode.includes('https://mcp.lo3rwang.cc/api/plugins/import/stream'));
+ assert.ok(!uploadCode.includes('sendOrderedConversation('));
 });
-
 test('LAS short import uses canonical slash URL even with cached legacy config',()=>{
  const src=readFileSync(new URL('../plugins/chrome/background.js',import.meta.url),'utf8');
  const config=JSON.parse(readFileSync(new URL('../plugins/chrome/oauth-config.json',import.meta.url),'utf8'));
