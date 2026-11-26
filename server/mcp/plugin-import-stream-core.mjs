@@ -16,7 +16,7 @@ async function* readNdjson(body){
    if(part.done){done=true;break;}
    buffer+=decoder.decode(part.value,{stream:true});
    let newline;
-   while((newline=buffer.indexOf('\\n'))>=0){
+   while((newline=buffer.indexOf('\n'))>=0){
     const line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
     if(!line.trim())throw invalid('empty_container_frame','Container emitted an empty frame');
     if(encoder.encode(line).byteLength>LIMITS.maxLineBytes)

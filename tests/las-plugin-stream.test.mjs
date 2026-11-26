@@ -5,7 +5,7 @@ import {consumeSortedImportStream} from '../server/mcp/plugin-import-stream-core
 const upload='d7c2a7b8-3e8f-4b7d-9a61-72e5d3b6a1c4';
 const enc=new TextEncoder();
 function response(frames,status=200){
- const chunks=frames.map(frame=>enc.encode(JSON.stringify(frame)+'\\n'));
+ const chunks=frames.map(frame=>enc.encode(JSON.stringify(frame)+'\n'));
  return new Response(new ReadableStream({start(controller){
   for(const chunk of chunks)controller.enqueue(chunk);controller.close();
  }}),{status,headers:{'content-type':'application/x-ndjson'}});
