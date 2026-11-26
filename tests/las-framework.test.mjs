@@ -89,7 +89,7 @@ test('LAS serves RFC 9116 security.txt on both production hosts from static asse
     'Expires: 2027-11-25T00:00:00Z',
     'Preferred-Languages: zh-TW, en',
     ''
-  ].join('\\n');
+  ].join('\n');
   const routed=[];
   const assets={async fetch(request){
     routed.push(new URL(request.url).pathname);
