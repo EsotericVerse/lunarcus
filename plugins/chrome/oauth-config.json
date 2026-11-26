@@ -3,5 +3,6 @@
   "resource": "https://mcp.lo3rwang.cc",
   "client_id": "lunarcus",
   "scope": "openid email loc:import offline_access",
-  "import_url": "https://loc.lo3rwang.cc/api/loc-native/"
+  "import_url": "https://loc.lo3rwang.cc/api/loc-native/",
+  "conversation_stream_url": "https://mcp.lo3rwang.cc/api/plugins/import/stream"
 }

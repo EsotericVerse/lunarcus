@@ -24,7 +24,7 @@
       <a class="nav-link nav-active" href="#overview" aria-current="page"><span class="nav-icon" aria-hidden="true">◈</span><span>總覽</span><span class="nav-number">01</span></a>
       <a class="nav-link" href="#daily"><span class="nav-icon" aria-hidden="true">◐</span><span>每日符文</span><span class="nav-number">02</span></a>
       <a class="nav-link" href="#capture"><span class="nav-icon" aria-hidden="true">▤</span><span>擷取</span><span class="nav-number">03</span></a>
-      <a class="nav-link" href="#organize"><span class="nav-icon" aria-hidden="true">☷</span><span>訊息重整</span><span class="nav-number">04</span></a>
+      <a class="nav-link" href="#organize"><span class="nav-icon" aria-hidden="true">☷</span><span>對話</span><span class="nav-number">04</span></a>
       <a class="nav-link" href="#activity"><span class="nav-icon" aria-hidden="true">◷</span><span>Queue</span><span class="nav-number">05</span></a>
       <a class="nav-link" href="#settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>設定</span><span class="nav-number">06</span></a>
     </nav>
@@ -36,7 +36,7 @@
         <p>使用既有 OAuth；本機 Queue 不會自動清除未送達資料。</p>
       </div>
     </div>
-    <p class="sidebar-end">LunArcus / Chrome <span>· 0.2.15</span></p>
+    <p class="sidebar-end">LunArcus / Chrome <span>· 0.2.23</span></p>
   </aside>
 
   <main class="dashboard">
@@ -130,7 +130,7 @@
 
     <section id="capture" class="section-block console-page" aria-labelledby="capture-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">WORKFLOW / 03</p><h2 id="capture-title">擷取</h2><p>從右鍵選單擷取；對話先在「訊息重整」確認時序，再由 Queue 送出。</p></div>
+        <div><p class="section-kicker">WORKFLOW / 03</p><h2 id="capture-title">擷取</h2><p>從右鍵選單擷取；對話進入本機 Queue；送出時由 LAS Container 自動整理時序。</p></div>
         <span class="section-chip">CAPTURE</span>
       </div>
       <div class="capture-grid capture-guide-grid">
@@ -148,22 +148,22 @@
 
     <section id="organize" class="section-block console-page" aria-labelledby="organize-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">PRE-SEND / 04</p><h2 id="organize-title">訊息重整</h2>
-          <p>只整理尚在本機 Queue 的對話。按來源原始序號排列，確認後才能送出；不改寫已儲存資料。</p></div>
+        <div><p class="section-kicker">CONVERSATIONS / 04</p><h2 id="organize-title">對話</h2>
+          <p>查看尚在本機 Queue 的對話。送出時由 Container 依來源序號自動排列、去重與驗證。</p></div>
         <span class="section-chip">TIMELINE</span>
       </div>
       <div class="panel">
         <div class="panel-topline">
           <span class="panel-symbol" aria-hidden="true">☷</span>
-          <div><h3>待送對話時序</h3><p>自動排列角色與前後順序。無序號、衝突或舊版碎片不會送出。</p></div>
+          <div><h3>待送對話</h3><p>Container 自動排列角色與前後順序。無可靠序號或識別衝突的資料會保留，不會寫入。</p></div>
         </div>
         <div class="organize-actions">
-          <button id="organizeRefresh" class="button button-secondary" type="button">重新檢查時序</button>
+          <button id="organizeRefresh" class="button button-secondary" type="button">重新整理對話</button>
           <span id="organizeSummary" role="status" aria-live="polite">尚未讀取待送對話。</span>
         </div>
         <div id="organizeGroups" class="organize-groups" aria-live="polite"></div>
         <p id="organizeNotice" class="field-hint" role="status" aria-live="polite"></p>
-        <p class="field-hint">「確認此對話」只核對目前待送訊息的順序，沒有內容比對、無須手動拖曳。送出仍使用 Queue 的原有授權及回執機制。</p>
+        <p class="field-hint">此頁僅供檢視。無須手動排序或確認；Queue 送出時會以 NDJSON Stream 傳給 LAS Container。</p>
       </div>
     </section>
 

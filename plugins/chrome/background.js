@@ -133,8 +133,7 @@ async function scanQueue({metadata=false,bytes=false}={}){
    pending++;
    groups.add(row.group_id||row.id);
    if(isUnorderedConversationCapture(row))legacyUnordered++;
-   if(row.kind==='ordered_conversation'&&
-      (row.reviewed!==true||!trustedSourceOrder(row)))blockedReview++;
+   if(row.kind==='ordered_conversation'&&!trustedSourceOrder(row))blockedReview++;
    if(bytes)totalBytes+=sizeOf(row);
    if(rows)rows.push({
     id:row.id,group_id:row.group_id,scopeid:row.scopeid,
@@ -225,55 +224,14 @@ function reviewGroups(rows){
    sorted.every(trustedSourceOrder);
   return {key,scopeid:sorted[0].scopeid||'lo3rwang',
    source:sorted[0].source_key,title:sorted[0].title||'對話',
-   valid,ready:valid&&sorted.every(r=>r.reviewed===true),
-   message_count:sorted.length,unreviewed:sorted.filter(r=>r.reviewed!==true).length,
+   valid,ready:valid,
+   message_count:sorted.length,unreviewed:0,
    messages:sorted.map(r=>({id:r.id,message_id:r.message_id,role:r.role,
     source_order:r.source_order,parent_id:r.parent_id||null,
     preview:String(r.text||'').slice(0,300),reviewed:r.reviewed===true}))
   };
  });
  return {conversations,legacy_count:unsupportedConversationCount,ordered_count:conversations.reduce((n,g)=>n+g.message_count,0)};
-}
-async function approveReviewedConversation(key,expectedIds){
- if(await queueCount()>MAX_REVIEW_ROWS)
-  throw Error('本機 Queue 資料過多；無法安全載入整份舊對話，請先清空本機暫存');
- if(typeof key!=='string'||!Array.isArray(expectedIds)||!expectedIds.length||expectedIds.length>10000||
-    expectedIds.some(id=>typeof id!=='string'))throw Error('不合法的訊息重整確認');
- const rows=(await scanQueue({metadata:true})).rows;
- const group=reviewGroups(rows).conversations.find(g=>g.key===key);
- if(!group||!group.valid||group.message_count!==expectedIds.length||
-   new Set(expectedIds).size!==expectedIds.length||
-   group.messages.some(m=>!expectedIds.includes(m.id)))
-  throw Error('待送內容已改變，請重新預覽時序；沒有確認任何資料');
- // Approval is allowed for a long conversation, but never clone every
- // full JSON body into one IndexedDB transaction. A partially approved group
- // remains blocked until every verified original turn has been approved.
- let changed=0;
- for(let offset=0;offset<group.messages.length;offset+=QUEUE_HYDRATE_ROWS){
-  const chunk=group.messages.slice(offset,offset+QUEUE_HYDRATE_ROWS);
-  const db=await openDb();
-  changed+=await new Promise((resolve,reject)=>{
-   const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-   let accepted=0;
-   for(const entry of chunk){
-    const req=store.get(entry.id);
-    req.onsuccess=()=>{
-     const item=req.result;
-     if(!item||item.kind!=='ordered_conversation'||
-        (item.scopeid||'lo3rwang')+'|'+item.source_key!==key||
-        item.source_order!==entry.source_order||
-        item.message_id!==entry.message_id){
-      tx.abort();return;
-     }
-     if(item.reviewed!==true){item.reviewed=true;store.put(item);accepted++;}
-    };
-   }
-   tx.oncomplete=()=>{db.close();resolve(accepted);};
-   tx.onabort=()=>{db.close();reject(Error('Queue 已異動，請重新預覽；沒有送出'))};
-   tx.onerror=()=>{db.close();reject(tx.error)};
-  });
- }
- return {approved:changed,ready:true};
 }
 async function removeEvents(records){
  const db=await openDb();
@@ -550,17 +508,19 @@ async function getConfig(){
   await logDiagnostic('oauth.config.response',{endpoint:CONFIG_URL,status:res.status});
   if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
   const cfg=await res.json();
-  if(!cfg.issuer||!cfg.import_url||!cfg.client_id)
-   throw oauthError('LOC 自有認證與短匯入 API 尚未啟用');
+  if(!cfg.issuer||!cfg.import_url||!cfg.conversation_stream_url||!cfg.client_id)
+   throw oauthError('LOC Auth 或 LAS Stream 匯入設定尚未啟用');
   const issuer=new URL(cfg.issuer);
   const api=new URL(cfg.import_url);
-  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
+  const streamApi=new URL(cfg.conversation_stream_url);
+  if(issuer.protocol!=='https:'||api.protocol!=='https:'||streamApi.protocol!=='https:'||
      api.origin!=='https://loc.lo3rwang.cc'||
      !['/api/loc-native','/api/loc-native/'].includes(api.pathname)||
+     streamApi.href!=='https://mcp.lo3rwang.cc/api/plugins/import/stream'||
      cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
      issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
-    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
-  // Canonical Next.js trailing-slash API URL; do not follow redirects.
+   throw oauthError('LOC／LAS 自有認證端點不符合固定設定');
+  // Short article captures still use LOC's fixed native API.
   api.pathname='/api/loc-native/';
   const meta=await discoverLocOAuth(issuer);
   for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
@@ -569,6 +529,7 @@ async function getConfig(){
     throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
   }
   const config={supports_scope_routing:true,issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+    conversation_stream_url:streamApi.href,
     resource:cfg.resource||api.href,
    authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
    revocation_endpoint:meta.revocation_endpoint||'',
@@ -753,13 +714,14 @@ function trustedSourceOrder(row){
 }
 function partitionQueueForFlush(pending){
  const legacyConversationCount=pending.filter(isUnorderedConversationCapture).length;
- // Older extension builds omitted chronology evidence from Queue rows.
- // These rows remain untouched until their source order is reverified.
+ // The Container sorts every verified source ordinal. Only rows without
+ // source-order evidence remain quarantined; no manual approval flag exists.
  const unreviewed=pending.filter(row=>row.kind==='ordered_conversation'&&
-   (row.reviewed!==true||!trustedSourceOrder(row)));
- const blocked=new Set(unreviewed.map(row=>(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
+   !trustedSourceOrder(row));
+ const separator=String.fromCharCode(0);
+ const blocked=new Set(unreviewed.map(row=>(row.scopeid||'lo3rwang')+separator+row.source_key));
  const ordered=pending.filter(row=>row.kind==='ordered_conversation'&&
-   row.reviewed===true&&!blocked.has((row.scopeid||'lo3rwang')+'\\u0000'+row.source_key));
+   trustedSourceOrder(row)&&!blocked.has((row.scopeid||'lo3rwang')+separator+row.source_key));
  const rows=pending.filter(row=>!isUnorderedConversationCapture(row)&&
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
@@ -767,71 +729,101 @@ function partitionQueueForFlush(pending){
 // LOC already owns record_ordered import, JWT/Scope permissions and durable
 // receipts. Send reviewed batches directly to that existing Pages endpoint.
 // MCP remains available for standalone tools, not as a bulk-upload relay.
-async function orderedLocFailureEvidence(response,bodyBytes,recordCount){
- const contentType=String(response.headers.get('content-type')||'').split(';',1)[0].toLowerCase();
- const data=contentType==='application/json'||contentType.endsWith('+json')
-  ?await response.clone().json().catch(()=>null):null;
- const message=String(data?.error?.message||'');
- const category=response.status===401?'loc_oauth_identity':
-  response.status===403?'loc_import_permission':
-  response.status===429?'loc_rate_limit':
-  response.status===413?'loc_payload_limit':
-  response.status===503?'loc_service_unavailable':
-  response.status>=500?'loc_server_error':'loc_import_rejected';
- await logDiagnostic('loc.ordered.response',{
-  status:response.status,category,content_type:contentType,
-  body_bytes:bodyBytes,records:recordCount
- });
- return category;
-}
-async function sendOrderedConversation(scopeid,records,token,config){
- if(!SCOPE.test(scopeid)||!records.length)
-  throw contractError('有序對話批次不合法');
- const source=records[0].source_key;
- if(records.some(r=>r.kind!=='ordered_conversation'||r.source_key!==source||
-   (r.scopeid||'lo3rwang')!==scopeid))
-  throw contractError('有序對話批次來源不一致');
- // Fixed LOC route: never follow a redirect to Auth or workers.dev.
- const endpoint='https://loc.lo3rwang.cc/api/las-native/';
- const payload={kind:'mcp-conversation',action:'record_ordered',scopeid,
-   conversation_id:source,title:records[0].title,
-   updated_at:new Date().toISOString(),
-   records:records.map(r=>({
-     message_id:r.message_id,source_order:r.source_order,
-     parent_id:r.parent_id||null,role:r.role,text:r.text
-   }))
- };
- const payloadJson=JSON.stringify(payload);
- if(encoder.encode(payloadJson).byteLength>ORDERED_WRITE_MAX_BYTES)
-  throw contractError('LOC 有序對話批次超過寫入位元組上限，Queue 保留');
- let response;
- try{response=await fetch(endpoint,{method:'POST',redirect:'error',
-   cache:'no-store',headers:{authorization:'Bearer '+token,
-     'content-type':'application/json',accept:'application/json'},
-   body:payloadJson});}
- catch(error){error.queueEndpoint='LOC';throw error;}
- if(!response.ok){
-   const category=await orderedLocFailureEvidence(response,
-     encoder.encode(payloadJson).length,records.length);
-   const error=Error('LOC 有序對話匯入失敗 HTTP '+response.status+
-     '（'+category+'）');
-   error.httpStatus=response.status;error.queueEndpoint='LOC';
-   error.retryAfter=response.headers.get('retry-after')||'';
-   throw error;
+function queueConversationGroups(entries){
+ const separator=String.fromCharCode(0),groups=new Map();
+ for(const row of entries){
+  const scopeid=row.scopeid||'lo3rwang',key=scopeid+separator+row.source_key;
+  if(!groups.has(key))groups.set(key,{scopeid,source_key:row.source_key,
+   title:row.title||'對話',rows:[]});
+  groups.get(key).rows.push(row);
  }
- const body=await response.json().catch(()=>null);
- const receipt=body?.data;
- if(receipt?.accepted!==true||receipt.scopeid!==scopeid||
-    !/^[A-Za-z0-9]{8}$/.test(String(receipt?.uid||''))||
-    !Number.isSafeInteger(receipt?.count)||receipt.count<0||
-    receipt.count>records.length||
-    receipt.duplicate!==(receipt.count===0)||
-    !Number.isSafeInteger(receipt?.messages)||
-    receipt.messages<records.length)
-  throw contractError('LOC 有序對話未確認完整寫入，Queue 原始資料保留');
- await logDiagnostic('loc.ordered.receipt',{
-   accepted:true,records:records.length,appended:receipt.count,
-   total_messages:receipt.messages,duplicate:receipt.duplicate
+ return [...groups.values()].sort((a,b)=>
+  (a.scopeid+separator+a.source_key).localeCompare(b.scopeid+separator+b.source_key));
+}
+async function* queueConversationFrames(entries,uploadId,groups){
+ yield {type:'start',version:1,upload_id:uploadId,
+  conversation_count:groups.length,record_count:entries.length};
+ let total=0;
+ for(const group of groups){
+  yield {type:'conversation',scopeid:group.scopeid,
+   source_key:group.source_key,title:group.title};
+  for(let offset=0;offset<group.rows.length;offset+=QUEUE_HYDRATE_ROWS){
+   const metadata=group.rows.slice(offset,offset+QUEUE_HYDRATE_ROWS);
+   const rows=await loadQueueRows(metadata.map(row=>row.id));
+   for(const row of rows){
+    if(row.kind!=='ordered_conversation'||
+       (row.scopeid||'lo3rwang')!==group.scopeid||
+       row.source_key!==group.source_key||
+       !trustedSourceOrder(row)||!Number.isSafeInteger(row.source_order)||
+       typeof row.message_id!=='string'||!['user','assistant'].includes(row.role)||
+       typeof row.text!=='string'||!row.text.trim())
+     throw contractError('Queue 對話在串流期間異動或缺少可靠時序；原始資料保留');
+    yield {type:'message',message_id:row.message_id,
+     source_order:row.source_order,parent_id:row.parent_id||null,
+     role:row.role,text:row.text};
+    total++;
+   }
+  }
+  yield {type:'conversation_end',record_count:group.rows.length};
+ }
+ if(total!==entries.length)throw contractError('Queue 串流筆數與原始索引不一致');
+ yield {type:'finish',upload_id:uploadId,
+  conversation_count:groups.length,record_count:total};
+}
+function createQueueConversationBody(entries,uploadId,groups){
+ const iterator=queueConversationFrames(entries,uploadId,groups)[Symbol.asyncIterator]();
+ return new ReadableStream({
+  async pull(controller){
+   try{
+    const parts=[];let bytes=0;
+    while(bytes<65536){
+     const next=await iterator.next();
+     if(next.done){controller.close();return;}
+     const chunk=encoder.encode(JSON.stringify(next.value)+String.fromCharCode(10));
+     parts.push(chunk);bytes+=chunk.byteLength;
+     if(bytes>=65536)break;
+    }
+    const merged=new Uint8Array(bytes);let offset=0;
+    for(const part of parts){merged.set(part,offset);offset+=part.byteLength;}
+    controller.enqueue(merged);
+   }catch(error){controller.error(error);}
+  },
+  async cancel(reason){await iterator.return?.(reason);}
+ });
+}
+async function sendConversationStream(entries,token,config){
+ if(!entries.length)return {accepted:true,records:0,conversations:0};
+ const groups=queueConversationGroups(entries),uploadId=crypto.randomUUID();
+ const endpoint=new URL(config?.conversation_stream_url||'');
+ if(endpoint.href!=='https://mcp.lo3rwang.cc/api/plugins/import/stream')
+  throw contractError('LAS Stream 匯入端點設定錯誤；Queue 保留');
+ let response;
+ try{
+  response=await fetch(endpoint.href,{
+   method:'POST',redirect:'error',cache:'no-store',
+   headers:{authorization:'Bearer '+token,
+    'content-type':'application/x-ndjson',accept:'application/json'},
+   body:createQueueConversationBody(entries,uploadId,groups),
+   duplex:'half'
+  });
+ }catch(error){error.queueEndpoint='MCP';throw error;}
+ const receipt=await response.json().catch(()=>null);
+ if(!response.ok){
+  const error=Error('LAS Stream 匯入失敗 HTTP '+response.status+
+   (receipt?.message?' — '+String(receipt.message).slice(0,160):''));
+  error.httpStatus=response.status;error.queueEndpoint='MCP';
+  error.retryAfter=response.headers?.get?.('retry-after')||'';
+  throw error;
+ }
+ if(receipt?.accepted!==true||receipt.upload_id!==uploadId||
+    receipt.conversations!==groups.length||receipt.records!==entries.length||
+    !Number.isSafeInteger(receipt.batches)||receipt.batches<groups.length||
+    !Number.isSafeInteger(receipt.appended)||receipt.appended<0||
+    receipt.appended>entries.length)
+  throw contractError('LAS Stream 未確認完整匯入；Queue 原始資料保留');
+ await logDiagnostic('las.plugin.stream.receipt',{
+  accepted:true,upload_id:uploadId,conversations:receipt.conversations,
+  records:receipt.records,appended:receipt.appended,batches:receipt.batches
  });
  return receipt;
 }
@@ -855,7 +847,7 @@ async function flush(force=false){
   if(!rows.length&&!ordered.length){
    const unreviewedCount=unreviewed.length;
    return {message:unreviewedCount
-    ?'有 '+unreviewedCount+' 則對話尚未完成訊息重整，請先在第六鍵「訊息重整」確認'
+    ?'有 '+unreviewedCount+' 則舊對話缺少可靠來源序號，已保留且不會送出'
     :legacyConversationCount
       ?'有 '+legacyConversationCount+' 筆不支援的舊式對話資料；可於 Queue 清空本機擷取暫存'
       :'Queue 已清空',sent:0};
@@ -866,28 +858,13 @@ async function flush(force=false){
   if(!settings.locConfig?.import_url){const e=contractError('LOC 匯入設定不存在');await tripCircuit(e);throw e}
   let count=0;
   try{
-   const groups=new Map();
-   for(const row of ordered){
-    const key=(row.scopeid||'lo3rwang')+'\\u0000'+row.source_key;
-    if(!groups.has(key))groups.set(key,[]);
-    groups.get(key).push(row);
-   }
-   for(const group of groups.values()){
-    group.sort((a,b)=>a.source_order-b.source_order);
-    await writeAdaptiveQueueBatches(group,{
-     maxBytes:ORDERED_WRITE_MAX_BYTES,
-     project:r=>({
-      message_id:r.message_id,source_order:r.source_order,
-      parent_id:r.parent_id||null,role:r.role,text:r.text
-     }),
-     send:async(part,records)=>{
-      const scopeid=part[0].scopeid||'lo3rwang';
-      // A bad destination or revoked grant never triggers another POST.
-      await sendOrderedConversation(scopeid,part,token,settings.locConfig);
-      await removeEvents(part);
-      count+=part.length;
-     }
-    });
+   if(ordered.length){
+    if(!settings.locConfig?.conversation_stream_url)
+     settings.locConfig=await getConfig();
+    await sendConversationStream(ordered,token,settings.locConfig);
+    // Only the final LAS + LOC receipt releases these original Queue rows.
+    await removeEvents(ordered);
+    count+=ordered.length;
    }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
@@ -1416,12 +1393,6 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      throw Error('訊息已不在待送 Queue，請重新整理預覽');
     return {id:row.id,source_order:row.source_order,role:row.role,
       text:String(row.text||'').slice(0,140000)};
-   }
-   case 'conversation.approve':{
-    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
-    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
-     throw Error('只有 LunArcus 設定頁能確認訊息時序');
-    return approveReviewedConversation(String(message.key||''),message.ids);
    }
    case 'loc-diagnostics':{
     const [stored,last]=await Promise.all([

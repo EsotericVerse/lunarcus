@@ -195,7 +195,6 @@ chrome.storage.onChanged?.addListener((changes,area)=>{
 show().catch(error=>status.textContent=String(error?.message||error));
 
 
-let organizeFlight=false;
 function organizerElement(tag,cls,value){
  const element=document.createElement(tag);
  if(cls)element.className=cls;
@@ -210,7 +209,7 @@ async function renderOrganizer(){
  if(Number(result.oversized_queue)>0){
   summary.textContent='本機 Queue 過大（'+result.oversized_queue+' 筆），為避免記憶體暴增已停止讀取';
   root.append(organizerElement('p','field-hint',
-   '僅訊息重整預覽超過顯示安全上限；正常已確認內容仍會動態分批傳送。舊資料可由使用者自行決定是否清空。'));
+   '對話預覽超過顯示安全上限；Queue 傳送仍會以串流讀取，不會把全部訊息載入記憶體。'));
   return;
  }
  const groups=Array.isArray(result.conversations)?result.conversations:[];
@@ -267,26 +266,10 @@ async function renderOrganizer(){
   more.addEventListener('click',appendPage);
   more.hidden=true;
   details.append(list,more);section.append(details);
-  const button=organizerElement('button','button button-primary',
-   group.ready?'已整理，送出 Queue':'確認時序並送出');
-  button.type='button';
-  button.disabled=!group.valid||organizeFlight;
-  button.addEventListener('click',async()=>{
-   if(organizeFlight)return;
-   organizeFlight=true;button.disabled=true;
-   feedback.textContent='正在確認時序並送出 Queue…';
-   try{
-    const approval=await call('conversation.approve',{
-      key:group.key,ids:group.messages.map(m=>m.id)});
-    if(approval.ready!==true)throw Error('時序確認失敗');
-    const sent=await call('loc-flush');
-    feedback.textContent=sent.message||'Queue 已處理；未收到回執的資料仍保留';
-    await show();
-    await renderOrganizer();
-   }catch(error){feedback.textContent='未確認送達：'+String(error?.message||error);}
-   finally{organizeFlight=false;button.disabled=false;}
-  });
-  section.append(button);root.append(section);
+  section.append(organizerElement('p','field-hint',group.valid
+   ?'來源序號有效；送出時由 LAS Container 自動排列、去重及驗證，不需要逐則確認。'
+   :'來源序號或訊息識別有衝突，Container 會拒絕該對話並保留 Queue。'));
+  root.append(section);
  }
 }
 $('organizeRefresh').addEventListener('click',async()=>{
