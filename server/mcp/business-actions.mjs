@@ -17,7 +17,9 @@ export async function businessAction(name,args,token,env={},fetchImpl=globalThis
   if(name==='galaxy_link'){
     if(!['check','record','record_ordered'].includes(a.action))
       throw invalid('Unsupported Galaxy Link action');
-    if(a.source!==undefined)throw invalid('Galaxy Link source is fixed to mcp');
+    if(a.source!==undefined)throw invalid('Galaxy From is derived by LOC from the conversation URL; caller-supplied source is not accepted');
+    if(['record','record_ordered'].includes(a.action)&&a.site!==undefined)
+      throw invalid('Galaxy From is derived by LOC from the conversation URL; omit site');
     if(typeof a.conversation_id!=='string'||!a.conversation_id||
       typeof a.updated_at!=='string'||!Number.isFinite(Date.parse(a.updated_at)))
       throw invalid('Valid conversation_id and updated_at required');
