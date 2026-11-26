@@ -34,7 +34,7 @@ export async function handlePluginImportStream(request,env={}){
  if(!request.body)return json({error:'empty_stream'},400,allowedOrigin);
  const contentLength=Number(request.headers.get('content-length')||0);
  if(contentLength>MAX_UPLOAD_BYTES)return json({error:'upload_too_large'},413,allowedOrigin);
- const bearer=/^Bearer\\s+(\\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
+ const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
  if(!bearer)return json({error:'unauthorized'},401,allowedOrigin,
   {'www-authenticate':'Bearer resource_metadata="https://mcp.lo3rwang.cc/.well-known/oauth-protected-resource"'});
  let identity;
