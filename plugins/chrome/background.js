@@ -62,7 +62,7 @@ async function tripCircuit(error){
  const circuit={open:true,status:status>=100&&status<=599?status:0,
   category,since:new Date().toISOString()};
  await chrome.storage.local.set({[CIRCUIT_KEY]:circuit,locImportPaused:true,
-  locQueueRetryEndpoint:error?.queueEndpoint==='MCP'?'MCP':'LOC',
+  locQueueRetryEndpoint:['MCP','LAS'].includes(error?.queueEndpoint)?'LAS':'LOC',
   locQueueRetryStatus:circuit.status,locQueueRetryType:'circuit',
   locQueueRetryAfter:0});
  await cancelQueueTimer();
@@ -845,20 +845,33 @@ async function sendConversationStream(entries,token,config,uploadId){
  // Persist the stable upload ID before network I/O. If the POST succeeds but
  // its response is lost, the same rows can safely re-submit the same ID.
  await setQueueImportState(entries,{pending_upload_id:uploadId,pending_job_id:null});
- let response;
- try{
-  response=await fetch(endpoint.href,{
-   method:'POST',redirect:'error',cache:'no-store',
-   headers:{authorization:'Bearer '+token,
-    'content-type':'application/x-ndjson',accept:'application/json',
-    'x-las-upload-id':uploadId,
-    'x-las-conversation-count':String(groups.length),
-    'x-las-record-count':String(entries.length)},
-   body:createQueueConversationBody(entries,uploadId,groups),
-   duplex:'half'
-  });
- }catch(error){error.queueEndpoint='MCP';throw error;}
- const receipt=await response.json().catch(()=>null);
+ let response,receipt;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   response=await fetch(endpoint.href,{
+    method:'POST',redirect:'error',cache:'no-store',
+    headers:{authorization:'Bearer '+token,
+     'content-type':'application/x-ndjson',accept:'application/json',
+     'x-las-upload-id':uploadId,
+     'x-las-conversation-count':String(groups.length),
+     'x-las-record-count':String(entries.length)},
+    body:createQueueConversationBody(entries,uploadId,groups),
+    duplex:'half'
+   });
+  }catch(error){error.queueEndpoint='LAS';throw error;}
+  receipt=await response.json().catch(()=>null);
+  // The API hides another OAuth subject's existing job as 404. Replace only
+  // that confirmed stale ID, then replay the still-preserved rows once.
+  // Ordered Galaxy writes deduplicate source message IDs if already imported.
+  if(attempt===0&&response.status===404&&
+     receipt?.error==='import_job_not_found'){
+   uploadId=crypto.randomUUID();
+   await setQueueImportState(entries,{pending_upload_id:uploadId,pending_job_id:null});
+   await logDiagnostic('las.plugin.import.stale_upload_id',{status:404});
+   continue;
+  }
+  break;
+ }
  if(!response.ok){
   const failure=streamFailureInfo(receipt);
   const error=Error('LAS Stream 匯入失敗 HTTP '+response.status+
@@ -866,14 +879,14 @@ async function sendConversationStream(entries,token,config,uploadId){
    (failure.message?' — '+failure.message:''));
   error.httpStatus=response.status;
   error.code=failure.code||'LAS_STREAM_HTTP_ERROR';
-  error.queueEndpoint='MCP';
+  error.queueEndpoint='LAS';
   error.retryAfter=response.headers?.get?.('retry-after')||'';
   // These responses prove that this upload ID was not accepted (or that a
   // previous job ended permanently). Clear the marker so the user's next
   // manual attempt can submit a fresh job while retaining every Queue row.
   if([400,404,409,410,413,415].includes(response.status))
    await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
-  await logDiagnostic('las.plugin.stream.error',{
+  await logDiagnostic('las.plugin.import.error',{
    status:response.status,code:error.code
   });
   throw error;
@@ -952,7 +965,7 @@ async function pollPendingImports(){
       const entries=byJob.get(id)||[];
       await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
      }
-     await tripCircuit({httpStatus:404,code:'import_job_not_found',queueEndpoint:'MCP'});
+     await tripCircuit({httpStatus:404,code:'import_job_not_found',queueEndpoint:'LAS'});
     }
     continue;
    }
@@ -964,7 +977,7 @@ async function pollPendingImports(){
     if(job.state==='completed'){
      if(!validateCompletedImport(job,entries)){
       const error=contractError('LAS Stream 完成回執與本機 Queue 不一致；原始資料保留');
-      error.httpStatus=502;error.queueEndpoint='MCP';
+      error.httpStatus=502;error.queueEndpoint='LAS';
       await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
       await tripCircuit(error);
       continue;
@@ -979,7 +992,7 @@ async function pollPendingImports(){
      const error=Error('LAS 大量匯入失敗；原始 Queue 已保留，可手動試送');
      error.httpStatus=Number(job.error?.status)||500;
      error.code=String(job.error?.code||'import_processing_failed').slice(0,80);
-     error.queueEndpoint='MCP';
+     error.queueEndpoint='LAS';
      await tripCircuit(error);
     }
    }
