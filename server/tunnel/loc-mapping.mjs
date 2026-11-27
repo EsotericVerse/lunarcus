@@ -1,7 +1,7 @@
 // LAS / Luna Protocol Data Mapping: fixed public LOC operation envelopes.
 // The LOC SaaS owns all Galaxy ZModel, Scope permissions, SQL dialects and
 // data semantics. These mappings never construct SQL or DB connections.
-const LOC_NATIVE='https://loc.lo3rwang.cc/api/las-native';
+const LOC_NATIVE='https://loc.lo3rwang.cc/api/las-native/';
 const PR=/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
