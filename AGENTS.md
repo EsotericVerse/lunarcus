@@ -42,7 +42,7 @@
 
 ## 專案邊界：不跨 Repo 操作
 
-- **LOC（LunaCodex）** 擁有 Galaxy／Anchor、Z-Model 業務資料、Scope 寫入授權、資料庫與 SQL Portable、原有 `/api/loc-native` 短匯入；LAS 可以呼叫經核准的公開／認證契約，不複製其業務程式或修改 LOC Repo。
+- **LOC（LunaCodex）** 擁有產品業務語義與功能呈現，包括關鍵詞處理、時間／空間定錨、小量必要寫入及跨功能連結；LAS 不接管這些功能，也不修改 LOC Repo。**LAS Adapter** 負責連接端口、匯入／匯出、SQL portable drivers，以及依既有 Anchor／Galaxy 資料契約進行匯入比對與寫入。兩端仍各自保有 Hyperdrive；LAS Auth 固定使用 PostgreSQL。
 - **LRS（LunaRunes）** 擁有 Rune 原創素材、Effekseer／WASM、`lrs:rune`、`lrs:card`、`lrs:daily`、遊戲引擎與 LRS 自己的 App／IPA；LOC 自行打包 LOC App／IPA。兩者如需整合，才依指定版本及 manifest 明確交換檔案；LAS 不接管任何 App 打包。
 - Chrome Extension 由 LAS Plugin 負責，Auth 由 LAS Worker 負責，LOC 才決定匯入文章是否有權限；各層不直接授予另一層的權限。
 - 碰到跨 Repo 問題，**精確提出 API／檔案交付契約或阻礙**；未獲委託不得在其他 Repo 建分支、修碼、合併或改部署。
@@ -60,9 +60,9 @@
 
 - MCP 的所有傳輸、工具 schema、SSE、JSON-RPC、受保護資源 Metadata 和 OAuth 流程按**現行實作與協商版本**檢查。不要拿某一版新標準破壞既有客戶端。
 - LAS Gateway 只轉送**固定、受約束的操作**到 LOC 或明確核准的 API；禁止由外部輸入決定任意 SQL、資料庫、內網 URL、權限或 service token。
-- `las:tunnel` 只處理跨 CMS 欄位映射與資料契約，不建立平行的 LOC Z-Model、Kysely SQL Dialect 或 Scope 規則。
+- `las:tunnel` 只處理跨 CMS 欄位映射與資料契約；匯入 SQL driver 各自放在 `server/sql/`，不得新增任意 SQL、資料庫 URL 或 Scope 規則輸入。
 - Plugin Chrome 的六個選單、右鍵擷取、Queue、MCP Provider 頁、OAuth 以及 UID 回執必須在重命名／搬路徑後仍可用。單純改資料夾不是驗收。
-- 不透過 MCP Worker 來代替既有 LOC 短匯入 API；LAS 不為此另建 KV 或無必要的持久化作業。
+- MCP JSON-RPC/SSE 與 plugin import REST 路由分開處理。大量 ordered import 走 LAS R2／Queue／Workflow／Container；LOC 小量功能仍依 LOC 既有業務契約處理。不得為匯入新增 KV 或另開第二個 Worker。
 - 不洩漏存取權杖、OAuth code/state、Cookie、資料庫連線字串、使用者的擷取內容；診斷應遮罩且只含必要的 HTTP/error code。
 
 ## iOS / Android 與素材

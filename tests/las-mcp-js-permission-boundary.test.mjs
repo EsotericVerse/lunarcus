@@ -49,7 +49,7 @@ test('LAS sends business tool to LOC exactly once without a role probe',async()=
   },'signed-token',{},fetchImpl);
   assert.deepEqual(answer,{found:false});
   assert.equal(calls.length,1);
-  assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native');
+  assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native/');
   assert.equal(calls[0].redirect,'manual');
   assert.equal(calls[0].bearer,'Bearer signed-token');
   assert.equal(calls[0].body.kind,'mcp-conversation');
@@ -81,7 +81,7 @@ test('LAS prefers the direct LOC Worker service binding over public hostname fet
   },'signed-token',{LOC_SERVICE:service},fallback);
   assert.deepEqual(answer,{accepted:true});
   assert.equal(calls.length,1);
-  assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native');
+  assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/las-native/');
   assert.equal(calls[0].redirect,'manual');
   assert.equal(calls[0].bearer,'Bearer signed-token');
   assert.equal(calls[0].body.kind,'mcp-conversation');
