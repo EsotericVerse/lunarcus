@@ -13,12 +13,21 @@ LAS is its own small protocol-oriented application framework. Its core is
   using Cloudflare `waitUntil` when available.
 - `server/index.mjs` registers Auth and MCP. `server/auth/` retains Better
   Auth and its request-scoped PostgreSQL client over `LAS_HYPERDRIVE`;
-  `server/mcp/` retains
-  JSON-RPC/SSE and MCP resource verification; `server/tunnel/` sends fixed
-  LOC API calls without copying LOC's business model.
+  Auth remains fixed to PostgreSQL. `server/mcp/` retains JSON-RPC/SSE,
+  resource verification, and the authenticated plugin import/status routes.
+- `server/import/` stages ordered conversation uploads in R2, starts them
+  through Queue and Workflows, runs the existing Container normalizer, and
+  writes bounded, idempotent results to the configured Galaxy table. Failed
+  jobs keep their status and staged payload; Chrome keeps its local Queue
+  until LAS returns a verified completion receipt.
+- `server/sql/` owns import-only SQL-type selection and connection setup.
+  PostgreSQL uses the existing LAS Hyperdrive binding by default. MySQL and
+  MSSQL use their own optional bindings/connection secrets; these do not
+  change Auth's PostgreSQL connection.
 - The Chrome Extension remains an independent Manifest V3 client in
-  `plugins/chrome/`. Its existing LOC short and ordered import endpoints
-  remain direct.
+  `plugins/chrome/`. Small article captures retain the current LOC short
+  import contract. Ordered conversation Queue uploads use the LAS background
+  import route and are acknowledged only after the final receipt is checked.
 
 The framework has **no runtime dependencies**. Wrangler bundles the existing
 Worker and publishes it; there is no frontend hydration framework, new

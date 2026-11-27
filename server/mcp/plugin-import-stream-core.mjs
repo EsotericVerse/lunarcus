@@ -79,7 +79,7 @@ function validateReceipt(receipt,scopeid,records){
     !Number.isSafeInteger(receipt.count)||receipt.count<0||
     receipt.count>records.length||receipt.duplicate!==(receipt.count===0)||
     !Number.isSafeInteger(receipt.messages)||receipt.messages<records.length)
-  throw invalid('loc_receipt_invalid','LOC did not confirm the complete conversation batch');
+  throw invalid('las_write_receipt_invalid','LAS did not confirm the complete conversation batch');
  return receipt;
 }
 export async function consumeSortedImportStream(response,{writeConversation}={}){

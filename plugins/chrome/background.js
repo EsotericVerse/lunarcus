@@ -17,7 +17,8 @@ const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
 const QUEUE_WINDOW_MS=600000,QUEUE_ALARM='lunarcus-queue-window',CIRCUIT_KEY='locQueueCircuit';
-let inFlight=null,maintenance=false;
+const IMPORT_STATUS_ALARM='lunarcus-import-status',IMPORT_STATUS_POLL_MS=30000;
+let inFlight=null,importPollInFlight=null,maintenance=false;
 function safeDiagnostic(value){
  let text;
  try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
@@ -143,6 +144,8 @@ async function scanQueue({metadata=false,bytes=false}={}){
     captured_at:row.captured_at,source_order:row.source_order,
     title:row.title,message_id:row.message_id,parent_id:row.parent_id,
     role:row.role,reviewed:row.reviewed,order_evidence:row.order_evidence,
+    pending_upload_id:row.pending_upload_id||null,
+    pending_job_id:row.pending_job_id||null,
     // Only the organizer needs a bounded preview, never the full body.
     text:row.kind==='ordered_conversation'
       ?(typeof row.text==='string'?row.text.slice(0,300):null):undefined
@@ -176,6 +179,25 @@ async function loadQueueRows(ids){
   tx.onerror=()=>{db.close();reject(tx.error)};
  });
 }
+async function setQueueImportState(rows,patch){
+ const wanted=new Set((rows||[]).map(row=>String(row?.id||'')).filter(Boolean));
+ if(!wanted.size)return 0;
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+  const req=store.openCursor();let changed=0;
+  req.onsuccess=()=>{
+   const cursor=req.result;if(!cursor)return;
+   if(wanted.has(String(cursor.value?.id||''))){
+    cursor.update({...cursor.value,...patch});changed++;
+   }
+   cursor.continue();
+  };
+  tx.oncomplete=()=>{db.close();resolve(changed)};
+  tx.onabort=()=>{db.close();reject(tx.error||Error('Queue changed during import status update'))};
+  tx.onerror=()=>{db.close();reject(tx.error)};
+ });
+}
 // One explicit user action removes the local Queue and previous ACK markers.
 // Never touch OAuth, LOC SQL, or remote conversation content.
 async function clearLocalCaptures(){
@@ -200,6 +222,7 @@ async function clearLocalCaptures(){
    'locImportPaused',CIRCUIT_KEY,'locQueueNextSendAt',DIAGNOSTIC_KEY
   ]);
   await cancelQueueTimer();
+  await chrome.alarms.clear(IMPORT_STATUS_ALARM);
   await updateQueueBadge();
   return {cleared:true,message:'本機 Queue 與去重回執已清空；LOC 資料與 OAuth 未變更'};
  }finally{maintenance=false;}
@@ -728,8 +751,8 @@ function partitionQueueForFlush(pending){
    row.kind!=='ordered_conversation');
  return {legacyConversationCount,unreviewed,ordered,rows};
 }
-// Stream Queue rows to LAS Container for ordering. The Worker retains OAuth
-// and sends bounded, acknowledged record_ordered transactions to LOC.
+// Stream Queue rows to LAS Container for ordering. LAS validates and writes
+// the final bounded batches to its configured Galaxy database.
 function queueConversationGroups(entries){
  const separator=String.fromCharCode(0),groups=new Map();
  for(const row of entries){
@@ -810,18 +833,27 @@ function streamFailureInfo(receipt){
   message:typeof message==='string'?message.split(String.fromCharCode(13)).join(' ').split(String.fromCharCode(10)).join(' ').slice(0,140):''
  };
 }
-async function sendConversationStream(entries,token,config){
+async function sendConversationStream(entries,token,config,uploadId){
  if(!entries.length)return {accepted:true,records:0,conversations:0};
- const groups=queueConversationGroups(entries),uploadId=crypto.randomUUID();
+ const groups=queueConversationGroups(entries);
+ uploadId=uploadId||crypto.randomUUID();
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uploadId))
+  throw contractError('LAS Stream 匯入識別無效；Queue 保留');
  const endpoint=new URL(config?.conversation_stream_url||'');
  if(endpoint.href!=='https://mcp.lo3rwang.cc/api/plugins/import/stream')
   throw contractError('LAS Stream 匯入端點設定錯誤；Queue 保留');
+ // Persist the stable upload ID before network I/O. If the POST succeeds but
+ // its response is lost, the same rows can safely re-submit the same ID.
+ await setQueueImportState(entries,{pending_upload_id:uploadId,pending_job_id:null});
  let response;
  try{
   response=await fetch(endpoint.href,{
    method:'POST',redirect:'error',cache:'no-store',
    headers:{authorization:'Bearer '+token,
-    'content-type':'application/x-ndjson',accept:'application/json'},
+    'content-type':'application/x-ndjson',accept:'application/json',
+    'x-las-upload-id':uploadId,
+    'x-las-conversation-count':String(groups.length),
+    'x-las-record-count':String(entries.length)},
    body:createQueueConversationBody(entries,uploadId,groups),
    duplex:'half'
   });
@@ -836,22 +868,133 @@ async function sendConversationStream(entries,token,config){
   error.code=failure.code||'LAS_STREAM_HTTP_ERROR';
   error.queueEndpoint='MCP';
   error.retryAfter=response.headers?.get?.('retry-after')||'';
+  // These responses prove that this upload ID was not accepted (or that a
+  // previous job ended permanently). Clear the marker so the user's next
+  // manual attempt can submit a fresh job while retaining every Queue row.
+  if([400,404,409,410,413,415].includes(response.status))
+   await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
   await logDiagnostic('las.plugin.stream.error',{
    status:response.status,code:error.code
   });
   throw error;
  }
  if(receipt?.accepted!==true||receipt.upload_id!==uploadId||
-    receipt.conversations!==groups.length||receipt.records!==entries.length||
-    !Number.isSafeInteger(receipt.batches)||receipt.batches<groups.length||
-    !Number.isSafeInteger(receipt.appended)||receipt.appended<0||
-    receipt.appended>entries.length)
+    receipt.conversations!==groups.length||receipt.records!==entries.length)
   throw contractError('LAS Stream 未確認完整匯入；Queue 原始資料保留');
- await logDiagnostic('las.plugin.stream.receipt',{
-  accepted:true,upload_id:uploadId,conversations:receipt.conversations,
-  records:receipt.records,appended:receipt.appended,batches:receipt.batches
- });
- return receipt;
+ if(receipt.state==='completed'){
+  const result=receipt.result;
+  if(result?.accepted!==true||result.upload_id!==uploadId||
+     result.conversations!==groups.length||result.records!==entries.length||
+     !Number.isSafeInteger(result.batches)||result.batches<groups.length||
+     !Number.isSafeInteger(result.appended)||result.appended<0||
+     result.appended>entries.length)
+   throw contractError('LAS Stream 完成回執不完整；Queue 原始資料保留');
+  return {...result,pending:false,state:'completed'};
+ }
+ if(!['staged','queued','running'].includes(receipt.state)||
+    receipt.job_id!==uploadId){
+  throw contractError('LAS Stream 未確認背景作業；Queue 原始資料保留');
+ }
+ await setQueueImportState(entries,{pending_upload_id:uploadId,
+  pending_job_id:receipt.job_id});
+ await chrome.alarms.create(IMPORT_STATUS_ALARM,{when:Date.now()+IMPORT_STATUS_POLL_MS});
+ await logDiagnostic('las.plugin.import.queued',{job_id:receipt.job_id,
+  conversations:groups.length,records:entries.length});
+ return {accepted:true,pending:true,state:receipt.state,job_id:receipt.job_id,
+  upload_id:uploadId,conversations:groups.length,records:entries.length};
+}
+function validateCompletedImport(job,entries){
+ const result=job?.result,groups=queueConversationGroups(entries);
+ return result?.accepted===true&&result.upload_id===job.upload_id&&
+  result.conversations===groups.length&&result.records===entries.length&&
+  Number.isSafeInteger(result.batches)&&result.batches>=groups.length&&
+  Number.isSafeInteger(result.appended)&&result.appended>=0&&
+  result.appended<=entries.length;
+}
+async function pollPendingImports(){
+ if(importPollInFlight)return importPollInFlight;
+ importPollInFlight=(async()=>{
+  const rows=(await scanQueue({metadata:true})).rows;
+  const pending=rows.filter(row=>row.pending_job_id);
+  if(!pending.length){await chrome.alarms.clear(IMPORT_STATUS_ALARM);return {completed:0,pending:0};}
+  let token;
+  try{token=await activeToken();}
+  catch(error){
+   await logDiagnostic('las.plugin.import.status.error',{code:'token_unavailable'});
+   await chrome.alarms.create(IMPORT_STATUS_ALARM,{when:Date.now()+IMPORT_STATUS_POLL_MS});
+   return {completed:0,pending:pending.length};
+  }
+  const byJob=new Map();
+  for(const row of pending){
+   const id=String(row.pending_job_id);
+   if(!byJob.has(id))byJob.set(id,[]);
+   byJob.get(id).push(row);
+  }
+  let completed=0;
+  const ids=[...byJob.keys()];
+  for(let offset=0;offset<ids.length;offset+=20){
+   const page=ids.slice(offset,offset+20),url=new URL('https://mcp.lo3rwang.cc/api/plugins/import/status');
+   for(const id of page)url.searchParams.append('job_id',id);
+   let response;
+   try{
+    response=await fetch(url.href,{method:'GET',redirect:'error',cache:'no-store',
+     headers:{authorization:'Bearer '+token,accept:'application/json'}});
+   }catch(error){
+    await logDiagnostic('las.plugin.import.status.error',{code:'network'});
+    continue;
+   }
+   const body=await response.json().catch(()=>null);
+   if(!response.ok){
+    await logDiagnostic('las.plugin.import.status.error',{status:response.status,
+     code:String(body?.error||'status_unavailable').slice(0,64)});
+    if(response.status===404){
+     for(const id of page){
+      const entries=byJob.get(id)||[];
+      await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
+     }
+     await tripCircuit({httpStatus:404,code:'import_job_not_found',queueEndpoint:'MCP'});
+    }
+    continue;
+   }
+   const jobs=Array.isArray(body?.jobs)?body.jobs:
+    body?.job_id?[body]:[];
+   for(const job of jobs){
+    const entries=byJob.get(job?.job_id)||[];
+    if(!entries.length)continue;
+    if(job.state==='completed'){
+     if(!validateCompletedImport(job,entries)){
+      const error=contractError('LAS Stream 完成回執與本機 Queue 不一致；原始資料保留');
+      error.httpStatus=502;error.queueEndpoint='MCP';
+      await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
+      await tripCircuit(error);
+      continue;
+     }
+     await removeEvents(entries);completed+=entries.length;
+     await logDiagnostic('las.plugin.import.receipt',{accepted:true,
+      job_id:job.job_id,records:job.records,appended:job.result.appended,
+      batches:job.result.batches});
+     await resetCircuitAfterReceipt();
+    }else if(job.state==='failed'){
+     await setQueueImportState(entries,{pending_upload_id:null,pending_job_id:null});
+     const error=Error('LAS 大量匯入失敗；原始 Queue 已保留，可手動試送');
+     error.httpStatus=Number(job.error?.status)||500;
+     error.code=String(job.error?.code||'import_processing_failed').slice(0,80);
+     error.queueEndpoint='MCP';
+     await tripCircuit(error);
+    }
+   }
+  }
+  await updateQueueBadge().catch(()=>{});
+  const remaining=(await scanQueue({metadata:true})).rows.some(row=>row.pending_job_id);
+  if(remaining)await chrome.alarms.create(IMPORT_STATUS_ALARM,
+   {when:Date.now()+IMPORT_STATUS_POLL_MS});
+  else{
+   await chrome.alarms.clear(IMPORT_STATUS_ALARM);
+   if(completed&&await queueCount())await scheduleQueueTimer();
+  }
+  return {completed,pending:remaining?1:0};
+ })().finally(()=>{importPollInFlight=null;});
+ return importPollInFlight;
 }
 async function flush(force=false){
  if(maintenance)return {message:'本機暫存維護中',sent:0};
@@ -869,8 +1012,16 @@ async function flush(force=false){
   // metadata, then hydrate bounded sets and submit adaptive byte batches.
   const pending=(await scanQueue({metadata:true})).rows.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   const {legacyConversationCount,unreviewed,ordered,rows}=partitionQueueForFlush(pending);
+  const readyOrdered=ordered.filter(row=>!row.pending_job_id);
+  const runningOrdered=ordered.filter(row=>Boolean(row.pending_job_id));
   // Legacy fragments remain quarantined. Ordered turns use a separate writer.
-  if(!rows.length&&!ordered.length){
+  if(!rows.length&&!readyOrdered.length){
+   if(runningOrdered.length){
+    await chrome.alarms.create(IMPORT_STATUS_ALARM,
+     {when:Date.now()+IMPORT_STATUS_POLL_MS});
+    return {message:'LAS 已接收 '+runningOrdered.length+
+     ' 筆，正在背景處理；完成回執前保留本機 Queue',sent:0};
+   }
    const unreviewedCount=unreviewed.length;
    return {message:unreviewedCount
     ?'有 '+unreviewedCount+' 則舊對話缺少可靠來源序號，已保留且不會送出'
@@ -881,16 +1032,26 @@ async function flush(force=false){
 
   let token;
   try{token=await activeToken()}catch(e){await tripCircuit(e);throw e}
-  if(!settings.locConfig?.import_url){const e=contractError('LOC 匯入設定不存在');await tripCircuit(e);throw e}
+  if(rows.length&&!settings.locConfig?.import_url){const e=contractError('LOC 短匯入設定不存在');await tripCircuit(e);throw e}
   let count=0;
+  let acceptedAsync=0;
   try{
-   if(ordered.length){
+   if(readyOrdered.length){
     if(!settings.locConfig?.conversation_stream_url)
      settings.locConfig=await getConfig();
-    await sendConversationStream(ordered,token,settings.locConfig);
-    // Only the final LAS + LOC receipt releases these original Queue rows.
-    await removeEvents(ordered);
-    count+=ordered.length;
+    const uploads=new Map();
+    for(const row of readyOrdered){
+     const key=row.pending_upload_id||'__new_upload__';
+     if(!uploads.has(key))uploads.set(key,[]);
+     uploads.get(key).push(row);
+    }
+    for(const [priorId,entries] of uploads){
+     const uploadId=priorId==='__new_upload__'?crypto.randomUUID():priorId;
+     const receipt=await sendConversationStream(entries,token,settings.locConfig,uploadId);
+     if(receipt.pending){acceptedAsync+=entries.length;continue;}
+     await removeEvents(entries);
+     count+=entries.length;
+    }
    }
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     const scopeRows=rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid);
@@ -914,9 +1075,18 @@ async function flush(force=false){
    }
    await updateQueueBadge().catch(()=>{});
    if(count>0)await resetCircuitAfterReceipt();
-   await cancelQueueTimer();
-   if(await queueCount())await scheduleQueueTimer();
-   return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
+   const after=(await scanQueue({metadata:true})).rows;
+   if(after.some(row=>row.pending_job_id))
+    await chrome.alarms.create(IMPORT_STATUS_ALARM,
+     {when:Date.now()+IMPORT_STATUS_POLL_MS});
+   const unsent=after.some(row=>!row.pending_job_id&&
+    !(row.kind==='ordered_conversation'&&trustedSourceOrder(row)&&row.pending_upload_id));
+   if(unsent)await scheduleQueueTimer();else await cancelQueueTimer();
+   return {message:acceptedAsync
+    ?'LAS 已接收 '+acceptedAsync+' 筆並在背景處理；完成回執前保留本機 Queue'+
+      (count?'；另有 '+count+' 筆已完成':'')
+    :count?'LAS 已確認寫入 '+count+' 筆':'Queue 已交由 LAS 背景處理',sent:count,
+    accepted:acceptedAsync};
   }catch(e){
    // Never continue this batch or any future automatic retry.
    await tripCircuit(e);
@@ -1297,6 +1467,9 @@ chrome.runtime.onInstalled.addListener(async()=>{
  await chrome.alarms.clear('lunarcus-retry');
  await migrateLegacyFailure();
  if(await queueCount())await scheduleQueueTimer();
+ const pendingImports=(await scanQueue({metadata:true})).rows.some(row=>row.pending_job_id);
+ if(pendingImports)await chrome.alarms.create(IMPORT_STATUS_ALARM,
+  {when:Date.now()+IMPORT_STATUS_POLL_MS});
  await clearLegacyTabBadges().catch(()=>{});
  await updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
@@ -1305,6 +1478,11 @@ chrome.runtime.onStartup?.addListener(()=>{
  void chrome.alarms.clear('lunarcus-retry');
  void migrateLegacyFailure().then(()=>queueCount())
   .then(n=>n&&scheduleQueueTimer()).catch(()=>{});
+ void scanQueue({metadata:true}).then(result=>{
+  if(result.rows.some(row=>row.pending_job_id))
+   return chrome.alarms.create(IMPORT_STATUS_ALARM,
+    {when:Date.now()+IMPORT_STATUS_POLL_MS});
+ }).catch(()=>{});
  void updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
 chrome.contextMenus.onShown?.addListener((_info,tab)=>{
@@ -1349,6 +1527,13 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
 chrome.alarms.onAlarm.addListener(e=>{
  if(e.name===QUEUE_ALARM)void flush(false).catch(async error=>{
   await noteAction('自動傳送中止',false,error?.message||String(error));
+ });
+ if(e.name===IMPORT_STATUS_ALARM)void pollPendingImports().catch(async error=>{
+  await logDiagnostic('las.plugin.import.status.error',{
+   code:String(error?.code||'status_poll_failed').slice(0,64)
+  });
+  await chrome.alarms.create(IMPORT_STATUS_ALARM,
+   {when:Date.now()+IMPORT_STATUS_POLL_MS}).catch(()=>{});
  });
 });
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
