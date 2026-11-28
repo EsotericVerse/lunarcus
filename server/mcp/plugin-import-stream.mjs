@@ -84,6 +84,19 @@ function boundedBody(body,maxBytes){
  return {stream,get bytes(){return bytes;}};
 }
 
+function retryableImportFailure(error){
+ const status=Number(error?.httpStatus??error?.status??error?.statusCode);
+ return !(Number.isInteger(status)&&status>=400&&status<500);
+}
+async function retryImportOperation(operation){
+ try{return await operation();}
+ catch(error){
+  if(!retryableImportFailure(error))throw error;
+  await new Promise(resolve=>setTimeout(resolve,150));
+  return operation();
+ }
+}
+
 function acceptedJob(job,origin,status=202){
  const info=publicImportJob(job);
  return json({accepted:true,...info},status,origin,{
@@ -121,19 +134,26 @@ export async function handlePluginImportStream(request,env={}){
     !queue||typeof queue.send!=='function')
   return json({error:'import_storage_unavailable'},503,allowedOrigin);
 
+ let phase='job_lookup';
  try{
-  const previous=await readImportJob(bucket,uploadId);
+  const previous=await retryImportOperation(()=>readImportJob(bucket,uploadId));
   if(previous){
    if(previous.owner!==auth.identity.subject)
     return json({error:'import_job_not_found'},404,allowedOrigin);
    if(previous.state==='failed')return json({accepted:false,
     ...publicImportJob(previous)},409,allowedOrigin);
    if(previous.state==='completed')return acceptedJob(previous,allowedOrigin,200);
-   if(previous.state==='staged')await queue.send({job_id:uploadId});
+   if(previous.state==='staged'){
+    phase='queue_send';
+    // Queue delivery is at least once; the consumer deduplicates by this stable
+    // Workflow ID, so a retry after an ambiguous send result is safe.
+    await retryImportOperation(()=>queue.send({job_id:uploadId}));
+   }
    return acceptedJob(previous,allowedOrigin,202);
   }
 
   const bounded=boundedBody(request.body,MAX_UPLOAD_BYTES);
+  phase='staging_write';
   await bucket.put(stagingKey(uploadId),bounded.stream,{
    httpMetadata:{contentType:'application/x-ndjson'}
   });
@@ -142,22 +162,32 @@ export async function handlePluginImportStream(request,env={}){
   const job={job_id:uploadId,upload_id:uploadId,owner:auth.identity.subject,
    state:'staged',conversation_count:conversations,record_count:records,
    created_at:now,updated_at:now};
-  await bucket.put(jobKey(uploadId),JSON.stringify(job),{
+  phase='job_metadata_write';
+  // Replacing this stable key is idempotent if R2 stored the object before a
+  // transient error reached the Worker.
+  await retryImportOperation(()=>bucket.put(jobKey(uploadId),JSON.stringify(job),{
    httpMetadata:{contentType:'application/json; charset=utf-8'}
-  });
+  }));
   // Queue carries only a short R2 object pointer. The Workflow reads the
   // private staged stream and the browser keeps its original rows until the
   // completed import receipt is polled and checked.
-  await queue.send({job_id:uploadId});
+  phase='queue_send';
+  await retryImportOperation(()=>queue.send({job_id:uploadId}));
   return acceptedJob(job,allowedOrigin,202);
  }catch(error){
-  const status=Number(error?.httpStatus);
-  const safeStatus=status>=400&&status<=599?status:503;
+  const status=Number(error?.httpStatus??error?.status??error?.statusCode);
+  const safeStatus=Number.isInteger(status)&&status>=400&&status<=599?status:503;
+  const phaseCode={
+   job_lookup:'import_job_lookup_failed',
+   staging_write:'import_staging_write_failed',
+   job_metadata_write:'import_job_metadata_write_failed',
+   queue_send:'import_queue_send_failed'
+  }[phase];
   const code=typeof error?.code==='string'&&/^[a-z0-9_]{1,80}$/i.test(error.code)
-   ?error.code:'import_queue_unavailable';
-  console.warn('LAS plugin import staging failed',{status:safeStatus,code});
+   ?error.code:phaseCode;
+  console.warn('LAS plugin import step failed',{phase,status:safeStatus,code});
   return json({error:code,message:safeStatus===413?'Import exceeds the stream limit':
-   'LAS import queue unavailable'},safeStatus,allowedOrigin,{'retry-after':'15'});
+   'LAS could not accept the import at this stage'},safeStatus,allowedOrigin,{'retry-after':'15'});
  }
 }
 
