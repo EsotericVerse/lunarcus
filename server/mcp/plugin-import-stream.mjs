@@ -115,9 +115,8 @@ export async function handlePluginImportStream(request,env={}){
   return json({error:'unsupported_content_encoding'},415,allowedOrigin);
  if(!request.body)return json({error:'empty_stream'},400,allowedOrigin);
  const length=request.headers.get('content-length');
- if(length===null)return json({error:'content_length_required'},411,allowedOrigin);
- if(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(Number(length))||
-    Number(length)>MAX_UPLOAD_BYTES)
+ if(length!==null&&(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(Number(length))||
+    Number(length)>MAX_UPLOAD_BYTES))
   return json({error:'upload_too_large'},413,allowedOrigin);
  const uploadId=request.headers.get('x-las-upload-id')||'';
  if(!validImportId(uploadId))return json({error:'invalid_upload_id'},400,allowedOrigin);
@@ -127,6 +126,7 @@ export async function handlePluginImportStream(request,env={}){
 
  const auth=await authenticate(request,env,allowedOrigin);
  if(auth.response)return auth.response;
+ if(length===null)return json({error:'content_length_required'},411,allowedOrigin);
  const bucket=env.LAS_PLUGIN_IMPORT_STAGING,queue=env.LAS_PLUGIN_IMPORT_QUEUE;
  if(!bucket||typeof bucket.get!=='function'||typeof bucket.put!=='function'||
     !queue||typeof queue.send!=='function')
