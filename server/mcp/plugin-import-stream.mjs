@@ -62,9 +62,9 @@ async function authenticate(request,env,origin){
  return {identity};
 }
 
-function boundedBody(body,maxBytes){
+function boundedBody(body,maxBytes,expectedBytes){
  let bytes=0;
- const stream=body.pipeThrough(new TransformStream({
+ const metered=body.pipeThrough(new TransformStream({
   transform(part,controller){
    bytes+=part.byteLength;
    if(bytes>maxBytes)
@@ -73,7 +73,11 @@ function boundedBody(body,maxBytes){
    controller.enqueue(part);
   }
  }));
- return {stream,get bytes(){return bytes;}};
+ // R2 rejects generic TransformStream output because its length is unknown.
+ // FixedLengthStream preserves streaming while giving R2 the known request size.
+ const fixed=new FixedLengthStream(expectedBytes);
+ const piping=metered.pipeTo(fixed.writable);
+ return {stream:fixed.readable,piping,get bytes(){return bytes;}};
 }
 
 function retryableImportFailure(error){
@@ -111,7 +115,9 @@ export async function handlePluginImportStream(request,env={}){
   return json({error:'unsupported_content_encoding'},415,allowedOrigin);
  if(!request.body)return json({error:'empty_stream'},400,allowedOrigin);
  const length=request.headers.get('content-length');
- if(length!==null&&(!/^[0-9]+$/.test(length)||Number(length)>MAX_UPLOAD_BYTES))
+ if(length===null)return json({error:'content_length_required'},411,allowedOrigin);
+ if(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(Number(length))||
+    Number(length)>MAX_UPLOAD_BYTES)
   return json({error:'upload_too_large'},413,allowedOrigin);
  const uploadId=request.headers.get('x-las-upload-id')||'';
  if(!validImportId(uploadId))return json({error:'invalid_upload_id'},400,allowedOrigin);
@@ -144,11 +150,14 @@ export async function handlePluginImportStream(request,env={}){
    return acceptedJob(previous,allowedOrigin,202);
   }
 
-  bounded=boundedBody(request.body,MAX_UPLOAD_BYTES);
+  bounded=boundedBody(request.body,MAX_UPLOAD_BYTES,Number(length));
   phase='staging_write';
-  await bucket.put(stagingKey(uploadId),bounded.stream,{
-   httpMetadata:{contentType:'application/x-ndjson'}
-  });
+  await Promise.all([
+   bucket.put(stagingKey(uploadId),bounded.stream,{
+    httpMetadata:{contentType:'application/x-ndjson'}
+   }),
+   bounded.piping
+  ]);
   phase='staging_finalize';
   if(bounded.bytes<1)return json({error:'empty_stream'},400,allowedOrigin);
   phase='job_prepare';
