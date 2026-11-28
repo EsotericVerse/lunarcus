@@ -40,10 +40,18 @@
 
 產品顯示名稱為 **LunArcus**；專案代號 **LAS**。不再創造舊的橋樑名作產品或模組。Chrome Plugin 的 public OAuth client ID 為 `lunarcus`，Chrome Extension ID 是瀏覽器 ID，兩者是不同的事，不可互相混用。
 
+## Lucus Architecture / LunArcus Protocol
+
+- `Lucus = Lucas + Locus = Lucus`：作者定義的特殊拉丁文字，意為「光之時空定錨點」，意象為 Universe Tree 上的神聖樹林。
+- **Lucus Architecture** 是語義／結構層；**LunArcus Protocol** 是連接與轉換層。不可把兩者混成同一名稱，也不可把 LAS Adapter 的既有固定資料操作誤稱為完整的粒子化 Lucus Protocol。
+- 未來概念鏈為 `Galaxy → Universe → Universe Tree`；Lucus 以細微粒子化時空定錨元素連接及轉換樹上的關係。這是未來擬定，不代表目前已有完整 Universe Tree、粒子引擎或協定 wire schema。
+- LOC 的固定關係為 `LOCLucus`: Culture/`TLucus`、Trace/`LLucus`、Statics/`KLucus`、Search/`SLucus`；LRS 的固定關係為 `LRSLucus`: 九大群組、67 個符文字。兩者是各自的領域關係圖，共用 Lucus 架構。
+- 不自行發明粒子 ID、座標格式、關聯 traversal、轉換演算法、protocol endpoint、payload、資料表或 migration；待作者確定細節後，再由 LunArcus Repo 定義並驗證協定契約。
+
 ## 專案邊界：不跨 Repo 操作
 
-- **LOC（LunaCodex）** 擁有產品業務語義與功能呈現，包括關鍵詞處理、時間／空間定錨、小量必要寫入及跨功能連結；LAS 不接管這些功能，也不修改 LOC Repo。**LAS Adapter** 負責連接端口、匯入／匯出、SQL portable drivers，以及依既有 Anchor／Galaxy 資料契約進行匯入比對與寫入。兩端仍各自保有 Hyperdrive；LAS Auth 固定使用 PostgreSQL。
-- **LRS（LunaRunes）** 擁有 Rune 原創素材、Effekseer／WASM、`lrs:rune`、`lrs:card`、`lrs:daily`、遊戲引擎與 LRS 自己的 App／IPA；LOC 自行打包 LOC App／IPA。兩者如需整合，才依指定版本及 manifest 明確交換檔案；LAS 不接管任何 App 打包。
+- **LOC（LunaCodex）** 擁有產品業務語義與功能呈現，包括關鍵詞處理、時間／空間定錨與 **LOCLucus（culture／trace／statics／search）**、小量必要寫入及跨功能連結；LAS 不接管這些功能，也不修改 LOC Repo。**LAS Adapter** 負責連接端口、匯入／匯出、SQL portable drivers，以及依 LOC 現有實體資料契約進行匯入比對與寫入；LOCLucus 的關係語義由 LOC 自己維護，LAS 不重新定義。兩端仍各自保有 Hyperdrive；LAS Auth 固定使用 PostgreSQL。
+- **LRS（LunaRunes）** 擁有 Rune 原創素材、Effekseer／WASM、**LRSLucus（九大群組／67 個符文字）**、`lrs:rune`、`lrs:card`、`lrs:daily`、遊戲引擎與 LRS 自己的 App／IPA；LRSLucus 群組成員及抽牌權重屬 LRS Rune Core，LAS 只提供受限資料讀取，不重排符文關聯或計算抽牌結果。LOC 自行打包 LOC App／IPA。兩者如需整合，才依指定版本及 manifest 明確交換檔案；LAS 不接管任何 App 打包。
 - Chrome Extension 由 LAS Plugin 負責，Auth 由 LAS Worker 負責，LOC 才決定匯入文章是否有權限；各層不直接授予另一層的權限。
 - 碰到跨 Repo 問題，**精確提出 API／檔案交付契約或阻礙**；未獲委託不得在其他 Repo 建分支、修碼、合併或改部署。
 
