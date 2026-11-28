@@ -134,7 +134,7 @@ export async function handlePluginImportStream(request,env={}){
     !queue||typeof queue.send!=='function')
   return json({error:'import_storage_unavailable'},503,allowedOrigin);
 
- let phase='job_lookup';
+ let phase='job_lookup',bounded=null;
  try{
   const previous=await retryImportOperation(()=>readImportJob(bucket,uploadId));
   if(previous){
@@ -152,12 +152,14 @@ export async function handlePluginImportStream(request,env={}){
    return acceptedJob(previous,allowedOrigin,202);
   }
 
-  const bounded=boundedBody(request.body,MAX_UPLOAD_BYTES);
+  bounded=boundedBody(request.body,MAX_UPLOAD_BYTES);
   phase='staging_write';
   await bucket.put(stagingKey(uploadId),bounded.stream,{
    httpMetadata:{contentType:'application/x-ndjson'}
   });
+  phase='staging_finalize';
   if(bounded.bytes<1)return json({error:'empty_stream'},400,allowedOrigin);
+  phase='job_prepare';
   const now=new Date().toISOString();
   const job={job_id:uploadId,upload_id:uploadId,owner:auth.identity.subject,
    state:'staged',conversation_count:conversations,record_count:records,
@@ -180,12 +182,19 @@ export async function handlePluginImportStream(request,env={}){
   const phaseCode={
    job_lookup:'import_job_lookup_failed',
    staging_write:'import_staging_write_failed',
+   staging_finalize:'import_staging_write_failed',
+   job_prepare:'import_job_prepare_failed',
    job_metadata_write:'import_job_metadata_write_failed',
    queue_send:'import_queue_send_failed'
   }[phase];
   const code=typeof error?.code==='string'&&/^[a-z0-9_]{1,80}$/i.test(error.code)
    ?error.code:phaseCode;
-  console.warn('LAS plugin import step failed',{phase,status:safeStatus,code});
+  const errorName=typeof error?.name==='string'&&/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(error.name)
+   ?error.name:'Error';
+  const streamBytes=Number.isSafeInteger(bounded?.bytes)?bounded.bytes:null;
+  console.warn('LAS plugin import step failed',{
+   phase,status:safeStatus,code,errorName,streamBytes
+  });
   return json({error:code,message:safeStatus===413?'Import exceeds the stream limit':
    'LAS could not accept the import at this stage'},safeStatus,allowedOrigin,{'retry-after':'15'});
  }
