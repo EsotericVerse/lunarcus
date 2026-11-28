@@ -63,24 +63,16 @@ async function authenticate(request,env,origin){
 }
 
 function boundedBody(body,maxBytes){
- const reader=body.getReader();let bytes=0;
- const stream=new ReadableStream({
-  async pull(controller){
-   try{
-    const part=await reader.read();
-    if(part.done){controller.close();return;}
-    bytes+=part.value.byteLength;
-    if(bytes>maxBytes){
-     await reader.cancel().catch(()=>{});
-     controller.error(Object.assign(new Error('Upload exceeds the stream limit'),
-      {code:'upload_too_large',httpStatus:413}));
-     return;
-    }
-    controller.enqueue(part.value);
-   }catch(error){controller.error(error);}
-  },
-  async cancel(reason){await reader.cancel(reason).catch(()=>{});}
- });
+ let bytes=0;
+ const stream=body.pipeThrough(new TransformStream({
+  transform(part,controller){
+   bytes+=part.byteLength;
+   if(bytes>maxBytes)
+    throw Object.assign(new Error('Upload exceeds the stream limit'),
+     {code:'upload_too_large',httpStatus:413});
+   controller.enqueue(part);
+  }
+ }));
  return {stream,get bytes(){return bytes;}};
 }
 
