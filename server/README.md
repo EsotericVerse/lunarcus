@@ -24,7 +24,17 @@ LAS is its own small protocol-oriented application framework. Its core is
   PostgreSQL uses the existing LAS Hyperdrive binding by default. MySQL and
   MSSQL use their own optional bindings/connection secrets; these do not
   change Auth's PostgreSQL connection.
-- LOC owns the logical `LOCLucus` graph with the four fixed facets `culture / trace / statics / search`; LRS owns the independent `LRSLucus` graph with nine rune groups and 67 symbol nodes. LAS Adapter is transport and authorization only: it serves fixed, authorized reads and does not reinterpret, reorder, or mutate either graph, and it does not calculate LRS draw weights. These graph definitions remain owned by their respective repositories; no shared database schema or migration is introduced by the naming contract.
+## Lucus Architecture and LunArcus Protocol
+
+**Lucus = Lucas + Locus = Lucus** is the author's special Latin concept for a "light-based spacetime anchor", imagined as the sacred grove atop the Universe Tree. Lucus is the semantic/structural architecture; **LunArcus Protocol** is the connection and transformation protocol. They are related but not interchangeable: the protocol connects Lucus-structured elements; it does not define the meaning of those elements.
+
+The future conceptual chain is **Galaxy -> Universe -> Universe Tree**. Lucus sits on the Universe Tree as its sacred grove, using fine-grained, particle-level spacetime anchor elements to establish relations and transformations. This is future design, not a claim that the Universe Tree, particle engine, or complete cross-system protocol is implemented today.
+
+Fixed project-specific Lucus relations:
+- LOC: `LOCLucus` has four facets — Culture / `TLucus` (time: Era > Period > Date), Trace / `LLucus` (space: Trace > Path > Point), Statics / `KLucus` (keyword: Category > Class > Group > Item > Pattern), and Search / `SLucus` (source/site: Universe > Galaxy > Domain > From).
+- LRS: `LRSLucus` relates nine rune groups to 67 symbol nodes. Groups 1–8 contain eight runes each; group 9 contains `[0,65,66]`. Symbol 0 (德) belongs to the relation but is not drawable; 1–66 are drawable.
+
+These are distinct LOC/LRS domain graphs over the shared Lucus architecture, not duplicate datasets. The LunArcus Protocol is the future inter-system connection/transform contract. Its particle-level payload, identity exchange, relation traversal and transformation semantics remain to be specified; do not invent wire formats, endpoints, tables or migrations. Current LAS fixed-operation adapters continue to enforce authorization and data access, but must not be described as a completed Lucus particle protocol.
 - The Chrome Extension remains an independent Manifest V3 client in
   `plugins/chrome/`. Small article captures retain the current LOC short
   import contract. Ordered conversation Queue uploads use the LAS background
