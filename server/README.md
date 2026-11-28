@@ -24,7 +24,8 @@ LAS is its own small protocol-oriented application framework. Its core is
   PostgreSQL uses the existing LAS Hyperdrive binding by default. MySQL and
   MSSQL use their own optional bindings/connection secrets; these do not
   change Auth's PostgreSQL connection.
-- LOC owns the logical `LOCLucus` graph with the four fixed facets `culture / trace / statics / search`; LRS owns the independent `LRSLucus` graph with nine rune groups and 67 symbol nodes. LAS Adapter is transport and authorization only: it serves fixed, authorized reads and does not reinterpret, reorder, or mutate either graph, and it does not calculate LRS draw weights. These graph definitions remain owned by their respective repositories; no shared database schema or migration is introduced by the naming contract.\n- The Chrome Extension remains an independent Manifest V3 client in
+- LOC owns the logical `LOCLucus` graph with the four fixed facets `culture / trace / statics / search`; LRS owns the independent `LRSLucus` graph with nine rune groups and 67 symbol nodes. LAS Adapter is transport and authorization only: it serves fixed, authorized reads and does not reinterpret, reorder, or mutate either graph, and it does not calculate LRS draw weights. These graph definitions remain owned by their respective repositories; no shared database schema or migration is introduced by the naming contract.
+- The Chrome Extension remains an independent Manifest V3 client in
   `plugins/chrome/`. Small article captures retain the current LOC short
   import contract. Ordered conversation Queue uploads use the LAS background
   import route and are acknowledged only after the final receipt is checked.
